@@ -34,14 +34,14 @@
     - Write tests for edge cases in hash generation
     - _Requirements: 4.4, 6.3_
 
-- [ ] 4. Enhance repository layer for new duplicate detection
-  - [ ] 4.1 Update WalletRepository interface
+- [x] 4. Enhance repository layer for new duplicate detection
+  - [x] 4.1 Update WalletRepository interface
     - Add FindBySourceHash method
     - Modify FindByAddress to return multiple wallets
     - Add methods for duplicate checking by import method
     - _Requirements: 4.1, 4.2, 4.3_
 
-  - [ ] 4.2 Implement enhanced GORM repository methods
+  - [x] 4.2 Implement enhanced GORM repository methods
     - Implement FindBySourceHash in GORMRepository
     - Update FindByAddress to handle multiple results
     - Add database migration logic for new schema
@@ -145,7 +145,7 @@
     - Add messages for unavailable mnemonic scenarios
     - Update existing error messages for clarity
     - _Requirements: 5.1, 5.2, 5.4_
-ComplexPassword123!@#
+
   - [ ] 10.2 Implement context-aware error reporting
     - Include import method in error messages
     - Provide specific guidance based on conflict type
