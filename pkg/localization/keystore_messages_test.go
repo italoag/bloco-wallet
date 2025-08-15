@@ -21,12 +21,12 @@ func TestGetKeystoreErrorMessage(t *testing.T) {
 		{
 			name:     "Invalid JSON error",
 			key:      "keystore_invalid_json",
-			expected: "O arquivo não contém um JSON válido",
+			expected: "The file contains an invalid JSON",
 		},
 		{
 			name:     "Invalid keystore structure error",
 			key:      "keystore_invalid_structure",
-			expected: "O arquivo não contém um keystore v3 válido",
+			expected: "The file isn't a valid KeyStoreV3 file",
 		},
 		{
 			name:     "Invalid version error",

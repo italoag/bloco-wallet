@@ -120,7 +120,7 @@ func TestCreateValidKeystoreFiles(t *testing.T) {
 	keyJSON1, err := os.ReadFile(account1.URL.Path)
 	require.NoError(t, err)
 
-	// Save to test directory
+	// Save to test it directory
 	err = os.WriteFile("testdata/keystores/real_keystore_v3_simple_password.json", keyJSON1, 0644)
 	require.NoError(t, err)
 

@@ -1572,9 +1572,9 @@ func (m *CLIModel) initListWallets() {
 
 	var rows []table.Row
 	for _, w := range m.wallets {
-		// Determine wallet type based on mnemonic presence
+		// Determine a wallet type based on mnemonic presence
 		walletType := localization.Labels["imported_mnemonic"]
-		if w.Mnemonic == "" {
+		if w.Mnemonic == nil {
 			walletType = localization.Labels["imported_private_key"]
 		}
 
@@ -1871,9 +1871,9 @@ func (m *CLIModel) rebuildWalletsTable() {
 
 	var rows []table.Row
 	for _, w := range m.wallets {
-		// Determine wallet type based on mnemonic presence
+		// Determine a wallet type based on mnemonic presence
 		walletType := localization.Labels["imported_mnemonic"]
-		if w.Mnemonic == "" {
+		if w.Mnemonic == nil {
 			walletType = localization.Labels["imported_private_key"]
 		}
 

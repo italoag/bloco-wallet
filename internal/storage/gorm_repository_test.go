@@ -100,16 +100,22 @@ func TestGORMRepository_GetAllWallets(t *testing.T) {
 	assert.Empty(t, wallets)
 
 	// Adicionando algumas carteiras para teste
+	mn1 := "test mnemonic 1"
+	mn2 := "test mnemonic 2"
 	testWallets := []*wallet.Wallet{
 		{
 			Address:      "0x111111",
 			KeyStorePath: "/path/to/keystore1",
-			Mnemonic:     "test mnemonic 1",
+			Mnemonic:     &mn1,
+			ImportMethod: string(wallet.ImportMethodMnemonic),
+			SourceHash:   (&wallet.SourceHashGenerator{}).GenerateFromMnemonic(mn1),
 		},
 		{
 			Address:      "0x222222",
 			KeyStorePath: "/path/to/keystore2",
-			Mnemonic:     "test mnemonic 2",
+			Mnemonic:     &mn2,
+			ImportMethod: string(wallet.ImportMethodMnemonic),
+			SourceHash:   (&wallet.SourceHashGenerator{}).GenerateFromMnemonic(mn2),
 		},
 	}
 
@@ -137,10 +143,13 @@ func TestGORMRepository_DeleteWallet(t *testing.T) {
 	}(repo)
 
 	// Adicionando uma carteira para teste
+	mnDel := "test mnemonic"
 	testWallet := &wallet.Wallet{
 		Address:      "0x123456",
 		KeyStorePath: "/path/to/keystore",
-		Mnemonic:     "test mnemonic",
+		Mnemonic:     &mnDel,
+		ImportMethod: string(wallet.ImportMethodMnemonic),
+		SourceHash:   (&wallet.SourceHashGenerator{}).GenerateFromMnemonic(mnDel),
 	}
 
 	err = repo.AddWallet(testWallet)
