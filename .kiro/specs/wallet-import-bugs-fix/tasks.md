@@ -70,14 +70,14 @@
     - _Requirements: 2.1, 2.2, 2.3_
 
   - [ ] 6.2 Implement private key duplicate detection
-    - Generate source hash from private key for duplicate checking
+    - Generate source hash from a private key for duplicate checking
     - Check duplicates based on source hash, not just address
     - Store ImportMethod as "private_key" for private key imports
     - Update error messages for private key conflicts
     - _Requirements: 4.2, 4.4, 2.4_
 
   - [ ] 6.3 Update private key import validation
-    - Validate private key format before processing
+    - Validate a private key format before processing
     - Ensure proper error handling for invalid private keys
     - Write unit tests for private key import scenarios
     - _Requirements: 2.5, 6.2_
