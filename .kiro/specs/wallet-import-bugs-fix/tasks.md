@@ -160,7 +160,7 @@
     - Add rollback functionality for migrations
     - _Requirements: 3.3, 3.4_
 
-  - [ ] 12.2 Implement data migration for existing wallets
+  - [ ] 11.2 Implement data migration for existing wallets
     - Migrate existing wallets to use new schema
     - Generate source hashes for existing mnemonic-based wallets
     - Set appropriate ImportMethod for existing wallets
@@ -168,28 +168,28 @@
     - Write tests for migration scenarios
     - _Requirements: 3.5, 6.4_
 
-- [ ] 13. Update UI components and user feedback
-  - [ ] 13.1 Update wallet display logic
+- [ ] 12. Update UI components and user feedback
+  - [ ] 12.1 Update wallet display logic
     - Show "Mnemonic not available" for private key imports
     - Display import method in wallet details
     - Add conditional mnemonic export options
     - _Requirements: 5.1, 5.2, 5.5_
 
-  - [ ] 13.2 Enhance error display in UI
+  - [ ] 12.2 Enhance error display in UI
     - Show specific error messages for different conflict types
     - Provide clear guidance for resolving import issues
     - Update help text to explain import method differences
     - _Requirements: 5.3, 5.4, 5.5_
 
-- [ ] 14. Comprehensive testing implementation
-  - [ ] 14.1 Create unit tests for duplicate detection scenarios
+- [ ] 13. Comprehensive testing implementation
+  - [ ] 13.1 Create unit tests for duplicate detection scenarios
     - Test multiple mnemonic imports with same/different addresses
     - Test private key import without mnemonic generation
     - Test source hash generation and uniqueness
     - Test error message generation for different scenarios
     - _Requirements: 8.1, 8.2, 8.3_
 
-  - [ ] 14.2 Create Universal KDF unit tests
+  - [ ] 13.2 Create Universal KDF unit tests
     - Test KDF parameter conversion for different JSON types
     - Test KDF name normalization and case variations
     - Test salt format conversion (hex, array, string)
@@ -197,7 +197,7 @@
     - Test compatibility analysis for various KeyStore formats
     - _Requirements: 8.6, 8.7, 8.8, 8.9_
 
-  - [ ] 14.3 Create integration tests for import workflows
+  - [ ] 13.3 Create integration tests for import workflows
     - Test end-to-end mnemonic import with duplicate detection
     - Test end-to-end private key import without mnemonic
     - Test coexistence of wallets with same address but different methods
@@ -205,7 +205,7 @@
     - Test Universal KDF keystore import with real-world KeyStore files
     - _Requirements: 8.4, 8.5, 8.10_
 
-  - [ ] 14.4 Create comprehensive KeyStore compatibility test suite
+  - [ ] 13.4 Create comprehensive KeyStore compatibility test suite
     - Test KeyStores from different wallet providers (Geth, MetaMask, Trust Wallet, etc.)
     - Test KeyStores with various KDF configurations and parameter types
     - Test KeyStores with edge cases and unusual parameter values
@@ -213,15 +213,15 @@
     - Create test data generator for comprehensive coverage
     - _Requirements: 8.10, 6.5, 7.1_
 
-- [ ] 15. Remove deprecated deterministic mnemonic functionality
-  - [ ] 15.1 Clean up deterministic mnemonic code
+- [ ] 14. Remove deprecated deterministic mnemonic functionality
+  - [ ] 14.1 Clean up deterministic mnemonic code
     - Remove GenerateDeterministicMnemonic function
     - Remove related validation functions
     - Update any remaining references to deterministic mnemonics
     - Clean up unused imports and dependencies
     - _Requirements: 2.1, 2.2_
 
-  - [ ] 15.2 Update documentation and comments
+  - [ ] 14.2 Update documentation and comments
     - Remove references to deterministic mnemonic generation
     - Update code comments to reflect new import logic
     - Add documentation for new duplicate detection approach
