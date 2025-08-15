@@ -48,14 +48,14 @@
     - Write integration tests for repository methods
     - _Requirements: 3.4, 4.1, 4.2_
 
-- [ ] 5. Fix ImportWallet method for mnemonic-based imports
-  - [ ] 5.1 Update mnemonic import duplicate detection
+- [x] 5. Fix ImportWallet method for mnemonic-based imports
+  - [x] 5.1 Update mnemonic import duplicate detection
     - Generate source hash from mnemonic before checking duplicates
     - Compare source hashes instead of addresses for mnemonic imports
     - Update error messages to specify mnemonic-based conflicts
     - _Requirements: 1.1, 1.2, 1.3, 1.5_
 
-  - [ ] 5.2 Implement proper mnemonic validation and storage
+  - [x] 5.2 Implement proper mnemonic validation and storage
     - Validate mnemonic before generating source hash
     - Store ImportMethod as "mnemonic" for mnemonic imports
     - Ensure encrypted mnemonic is properly stored

@@ -9,6 +9,7 @@ import (
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	gormlogger "gorm.io/gorm/logger"
 )
 
 // GORMRepository implementa a interface WalletRepository usando GORM
@@ -37,7 +38,9 @@ func NewWalletRepository(cfg *config.Config) (*GORMRepository, error) {
 
 	dialector = sqlite.Open(dbPath)
 
-	db, err := gorm.Open(dialector, &gorm.Config{})
+	db, err := gorm.Open(dialector, &gorm.Config{
+		Logger: gormlogger.Default.LogMode(gormlogger.Silent),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("falha ao conectar ao banco de dados: %w", err)
 	}

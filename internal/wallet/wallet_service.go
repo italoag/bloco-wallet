@@ -103,8 +103,18 @@ func (ws *WalletService) CreateWallet(name, password string) (*WalletDetails, er
 }
 
 func (ws *WalletService) ImportWallet(name, mnemonic, password string) (*WalletDetails, error) {
+	// 5.2 Validate mnemonic before any processing
 	if !bip39.IsMnemonicValid(mnemonic) {
-		return nil, fmt.Errorf("invalid mnemonic phrase")
+		return nil, NewInvalidImportDataError(string(ImportMethodMnemonic), "Invalid mnemonic phrase")
+	}
+
+	// 5.1 Generate source hash and check duplicates by mnemonic-based source
+	hashGen := &SourceHashGenerator{}
+	sourceHash := hashGen.GenerateFromMnemonic(mnemonic)
+	if existingWallet, err := ws.Repo.FindBySourceHash(sourceHash); err == nil && existingWallet != nil {
+		return nil, NewDuplicateWalletError(string(ImportMethodMnemonic), existingWallet.Address, "A wallet with this mnemonic phrase already exists")
+	} else if err != nil {
+		return nil, err
 	}
 
 	privateKeyHex, err := DerivePrivateKey(mnemonic)
