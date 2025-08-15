@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -65,7 +66,8 @@ func LoadConfig(appDir string) (*Config, error) {
 	v.AddConfigPath(appDir)
 
 	// Set up environment variables support
-	v.SetEnvPrefix("BLOCO_WALLET")
+	// Prefix per guidelines: BLOCOWALLET_
+	v.SetEnvPrefix("BLOCOWALLET")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 
@@ -130,36 +132,72 @@ func LoadConfig(appDir string) (*Config, error) {
 		cfg.Networks[key] = network
 	}
 
-	// Expand paths with ~ to home directory
+	// Resolve home directory and expand/apply defaults
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user home directory: %w", err)
 	}
 
-	cfg.AppDir = expandPath(cfg.AppDir, homeDir)
-	cfg.WalletsDir = expandPath(cfg.WalletsDir, homeDir)
-	cfg.DatabasePath = expandPath(cfg.DatabasePath, homeDir)
-	cfg.LocaleDir = expandPath(cfg.LocaleDir, homeDir)
+	// Keep raw values to detect if fields were intentionally left empty
+	rawAppDir := strings.TrimSpace(cfg.AppDir)
+	rawWalletsDir := strings.TrimSpace(cfg.WalletsDir)
+	rawDatabasePath := strings.TrimSpace(cfg.DatabasePath)
+	rawLocaleDir := strings.TrimSpace(cfg.LocaleDir)
 
-	// Override with environment variables if they exist
-	if envAppDir := os.Getenv("BLOCO_WALLET_APP_APP_DIR"); envAppDir != "" {
-		cfg.AppDir = expandPath(envAppDir, homeDir)
+	// Resolve AppDir first
+	cfg.AppDir = expandPath(rawAppDir, homeDir)
+
+	// Derive defaults relative to AppDir when unspecified; otherwise expand provided paths
+	if rawWalletsDir == "" {
+		cfg.WalletsDir = filepath.Join(cfg.AppDir, "keystore")
+	} else {
+		cfg.WalletsDir = expandPath(rawWalletsDir, homeDir)
+	}
+	if rawDatabasePath == "" {
+		cfg.DatabasePath = filepath.Join(cfg.AppDir, "wallets.db")
+	} else {
+		cfg.DatabasePath = expandPath(rawDatabasePath, homeDir)
+	}
+	if rawLocaleDir == "" {
+		cfg.LocaleDir = filepath.Join(cfg.AppDir, "locale")
+	} else {
+		cfg.LocaleDir = expandPath(rawLocaleDir, homeDir)
 	}
 
-	if envWalletsDir := os.Getenv("BLOCO_WALLET_APP_KEYSTORE_DIR"); envWalletsDir != "" {
-		cfg.WalletsDir = expandPath(envWalletsDir, homeDir)
-	}
+	// Backward-compatibility for legacy env variables with BLOCO_WALLET_ prefix.
+	// Preferred env vars are handled by Viper with BLOCOWALLET_ prefix already.
+	walletsWasDefault := rawWalletsDir == ""
+	dbWasDefault := rawDatabasePath == ""
+	localeWasDefault := rawLocaleDir == ""
 
-	if envDatabasePath := os.Getenv("BLOCO_WALLET_APP_DATABASE_PATH"); envDatabasePath != "" {
-		cfg.DatabasePath = expandPath(envDatabasePath, homeDir)
+	if legacy := os.Getenv("BLOCO_WALLET_APP_APP_DIR"); legacy != "" {
+		cfg.AppDir = expandPath(legacy, homeDir)
+		// If dependent paths were defaulted, re-derive them from the new AppDir
+		if walletsWasDefault {
+			cfg.WalletsDir = filepath.Join(cfg.AppDir, "keystore")
+		}
+		if dbWasDefault {
+			cfg.DatabasePath = filepath.Join(cfg.AppDir, "wallets.db")
+		}
+		if localeWasDefault {
+			cfg.LocaleDir = filepath.Join(cfg.AppDir, "locale")
+		}
 	}
-
-	if envDatabaseType := os.Getenv("BLOCO_WALLET_DATABASE_TYPE"); envDatabaseType != "" {
-		cfg.Database.Type = envDatabaseType
+	// Support both old KEYSTORE_DIR and a corrected WALLETS_DIR legacy name
+	if legacy := os.Getenv("BLOCO_WALLET_APP_KEYSTORE_DIR"); legacy != "" {
+		cfg.WalletsDir = expandPath(legacy, homeDir)
 	}
-
-	if envDatabaseDSN := os.Getenv("BLOCO_WALLET_DATABASE_DSN"); envDatabaseDSN != "" {
-		cfg.Database.DSN = envDatabaseDSN
+	if legacy := os.Getenv("BLOCO_WALLET_APP_WALLETS_DIR"); legacy != "" {
+		cfg.WalletsDir = expandPath(legacy, homeDir)
+	}
+	if legacy := os.Getenv("BLOCO_WALLET_APP_DATABASE_PATH"); legacy != "" {
+		cfg.DatabasePath = expandPath(legacy, homeDir)
+	}
+	if legacy := os.Getenv("BLOCO_WALLET_DATABASE_TYPE"); legacy != "" {
+		cfg.Database.Type = legacy
+	}
+	if legacy := os.Getenv("BLOCO_WALLET_DATABASE_DSN"); legacy != "" {
+		cfg.Database.DSN = legacy
 	}
 
 	// Set default values for security if not provided
@@ -188,8 +226,142 @@ func (c *Config) GetFontsList() []string {
 }
 
 func expandPath(path, homeDir string) string {
-	if len(path) > 1 && path[:2] == "~/" {
-		return filepath.Join(homeDir, path[2:])
+	// Normalize and handle trivial cases first
+	trimmed := strings.TrimSpace(path)
+	if trimmed == "" {
+		// If not provided, resolve to OS-specific default for this app
+		return resolveBlocoUserDir(homeDir)
 	}
-	return path
+
+	// Expand environment variables like $HOME, %APPDATA%, etc.
+	expanded := os.ExpandEnv(trimmed)
+
+	// Handle leading ~ or ~/ for the current user
+	if strings.HasPrefix(expanded, "~") {
+		// Only support current user ~ expansion; ~user is not supported cross-platform
+		if expanded == "~" {
+			expanded = homeDir
+		} else if strings.HasPrefix(expanded, "~/") || strings.HasPrefix(expanded, "~\\") {
+			expanded = filepath.Join(homeDir, strings.TrimPrefix(strings.TrimPrefix(expanded, "~/"), "~\\"))
+		}
+	}
+
+	// Clean path separators for the current OS
+	expanded = filepath.Clean(expanded)
+
+	// If the path clearly points to a conventional home-based app folder for this project,
+	// switch to the preferred OS-specific location while preserving intent.
+	// We only redirect when the target is one of the known defaults to avoid surprising users
+	// who provide explicit custom locations elsewhere.
+	if isKnownHomeBlocoPath(expanded, homeDir) {
+		return resolveBlocoUserDir(homeDir)
+	}
+
+	return expanded
+}
+
+// isKnownHomeBlocoPath returns true if the given path equals one of the common
+// home-rooted defaults that we want to map to the OS-preferred data dir for this app.
+func isKnownHomeBlocoPath(p, homeDir string) bool {
+	p = filepath.Clean(p)
+	homeDir = filepath.Clean(homeDir)
+	// Known candidates in the user's home (both Unix-like and Windows with forward/backslashes)
+	candidates := []string{
+		filepath.Join(homeDir, ".bloco"),
+		filepath.Join(homeDir, ".config", "bloco"),
+		filepath.Join(homeDir, ".cache", "bloco"),
+		// Historical/legacy option observed in this project
+		filepath.Join(homeDir, ".wallets"),
+	}
+	for _, c := range candidates {
+		if p == c {
+			return true
+		}
+	}
+	return false
+}
+
+// resolveBlocoUserDir determines the appropriate per-OS user data directory for the
+// "bloco" application, respecting existing directories in a sensible hierarchy and
+// falling back to the recommended default for the OS.
+func resolveBlocoUserDir(homeDir string) string {
+	osName := runtime.GOOS
+
+	// Helper to check existence
+	exists := func(path string) bool {
+		if path == "" {
+			return false
+		}
+		if info, err := os.Stat(path); err == nil && info.IsDir() {
+			return true
+		}
+		return false
+	}
+
+	switch osName {
+	case "darwin":
+		// macOS: prefer existing Unix-style locations if present, otherwise use
+		// the recommended Application Support path.
+		cfg := filepath.Join(homeDir, ".config", "bloco")
+		legacy := filepath.Join(homeDir, ".bloco")
+		cache := filepath.Join(homeDir, ".cache", "bloco")
+		recommended := filepath.Join(homeDir, "Library", "Application Support", "bloco")
+		for _, c := range []string{cfg, legacy, cache, recommended} {
+			if exists(c) {
+				return c
+			}
+		}
+		return recommended
+
+	case "windows":
+		// Windows: prefer %APPDATA% (Roaming) if present, otherwise %LOCALAPPDATA%.
+		appData := os.Getenv("APPDATA") // e.g., C:\\Users\\Name\\AppData\\Roaming
+		localAppData := os.Getenv("LOCALAPPDATA")
+		userProfile := os.Getenv("USERPROFILE")
+		var candidates []string
+		if appData != "" {
+			candidates = append(candidates, filepath.Join(appData, "Bloco"))
+		}
+		if localAppData != "" {
+			candidates = append(candidates, filepath.Join(localAppData, "Bloco"))
+		}
+		if userProfile != "" {
+			candidates = append(candidates, filepath.Join(userProfile, ".bloco"))
+		}
+		// Pick the first existing; otherwise default to APPDATA if available
+		for _, c := range candidates {
+			if exists(c) {
+				return c
+			}
+		}
+		if appData != "" {
+			return filepath.Join(appData, "Bloco")
+		}
+		if localAppData != "" {
+			return filepath.Join(localAppData, "Bloco")
+		}
+		// Fallback to home-based hidden dir
+		return filepath.Join(homeDir, ".bloco")
+
+	default:
+		// Linux/Unix/BSD: follow XDG Base Directory if available; otherwise ~/.config.
+		xdgConfig := os.Getenv("XDG_CONFIG_HOME")
+		if xdgConfig == "" {
+			xdgConfig = filepath.Join(homeDir, ".config")
+		}
+		xdgCache := os.Getenv("XDG_CACHE_HOME")
+		if xdgCache == "" {
+			xdgCache = filepath.Join(homeDir, ".cache")
+		}
+		cfg := filepath.Join(xdgConfig, "bloco")
+		legacy := filepath.Join(homeDir, ".bloco")
+		cache := filepath.Join(xdgCache, "bloco")
+		for _, c := range []string{cfg, legacy, cache} {
+			if exists(c) {
+				return c
+			}
+		}
+		// Recommended default
+		return cfg
+	}
 }

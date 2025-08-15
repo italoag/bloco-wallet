@@ -117,10 +117,18 @@ func createLanguageFile(filePath, lang string) error {
 		for k, v := range DefaultCryptoMessages() {
 			messages[k] = v
 		}
+		// Adicionar mensagens de redes
+		for k, v := range DefaultNetworkMessagesEnglish() {
+			messages[k] = v
+		}
 	case "pt":
 		messages = getPortugueseMessages()
 		// Adicionar mensagens de criptografia
 		for k, v := range DefaultCryptoMessagesPortuguese() {
+			messages[k] = v
+		}
+		// Adicionar mensagens de redes
+		for k, v := range DefaultNetworkMessagesPortuguese() {
 			messages[k] = v
 		}
 	case "es":
@@ -129,10 +137,18 @@ func createLanguageFile(filePath, lang string) error {
 		for k, v := range DefaultCryptoMessagesSpanish() {
 			messages[k] = v
 		}
+		// Adicionar mensagens de redes
+		for k, v := range DefaultNetworkMessagesSpanish() {
+			messages[k] = v
+		}
 	default:
 		messages = getEnglishMessages()
 		// Adicionar mensagens de criptografia padrão (inglês)
 		for k, v := range DefaultCryptoMessages() {
+			messages[k] = v
+		}
+		// Adicionar mensagens de redes (padrão inglês)
+		for k, v := range DefaultNetworkMessagesEnglish() {
 			messages[k] = v
 		}
 	}
@@ -243,44 +259,6 @@ func getEnglishMessages() map[string]string {
 		"imported_keystore":             "Keystore",
 		"version":                       "0.2.0",
 		"current":                       "Current",
-		"network_name":                  "Network Name",
-		"chain_id":                      "Chain ID",
-		"symbol":                        "Symbol",
-		"rpc_endpoint":                  "RPC Endpoint",
-		"status":                        "Status",
-		"active":                        "Active",
-		"inactive":                      "Inactive",
-		"add_network":                   "Add Network",
-		"add_network_desc":              "Add a new blockchain network",
-		"network_list":                  "Blockchain Networks",
-		"network_list_desc":             "Manage blockchain networks",
-		"edit_network":                  "Edit Network",
-		"delete_network":                "Delete Network",
-		"back":                          "Back",
-		"network_details":               "Network Details",
-		"search_networks":               "Search Networks",
-		"searching_networks":            "Searching networks",
-		"adding_network":                "Adding network",
-		"network_name_required":         "Network name is required",
-		"chain_id_required":             "Chain ID is required",
-		"symbol_required":               "Symbol is required",
-		"rpc_endpoint_required":         "RPC endpoint is required",
-		"invalid_chain_id":              "Invalid chain ID. Must be a number",
-		"invalid_rpc_endpoint":          "Invalid RPC endpoint. Must start with http:// or https://",
-		"failed_to_get_network_details": "Failed to get network details",
-		"no_network_selected":           "No network selected",
-		"network_list_instructions":     "Use arrow keys to navigate, 'a' to add, 'e' to edit, 'd' to delete, 'esc' to go back.",
-		"add_network_footer":            "↑/↓: Navigate Suggestions • Tab: Next Field • Enter: Select/Submit • Esc: Back",
-		"search_networks_placeholder":   "Type to search networks (e.g., Ethereum, Polygon)",
-		"network_name_placeholder":      "Network name will be filled automatically",
-		"chain_id_placeholder":          "Chain ID will be filled automatically",
-		"symbol_placeholder":            "Symbol will be filled automatically",
-		"rpc_endpoint_placeholder":      "RPC URL will be filled automatically",
-		"suggestions":                   "Suggestions",
-		"tips":                          "Tips",
-		"search_networks_tip":           "Search for networks by name and select from suggestions",
-		"chain_id_tip":                  "Chain ID must be unique (check chainlist.org for reference)",
-		"rpc_endpoint_tip":              "Use reliable RPC endpoints for better performance",
 	}
 }
 
@@ -359,45 +337,6 @@ func getPortugueseMessages() map[string]string {
 		"version":                    "0.2.0",
 		"current":                    "Atual",
 
-		// Network management labels
-		"network_name":                  "Nome da Rede",
-		"chain_id":                      "ID da Cadeia",
-		"symbol":                        "Símbolo",
-		"rpc_endpoint":                  "Endpoint RPC",
-		"status":                        "Status",
-		"active":                        "Ativo",
-		"inactive":                      "Inativo",
-		"add_network":                   "Adicionar Rede",
-		"add_network_desc":              "Adicionar uma nova rede blockchain",
-		"network_list":                  "Lista de Redes",
-		"network_list_desc":             "Visualizar e gerenciar redes blockchain",
-		"edit_network":                  "Editar Rede",
-		"delete_network":                "Excluir Rede",
-		"back":                          "Voltar",
-		"network_details":               "Detalhes da Rede",
-		"search_networks":               "Buscar Redes",
-		"searching_networks":            "Buscando redes",
-		"adding_network":                "Adicionando rede",
-		"network_name_required":         "Nome da rede é obrigatório",
-		"chain_id_required":             "ID da cadeia é obrigatório",
-		"symbol_required":               "Símbolo é obrigatório",
-		"rpc_endpoint_required":         "Endpoint RPC é obrigatório",
-		"invalid_chain_id":              "ID da cadeia inválido. Deve ser um número",
-		"invalid_rpc_endpoint":          "Endpoint RPC inválido. Deve começar com http:// ou https://",
-		"failed_to_get_network_details": "Falha ao obter detalhes da rede",
-		"no_network_selected":           "Nenhuma rede selecionada",
-		"network_list_instructions":     "Use as setas para navegar, 'a' para adicionar, 'e' para editar, 'd' para excluir, 'esc' para voltar.",
-		"add_network_footer":            "↑/↓: Navegar Sugestões • Tab: Próximo Campo • Enter: Selecionar/Enviar • Esc: Voltar",
-		"search_networks_placeholder":   "Digite para buscar redes (ex: Ethereum, Polygon)",
-		"network_name_placeholder":      "Nome da rede será preenchido automaticamente",
-		"chain_id_placeholder":          "ID da cadeia será preenchido automaticamente",
-		"symbol_placeholder":            "Símbolo será preenchido automaticamente",
-		"rpc_endpoint_placeholder":      "URL RPC será preenchida automaticamente",
-		"suggestions":                   "Sugestões",
-		"tips":                          "Dicas",
-		"search_networks_tip":           "Busque redes pelo nome e selecione das sugestões",
-		"chain_id_tip":                  "ID da cadeia deve ser único (consulte chainlist.org para referência)",
-		"rpc_endpoint_tip":              "Use endpoints RPC confiáveis para melhor desempenho",
 	}
 }
 
@@ -476,45 +415,6 @@ func getSpanishMessages() map[string]string {
 		"version":                    "0.2.0",
 		"current":                    "Actual",
 
-		// Network management labels
-		"network_name":                  "Nombre de Red",
-		"chain_id":                      "ID de Cadena",
-		"symbol":                        "Símbolo",
-		"rpc_endpoint":                  "Endpoint RPC",
-		"status":                        "Estado",
-		"active":                        "Activo",
-		"inactive":                      "Inactivo",
-		"add_network":                   "Añadir Red",
-		"add_network_desc":              "Añadir una nueva red blockchain",
-		"network_list":                  "Lista de Redes",
-		"network_list_desc":             "Ver y administrar redes blockchain",
-		"edit_network":                  "Editar Red",
-		"delete_network":                "Eliminar Red",
-		"back":                          "Volver",
-		"network_details":               "Detalles de la Red",
-		"search_networks":               "Buscar Redes",
-		"searching_networks":            "Buscando redes",
-		"adding_network":                "Añadiendo red",
-		"network_name_required":         "El nombre de la red es obligatorio",
-		"chain_id_required":             "El ID de cadena es obligatorio",
-		"symbol_required":               "El símbolo es obligatorio",
-		"rpc_endpoint_required":         "El endpoint RPC es obligatorio",
-		"invalid_chain_id":              "ID de cadena inválido. Debe ser un número",
-		"invalid_rpc_endpoint":          "Endpoint RPC inválido. Debe comenzar con http:// o https://",
-		"failed_to_get_network_details": "Error al obtener detalles de la red",
-		"no_network_selected":           "Ninguna red seleccionada",
-		"network_list_instructions":     "Use las flechas para navegar, 'a' para añadir, 'e' para editar, 'd' para eliminar, 'esc' para volver.",
-		"add_network_footer":            "↑/↓: Navegar Sugerencias • Tab: Siguiente Campo • Enter: Seleccionar/Enviar • Esc: Volver",
-		"search_networks_placeholder":   "Escriba para buscar redes (ej: Ethereum, Polygon)",
-		"network_name_placeholder":      "El nombre de la red se completará automáticamente",
-		"chain_id_placeholder":          "El ID de cadena se completará automáticamente",
-		"symbol_placeholder":            "El símbolo se completará automáticamente",
-		"rpc_endpoint_placeholder":      "La URL RPC se completará automáticamente",
-		"suggestions":                   "Sugerencias",
-		"tips":                          "Consejos",
-		"search_networks_tip":           "Busque redes por nombre y seleccione de las sugerencias",
-		"chain_id_tip":                  "El ID de cadena debe ser único (consulte chainlist.org para referencia)",
-		"rpc_endpoint_tip":              "Use endpoints RPC confiables para un mejor rendimiento",
 	}
 }
 
@@ -552,6 +452,11 @@ func getAllMessageKeys() []string {
 
 	// Adiciona chaves de criptografia
 	for key := range DefaultCryptoMessages() {
+		keysMap[key] = true
+	}
+
+	// Adiciona chaves de redes
+	for key := range DefaultNetworkMessagesEnglish() {
 		keysMap[key] = true
 	}
 

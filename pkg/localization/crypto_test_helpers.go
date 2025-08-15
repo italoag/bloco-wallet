@@ -1,24 +1,24 @@
 package localization
 
-// InitCryptoMessagesForTesting inicializa as mensagens de criptografia para testes unitários
-// sem depender de arquivos de idioma ou do Viper. Esta função também limpa qualquer
-// estado global prévio para evitar contaminação entre testes (e.g., idioma anterior
-// e chaves residuais no mapa Labels).
+// InitCryptoMessagesForTesting initializes crypto messages for unit tests
+// without depending on language files or Viper. This function also cleans any
+// previous global state to avoid contamination between tests (e.g., previous language
+// and residual keys in the Labels map).
 func InitCryptoMessagesForTesting() {
-	// Força idioma padrão dos testes para inglês para previsibilidade
+	// Force the default test language to English for predictability
 	SetCurrentLanguage("en")
 
-	// Reinicializa o mapa global para evitar vazamento de chaves entre testes
+	// Reinitialize global map to avoid key leakage between tests
 	Labels = make(map[string]string)
 
-	// Adiciona todas as mensagens de criptografia/base em inglês para uso nos testes
+	// Add all crypto/base messages in English for use in tests
 	for key, value := range DefaultCryptoMessages() {
 		Labels[key] = value
 	}
 }
 
-// GetForTesting para testes retorna a mensagem diretamente do mapa Labels
-// Esta função é uma versão simplificada da função Get para uso em testes
+// GetForTesting returns the message directly from the Labels map for testing
+// This function is a simplified version of the Get function for use in tests
 func GetForTesting(key string) string {
 	if Labels == nil {
 		return key

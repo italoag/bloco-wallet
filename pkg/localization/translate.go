@@ -6,8 +6,8 @@ import (
 	"github.com/nicksnyder/go-i18n/v2/i18n"
 )
 
-// T retorna a mensagem traduzida para o ID especificado
-// data é um mapa de variáveis de template que serão substituídas na mensagem
+// T returns the translated message for the specified ID
+// data is a map of template variables that will be substituted in the message
 func T(messageID string, data map[string]interface{}) string {
 	if localizer == nil {
 		return messageID
@@ -25,20 +25,20 @@ func T(messageID string, data map[string]interface{}) string {
 	return msg
 }
 
-// TP retorna a mensagem traduzida plural para o ID especificado
-// count é o número que determina a forma plural a ser usada
-// data é um mapa de variáveis de template que serão substituídas na mensagem
+// TP returns the plural-translated message for the specified ID
+// count is the number that determines which plural form to use
+// data is a map of template variables that will be substituted in the message
 func TP(messageID string, count interface{}, data map[string]interface{}) string {
 	if localizer == nil {
 		return messageID
 	}
 
-	// Se data for nil, inicialize-o
+	// If data is nil, initialize it
 	if data == nil {
 		data = make(map[string]interface{})
 	}
 
-	// Adicionar o count aos dados do template
+	// Add the count to the template data
 	data["Count"] = count
 
 	msg, err := localizer.Localize(&i18n.LocalizeConfig{
@@ -54,7 +54,7 @@ func TP(messageID string, count interface{}, data map[string]interface{}) string
 	return msg
 }
 
-// ChangeLanguage altera o idioma do localizer
+// ChangeLanguage changes the localizer language
 func ChangeLanguage(lang string) {
 	if bundle == nil {
 		return
@@ -62,7 +62,7 @@ func ChangeLanguage(lang string) {
 
 	localizer = i18n.NewLocalizer(bundle, lang)
 
-	// Atualizar o mapa global Labels para refletir o novo idioma
+	// Update the global Labels map to reflect the new language
 	err := populateLabelsMap()
 	if err != nil {
 		return

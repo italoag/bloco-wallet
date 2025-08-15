@@ -5,17 +5,17 @@ import (
 	"strings"
 )
 
-// TOMLSectionManager gerencia seções em arquivos TOML
+// TOMLSectionManager manages sections in TOML files
 type TOMLSectionManager struct{}
 
-// NewTOMLSectionManager cria uma nova instância do gerenciador de seções
+// NewTOMLSectionManager creates a new instance of the section manager
 func NewTOMLSectionManager() *TOMLSectionManager {
 	return &TOMLSectionManager{}
 }
 
-// FindSection encontra o início e fim de uma seção específica
-// Retorna o índice de início da seção e o índice de fim (exclusivo)
-// Se a seção não for encontrada, retorna -1, -1
+// FindSection finds the start and end of a specific section
+// Returns the section start index and the end index (exclusive)
+// If the section is not found, returns -1, -1
 func (tsm *TOMLSectionManager) FindSection(lines []string, sectionName string) (int, int) {
 	sectionHeader := "[" + sectionName + "]"
 	start := -1
@@ -24,20 +24,20 @@ func (tsm *TOMLSectionManager) FindSection(lines []string, sectionName string) (
 	for i, line := range lines {
 		trimmedLine := strings.TrimSpace(line)
 
-		// Encontrou o início da seção
+		// Found the section start
 		if trimmedLine == sectionHeader {
 			start = i
 			continue
 		}
 
-		// Se já encontramos o início da seção e encontramos outra seção, então esta é o fim
+		// If we already found the section start and found another section, then this is the end
 		if start != -1 && strings.HasPrefix(trimmedLine, "[") && !strings.HasPrefix(trimmedLine, "["+sectionName+".") {
 			end = i
 			break
 		}
 	}
 
-	// Se encontramos o início mas não o fim, o fim é o final do arquivo
+	// If we found the start but not the end, the end is the end of the file
 	if start != -1 && end == -1 {
 		end = len(lines)
 	}
@@ -45,16 +45,16 @@ func (tsm *TOMLSectionManager) FindSection(lines []string, sectionName string) (
 	return start, end
 }
 
-// RemoveSection remove uma seção específica do conteúdo
+// RemoveSection removes a specific section from the content
 func (tsm *TOMLSectionManager) RemoveSection(lines []string, sectionName string) []string {
 	start, end := tsm.FindSection(lines, sectionName)
 
-	// Se a seção não foi encontrada, retorna o conteúdo original
+	// If the section was not found, return the original content
 	if start == -1 {
 		return lines
 	}
 
-	// Remove a seção
+	// Remove the section
 	result := append([]string{}, lines[:start]...)
 	if end < len(lines) {
 		result = append(result, lines[end:]...)
@@ -63,7 +63,7 @@ func (tsm *TOMLSectionManager) RemoveSection(lines []string, sectionName string)
 	return result
 }
 
-// RemoveSubSections remove todas as subseções de uma seção específica
+// RemoveSubSections removes all subsections of a specific section
 func (tsm *TOMLSectionManager) RemoveSubSections(lines []string, sectionName string) []string {
 	var result []string
 	inSubSection := false
@@ -72,18 +72,18 @@ func (tsm *TOMLSectionManager) RemoveSubSections(lines []string, sectionName str
 	for _, line := range lines {
 		trimmedLine := strings.TrimSpace(line)
 
-		// Verifica se estamos entrando em uma subseção
+		// Check if we are entering a subsection
 		if strings.HasPrefix(trimmedLine, subSectionPrefix) {
 			inSubSection = true
 			continue
 		}
 
-		// Verifica se estamos saindo de uma subseção
+		// Check if we are exiting a subsection
 		if inSubSection && strings.HasPrefix(trimmedLine, "[") && !strings.HasPrefix(trimmedLine, subSectionPrefix) {
 			inSubSection = false
 		}
 
-		// Adiciona a linha se não estiver em uma subseção
+		// Add the line if not in a subsection
 		if !inSubSection {
 			result = append(result, line)
 		}
@@ -92,20 +92,20 @@ func (tsm *TOMLSectionManager) RemoveSubSections(lines []string, sectionName str
 	return result
 }
 
-// AddSection adiciona uma nova seção ao conteúdo
+// AddSection adds a new section to the content
 func (tsm *TOMLSectionManager) AddSection(lines []string, sectionName string, sectionContent []string) []string {
-	// Primeiro, remove qualquer seção existente com o mesmo nome
+	// First, remove any existing section with the same name
 	lines = tsm.RemoveSection(lines, sectionName)
 
-	// Adiciona uma linha em branco antes da nova seção se não terminar com uma
+	// Add a blank line before the new section if it doesn't end with one
 	if len(lines) > 0 && lines[len(lines)-1] != "" {
 		lines = append(lines, "")
 	}
 
-	// Adiciona o cabeçalho da seção
+	// Add the section header
 	lines = append(lines, "["+sectionName+"]")
 
-	// Adiciona o conteúdo da seção
+	// Add the section content
 	if len(sectionContent) > 0 {
 		lines = append(lines, sectionContent...)
 	}
@@ -113,27 +113,27 @@ func (tsm *TOMLSectionManager) AddSection(lines []string, sectionName string, se
 	return lines
 }
 
-// FormatNetworkSection formata a seção de redes corretamente
+// FormatNetworkSection formats the networks section correctly
 func (tsm *TOMLSectionManager) FormatNetworkSection(networks map[string]Network) []string {
 	var result []string
 
-	// Se não há redes, retorna uma lista vazia
+	// If there are no networks, return an empty list
 	if len(networks) == 0 {
 		return result
 	}
 
-	// Adiciona a seção [networks]
+	// Add the [networks] section
 	result = append(result, "[networks]")
 
-	// Para cada rede, adiciona uma subseção
+	// For each network, add a subsection
 	for key, network := range networks {
-		// Adiciona uma linha em branco para separar as subseções
+		// Add a blank line to separate subsections
 		result = append(result, "")
 
-		// Adiciona o cabeçalho da subseção
+		// Add the subsection header
 		result = append(result, fmt.Sprintf("[networks.%s]", key))
 
-		// Adiciona os campos da rede
+		// Add the network fields
 		result = append(result, fmt.Sprintf("name = %q", network.Name))
 		result = append(result, fmt.Sprintf("rpc_endpoint = %q", network.RPCEndpoint))
 		result = append(result, fmt.Sprintf("chain_id = %d", network.ChainID))
@@ -145,9 +145,9 @@ func (tsm *TOMLSectionManager) FormatNetworkSection(networks map[string]Network)
 	return result
 }
 
-// SanitizeNetworkKey sanitiza uma chave para garantir que seja válida para TOML
+// SanitizeNetworkKey sanitizes a key to ensure it is valid for TOML
 func (tsm *TOMLSectionManager) SanitizeNetworkKey(key string) string {
-	// Substitui caracteres inválidos por underscore
+	// Replace invalid characters with underscore
 	return strings.Map(func(r rune) rune {
 		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' {
 			return r
@@ -156,11 +156,11 @@ func (tsm *TOMLSectionManager) SanitizeNetworkKey(key string) string {
 	}, key)
 }
 
-// GenerateNetworkKey gera uma chave única e válida para uma rede
+// GenerateNetworkKey generates a unique and valid key for a network
 func (tsm *TOMLSectionManager) GenerateNetworkKey(name string, chainID int64) string {
-	// Sanitiza o nome
+	// Sanitize the name
 	sanitizedName := tsm.SanitizeNetworkKey(name)
 
-	// Cria a chave no formato custom_{sanitized_name}_{chain_id}
+	// Create the key in the format custom_{sanitized_name}_{chain_id}
 	return fmt.Sprintf("custom_%s_%d", sanitizedName, chainID)
 }

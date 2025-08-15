@@ -3,10 +3,15 @@
 # Application Settings
 [app]
 language = "en"
-app_dir = "~/.bloco"
-wallets_dir = "~/.bloco/keystore"
-database_path = "~/.bloco/wallets.db"
-locale_dir = "~/.bloco/locale"
+# Leave directories empty to let the application resolve the best OS-specific locations.
+# app_dir will default to the appropriate per-OS user data directory for "bloco".
+# wallets_dir defaults to "<app_dir>/keystore" when empty.
+# database_path defaults to "<app_dir>/wallets.db" when empty.
+# locale_dir defaults to "<app_dir>/locale" when empty.
+app_dir = ""
+wallets_dir = ""
+database_path = ""
+locale_dir = ""
 
 # Database Settings
 [database]
