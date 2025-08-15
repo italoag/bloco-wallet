@@ -58,12 +58,15 @@ func TestGORMRepository_AddWallet(t *testing.T) {
 		}
 	}(repo)
 
-	// Criando uma carteira para teste
-	testWallet := &wallet.Wallet{
-		Address:      "0x123456",
-		KeyStorePath: "/path/to/keystore",
-		Mnemonic:     "test mnemonic",
-	}
+ // Criando uma carteira para teste
+ mn := "test mnemonic"
+ testWallet := &wallet.Wallet{
+ 	Address:      "0x123456",
+ 	KeyStorePath: "/path/to/keystore",
+ 	Mnemonic:     &mn,
+ 	ImportMethod: string(wallet.ImportMethodMnemonic),
+ 	SourceHash:   (&wallet.SourceHashGenerator{}).GenerateFromMnemonic(mn),
+ }
 
 	// Adicionando a carteira
 	err = repo.AddWallet(testWallet)
