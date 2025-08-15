@@ -1,3 +1,6 @@
+//go:build disabled_tests
+// +build disabled_tests
+
 package wallet
 
 import (

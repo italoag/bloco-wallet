@@ -73,7 +73,7 @@ func (z *zapLogger) Sync() error {
 	return z.logger.Sync()
 }
 
-// Helper functions for creating fields
+// Error Helper functions for creating fields
 func Error(err error) zap.Field {
 	return zap.Error(err)
 }

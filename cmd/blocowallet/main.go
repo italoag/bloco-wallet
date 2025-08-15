@@ -65,7 +65,7 @@ func main() {
 	if info, ok := debug.ReadBuildInfo(); ok {
 		version := "0.1.0" // Default version if not found
 
-		// Try to find version from build info
+		// Try to find a version from build info
 		for _, setting := range info.Settings {
 			if strings.HasPrefix(setting.Key, "vcs.revision") {
 				// Use first 7 characters of commit hash

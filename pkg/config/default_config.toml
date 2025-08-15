@@ -3,10 +3,10 @@
 # Application Settings
 [app]
 language = "en"
-app_dir = "~/.wallets"
-wallets_dir = "~/.wallets/keystore"
-database_path = "~/.wallets/wallets.db"
-locale_dir = "~/.wallets/locale"
+app_dir = "~/.bloco"
+wallets_dir = "~/.bloco/keystore"
+database_path = "~/.bloco/wallets.db"
+locale_dir = "~/.bloco/locale"
 
 # Database Settings
 [database]

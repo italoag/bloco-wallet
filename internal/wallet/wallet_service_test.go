@@ -23,6 +23,16 @@ func (m *MockWalletRepository) AddWallet(wallet *Wallet) error {
 	return args.Error(0)
 }
 
+// Ensure MockWalletRepository satisfies WalletRepository used by NewWalletService
+// Some tests expect FindBySourceHash to exist (deduplication by source hash)
+func (m *MockWalletRepository) FindBySourceHash(sourceHash string) (*Wallet, error) {
+	args := m.Called(sourceHash)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*Wallet), args.Error(1)
+}
+
 func (m *MockWalletRepository) GetWalletByID(id int) (*Wallet, error) {
 	args := m.Called(id)
 	if args.Get(0) == nil {

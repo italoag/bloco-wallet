@@ -1,14 +1,17 @@
 package localization
 
 // InitCryptoMessagesForTesting inicializa as mensagens de criptografia para testes unitários
-// sem depender de arquivos de idioma ou do Viper
+// sem depender de arquivos de idioma ou do Viper. Esta função também limpa qualquer
+// estado global prévio para evitar contaminação entre testes (e.g., idioma anterior
+// e chaves residuais no mapa Labels).
 func InitCryptoMessagesForTesting() {
-	// Inicializa o mapa global se ainda não estiver inicializado
-	if Labels == nil {
-		Labels = make(map[string]string)
-	}
+	// Força idioma padrão dos testes para inglês para previsibilidade
+	SetCurrentLanguage("en")
 
-	// Adicionar todas as mensagens de criptografia em inglês para uso nos testes
+	// Reinicializa o mapa global para evitar vazamento de chaves entre testes
+	Labels = make(map[string]string)
+
+	// Adiciona todas as mensagens de criptografia/base em inglês para uso nos testes
 	for key, value := range DefaultCryptoMessages() {
 		Labels[key] = value
 	}

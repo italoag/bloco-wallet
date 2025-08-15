@@ -56,7 +56,7 @@ type Network struct {
 func LoadConfig(appDir string) (*Config, error) {
 	v := viper.New()
 
-	// Set default configuration file path
+	// Set the default configuration file path
 	configPath := filepath.Join(appDir, "config.toml")
 
 	// Configure Viper
@@ -65,13 +65,13 @@ func LoadConfig(appDir string) (*Config, error) {
 	v.AddConfigPath(appDir)
 
 	// Set up environment variables support
-	v.SetEnvPrefix("BLOCOWALLET")
+	v.SetEnvPrefix("BLOCO_WALLET")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 
-	// Check if config file exists
+	// Check if a config file exists
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		// Create config directory if it doesn't exist
+		// Create a config directory if it doesn't exist
 		if err := os.MkdirAll(appDir, os.ModePerm); err != nil {
 			return nil, fmt.Errorf("failed to create config directory: %w", err)
 		}
@@ -142,23 +142,23 @@ func LoadConfig(appDir string) (*Config, error) {
 	cfg.LocaleDir = expandPath(cfg.LocaleDir, homeDir)
 
 	// Override with environment variables if they exist
-	if envAppDir := os.Getenv("BLOCOWALLET_APP_APP_DIR"); envAppDir != "" {
+	if envAppDir := os.Getenv("BLOCO_WALLET_APP_APP_DIR"); envAppDir != "" {
 		cfg.AppDir = expandPath(envAppDir, homeDir)
 	}
 
-	if envWalletsDir := os.Getenv("BLOCOWALLET_APP_WALLETS_DIR"); envWalletsDir != "" {
+	if envWalletsDir := os.Getenv("BLOCO_WALLET_APP_KEYSTORE_DIR"); envWalletsDir != "" {
 		cfg.WalletsDir = expandPath(envWalletsDir, homeDir)
 	}
 
-	if envDatabasePath := os.Getenv("BLOCOWALLET_APP_DATABASE_PATH"); envDatabasePath != "" {
+	if envDatabasePath := os.Getenv("BLOCO_WALLET_APP_DATABASE_PATH"); envDatabasePath != "" {
 		cfg.DatabasePath = expandPath(envDatabasePath, homeDir)
 	}
 
-	if envDatabaseType := os.Getenv("BLOCOWALLET_DATABASE_TYPE"); envDatabaseType != "" {
+	if envDatabaseType := os.Getenv("BLOCO_WALLET_DATABASE_TYPE"); envDatabaseType != "" {
 		cfg.Database.Type = envDatabaseType
 	}
 
-	if envDatabaseDSN := os.Getenv("BLOCOWALLET_DATABASE_DSN"); envDatabaseDSN != "" {
+	if envDatabaseDSN := os.Getenv("BLOCO_WALLET_DATABASE_DSN"); envDatabaseDSN != "" {
 		cfg.Database.DSN = envDatabaseDSN
 	}
 
