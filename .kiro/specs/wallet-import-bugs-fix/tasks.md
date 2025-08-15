@@ -62,21 +62,21 @@
     - Write unit tests for mnemonic import scenarios
     - _Requirements: 1.1, 1.4, 6.1_
 
-- [ ] 6. Fix ImportWalletFromPrivateKey method
-  - [ ] 6.1 Remove incorrect mnemonic generation
+- [x] 6. Fix ImportWalletFromPrivateKey method
+  - [x] 6.1 Remove incorrect mnemonic generation
     - Remove calls to GenerateDeterministicMnemonic
     - Set Mnemonic field to nil for private key imports
     - Update WalletDetails to not include fake mnemonic
     - _Requirements: 2.1, 2.2, 2.3_
 
-  - [ ] 6.2 Implement private key duplicate detection
+  - [x] 6.2 Implement private key duplicate detection
     - Generate source hash from a private key for duplicate checking
     - Check duplicates based on source hash, not just address
     - Store ImportMethod as "private_key" for private key imports
     - Update error messages for private key conflicts
     - _Requirements: 4.2, 4.4, 2.4_
 
-  - [ ] 6.3 Update private key import validation
+  - [x] 6.3 Update private key import validation
     - Validate a private key format before processing
     - Ensure proper error handling for invalid private keys
     - Write unit tests for private key import scenarios
