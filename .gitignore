@@ -34,3 +34,6 @@ go.work.sum
 .env
 /blocowallet.log
 /wallets.db
+.kiro/
+.vscode/
+keystores/
