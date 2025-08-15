@@ -10,13 +10,13 @@ type mockRepo struct {
 	retErr error
 }
 
-func (m *mockRepo) AddWallet(w *Wallet) error                   { return nil }
-func (m *mockRepo) GetAllWallets() ([]Wallet, error)            { return nil, nil }
-func (m *mockRepo) DeleteWallet(walletID int) error             { return nil }
+func (m *mockRepo) AddWallet(w *Wallet) error        { return nil }
+func (m *mockRepo) GetAllWallets() ([]Wallet, error) { return nil, nil }
+func (m *mockRepo) DeleteWallet(walletID int) error  { return nil }
 func (m *mockRepo) FindBySourceHash(sourceHash string) (*Wallet, error) {
 	return m.ret, m.retErr
 }
-func (m *mockRepo) Close() error { return nil }
+func (m *mockRepo) Close() error                                   { return nil }
 func (m *mockRepo) FindByAddress(address string) ([]Wallet, error) { return nil, nil }
 func (m *mockRepo) FindByAddressAndMethod(address, importMethod string) ([]Wallet, error) {
 	return nil, nil

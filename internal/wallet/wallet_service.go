@@ -17,12 +17,12 @@ import (
 
 type WalletDetails struct {
 	Wallet       *Wallet
-	Mnemonic     *string        // Nullable for non-mnemonic imports
+	Mnemonic     *string // Nullable for non-mnemonic imports
 	PrivateKey   *ecdsa.PrivateKey
 	PublicKey    *ecdsa.PublicKey
-	ImportMethod ImportMethod   // Track import method
-	HasMnemonic  bool           // Helper field for UI
-	KDFInfo      *KDFInfo       // KDF analysis information
+	ImportMethod ImportMethod // Track import method
+	HasMnemonic  bool         // Helper field for UI
+	KDFInfo      *KDFInfo     // KDF analysis information
 }
 
 type WalletService struct {
@@ -146,7 +146,7 @@ func (ws *WalletService) ImportWallet(name, mnemonic, password string) (*WalletD
 		return nil, fmt.Errorf("failed to encrypt mnemonic: %v", err)
 	}
 
- wallet := &Wallet{
+	wallet := &Wallet{
 		Name:         name,
 		Address:      account.Address.Hex(),
 		KeyStorePath: newPath,
@@ -476,27 +476,27 @@ func (ws *WalletService) ImportWalletFromKeystoreV3(name, keystorePath, password
 		)
 	}
 
- // Step 19: Create wallet entry with import method and source hash
- wallet := &Wallet{
- 	Name:         name,
- 	Address:      address,
- 	KeyStorePath: destPath,
- 	Mnemonic:     &encryptedMnemonic,
- 	ImportMethod: string(ImportMethodKeystore),
- 	SourceHash:   sourceHash,
- }
+	// Step 19: Create wallet entry with import method and source hash
+	wallet := &Wallet{
+		Name:         name,
+		Address:      address,
+		KeyStorePath: destPath,
+		Mnemonic:     &encryptedMnemonic,
+		ImportMethod: string(ImportMethodKeystore),
+		SourceHash:   sourceHash,
+	}
 
- // Step 20: Add wallet to repository
- if err = ws.Repo.AddWallet(wallet); err != nil {
- 	return nil, NewKeystoreImportError(
- 		ErrorCorruptedFile,
- 		"Failed to add wallet to repository",
- 		err,
- 	)
- }
+	// Step 20: Add wallet to repository
+	if err = ws.Repo.AddWallet(wallet); err != nil {
+		return nil, NewKeystoreImportError(
+			ErrorCorruptedFile,
+			"Failed to add wallet to repository",
+			err,
+		)
+	}
 
- // Step 21: Create KDF information for wallet details
- kdfInfo := &KDFInfo{
+	// Step 21: Create KDF information for wallet details
+	kdfInfo := &KDFInfo{
 		Type:           compatReport.KDFType,
 		NormalizedType: compatReport.NormalizedKDF,
 		SecurityLevel:  compatReport.SecurityLevel,
@@ -504,7 +504,7 @@ func (ws *WalletService) ImportWalletFromKeystoreV3(name, keystorePath, password
 	}
 
 	// Step 22: Return enhanced wallet details with KDF information
- walletDetails := &WalletDetails{
+	walletDetails := &WalletDetails{
 		Wallet:       wallet,
 		Mnemonic:     &mnemonic,
 		PrivateKey:   privateKey,
@@ -533,25 +533,25 @@ func (ws *WalletService) LoadWallet(wallet *Wallet, password string) (*WalletDet
 		return nil, fmt.Errorf("incorrect password")
 	}
 
- // Decrypt the mnemonic
- var mnemonicPtr *string
- if wallet.Mnemonic != nil {
- 	decryptedMnemonic, err := DecryptMnemonic(*wallet.Mnemonic, password)
- 	if err != nil {
- 		return nil, fmt.Errorf("failed to decrypt mnemonic: %v", err)
- 	}
- 	mnemonicPtr = &decryptedMnemonic
- }
+	// Decrypt the mnemonic
+	var mnemonicPtr *string
+	if wallet.Mnemonic != nil {
+		decryptedMnemonic, err := DecryptMnemonic(*wallet.Mnemonic, password)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decrypt mnemonic: %v", err)
+		}
+		mnemonicPtr = &decryptedMnemonic
+	}
 
- walletDetails := &WalletDetails{
- 	Wallet:       wallet,
- 	Mnemonic:     mnemonicPtr,
- 	PrivateKey:   key.PrivateKey,
- 	PublicKey:    &key.PrivateKey.PublicKey,
- 	ImportMethod: ImportMethod(wallet.ImportMethod),
- 	HasMnemonic:  wallet.Mnemonic != nil,
- }
- return walletDetails, nil
+	walletDetails := &WalletDetails{
+		Wallet:       wallet,
+		Mnemonic:     mnemonicPtr,
+		PrivateKey:   key.PrivateKey,
+		PublicKey:    &key.PrivateKey.PublicKey,
+		ImportMethod: ImportMethod(wallet.ImportMethod),
+		HasMnemonic:  wallet.Mnemonic != nil,
+	}
+	return walletDetails, nil
 }
 
 func (ws *WalletService) GetAllWallets() ([]Wallet, error) {

@@ -308,7 +308,6 @@ func (s *ChainListService) GetChainInfoWithRetry(chainID int) (*ChainInfo, strin
 		return nil, "", fmt.Errorf("chain with ID %d not found", chainID)
 	}
 
-
 	// Test RPC endpoints and find the best one
 	workingRPC, err := s.findBestRPCEndpoint(targetChain.RPC, chainID)
 	if err != nil {
@@ -330,7 +329,6 @@ func (s *ChainListService) findBestRPCEndpoint(endpoints []RPCEndpoint, expected
 		return "", fmt.Errorf("no RPC endpoints available")
 	}
 
-
 	// Channel to collect results
 	results := make(chan RPCConnectionResult, len(endpoints))
 
@@ -343,7 +341,6 @@ func (s *ChainListService) findBestRPCEndpoint(endpoints []RPCEndpoint, expected
 		go func(idx int, ep RPCEndpoint) {
 			result := RPCConnectionResult{URL: ep.URL}
 			start := time.Now()
-
 
 			chainID, err := s.testRPCEndpoint(ep.URL, expectedChainID)
 			result.Latency = time.Since(start)
@@ -398,7 +395,6 @@ func (s *ChainListService) testRPCEndpoint(rpcURL string, expectedChainID int) (
 		return 0, fmt.Errorf("invalid RPC URL")
 	}
 
-
 	// Create a client with shorter timeout for testing
 	client := &http.Client{Timeout: 5 * time.Second}
 
@@ -419,7 +415,6 @@ func (s *ChainListService) testRPCEndpoint(rpcURL string, expectedChainID int) (
 		return 0, fmt.Errorf("RPC returned status: %d", resp.StatusCode)
 	}
 
-
 	var result struct {
 		Result string `json:"result"`
 		Error  *struct {
@@ -435,7 +430,6 @@ func (s *ChainListService) testRPCEndpoint(rpcURL string, expectedChainID int) (
 	if result.Error != nil {
 		return 0, fmt.Errorf("RPC error: %s", result.Error.Message)
 	}
-
 
 	// Convert hex chain ID to int
 	chainID, err := strconv.ParseInt(result.Result, 0, 64)

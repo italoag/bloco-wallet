@@ -38,35 +38,35 @@ func TestImportWalletFromKeystoreV3WithUniversalKDF(t *testing.T) {
 	ws := NewWalletService(mockRepo, ks)
 
 	tests := []struct {
-		name           string
-		keystoreFile   string
-		password       string
-		expectError    bool
-		expectedKDF    string
+		name             string
+		keystoreFile     string
+		password         string
+		expectError      bool
+		expectedKDF      string
 		expectedSecurity string
 	}{
 		{
-			name:           "Standard Scrypt KeyStore",
-			keystoreFile:   "real_keystore_v3_standard.json",
-			password:       "testpassword",
-			expectError:    false,
-			expectedKDF:    "scrypt",
+			name:             "Standard Scrypt KeyStore",
+			keystoreFile:     "real_keystore_v3_standard.json",
+			password:         "testpassword",
+			expectError:      false,
+			expectedKDF:      "scrypt",
 			expectedSecurity: "Medium",
 		},
 		{
-			name:           "Light Scrypt KeyStore",
-			keystoreFile:   "real_keystore_v3_light.json",
-			password:       "testpassword",
-			expectError:    false,
-			expectedKDF:    "scrypt",
+			name:             "Light Scrypt KeyStore",
+			keystoreFile:     "real_keystore_v3_light.json",
+			password:         "testpassword",
+			expectError:      false,
+			expectedKDF:      "scrypt",
 			expectedSecurity: "Low",
 		},
 		{
-			name:           "Complex Password KeyStore",
-			keystoreFile:   "real_keystore_v3_complex_password.json",
-			password:       "P@$$w0rd!123#ComplexPassword",
-			expectError:    false,
-			expectedKDF:    "scrypt",
+			name:             "Complex Password KeyStore",
+			keystoreFile:     "real_keystore_v3_complex_password.json",
+			password:         "P@$$w0rd!123#ComplexPassword",
+			expectError:      false,
+			expectedKDF:      "scrypt",
 			expectedSecurity: "Medium",
 		},
 	}
@@ -75,7 +75,7 @@ func TestImportWalletFromKeystoreV3WithUniversalKDF(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Get test keystore path
 			keystorePath := filepath.Join("testdata", "keystores", tt.keystoreFile)
-			
+
 			// Skip test if file doesn't exist
 			if _, err := os.Stat(keystorePath); os.IsNotExist(err) {
 				t.Skipf("Test keystore file not found: %s", keystorePath)
@@ -121,10 +121,10 @@ func TestUniversalKDFCompatibilityAnalysis(t *testing.T) {
 	analyzer := NewKDFCompatibilityAnalyzer()
 
 	tests := []struct {
-		name           string
-		keystoreData   map[string]interface{}
+		name             string
+		keystoreData     map[string]interface{}
 		expectCompatible bool
-		expectedKDF    string
+		expectedKDF      string
 		expectedSecurity string
 	}{
 		{
@@ -143,7 +143,7 @@ func TestUniversalKDFCompatibilityAnalysis(t *testing.T) {
 				},
 			},
 			expectCompatible: true,
-			expectedKDF:     "scrypt",
+			expectedKDF:      "scrypt",
 			expectedSecurity: "Medium",
 		},
 		{
@@ -161,7 +161,7 @@ func TestUniversalKDFCompatibilityAnalysis(t *testing.T) {
 				},
 			},
 			expectCompatible: true,
-			expectedKDF:     "pbkdf2",
+			expectedKDF:      "pbkdf2",
 			expectedSecurity: "Medium",
 		},
 		{
@@ -180,7 +180,7 @@ func TestUniversalKDFCompatibilityAnalysis(t *testing.T) {
 				},
 			},
 			expectCompatible: true,
-			expectedKDF:     "scrypt",
+			expectedKDF:      "scrypt",
 			expectedSecurity: "Medium",
 		},
 		{
@@ -190,14 +190,14 @@ func TestUniversalKDFCompatibilityAnalysis(t *testing.T) {
 				"crypto": map[string]interface{}{
 					"kdf": "argon2",
 					"kdfparams": map[string]interface{}{
-						"memory": 65536,
-						"time":   3,
+						"memory":  65536,
+						"time":    3,
 						"threads": 4,
 					},
 				},
 			},
 			expectCompatible: false,
-			expectedKDF:     "argon2",
+			expectedKDF:      "argon2",
 		},
 		{
 			name: "Missing Crypto Section",
@@ -213,7 +213,7 @@ func TestUniversalKDFCompatibilityAnalysis(t *testing.T) {
 			report := analyzer.AnalyzeKeyStoreCompatibility(tt.keystoreData)
 
 			assert.Equal(t, tt.expectCompatible, report.Compatible)
-			
+
 			if tt.expectCompatible {
 				assert.Equal(t, tt.expectedKDF, report.NormalizedKDF)
 				assert.Equal(t, tt.expectedSecurity, report.SecurityLevel)
@@ -230,10 +230,10 @@ func TestKDFParameterConversion(t *testing.T) {
 	service := NewUniversalKDFService()
 
 	tests := []struct {
-		name        string
+		name         string
 		cryptoParams *CryptoParams
-		password    string
-		expectError bool
+		password     string
+		expectError  bool
 	}{
 		{
 			name: "Integer Parameters",
@@ -317,10 +317,10 @@ func TestKDFSecurityAnalysis(t *testing.T) {
 	analyzer := NewKDFCompatibilityAnalyzer()
 
 	tests := []struct {
-		name           string
-		kdf            string
-		params         map[string]interface{}
-		expectedLevel  string
+		name          string
+		kdf           string
+		params        map[string]interface{}
+		expectedLevel string
 	}{
 		{
 			name: "Low Security Scrypt",

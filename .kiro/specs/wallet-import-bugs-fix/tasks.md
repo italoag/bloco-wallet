@@ -138,15 +138,15 @@
     - Write comprehensive tests for Universal KDF keystore import
     - _Requirements: 3.5, 5.4, 6.1, 7.2, 7.3_
 
-- [ ] 10. Update localization and error messages
-  - [ ] 10.1 Add new localized error messages
+- [x] 10. Update localization and error messages
+  - [x] 10.1 Add new localized error messages
     - Add messages for mnemonic-based duplicate detection
     - Add messages for private key-based duplicate detection
     - Add messages for unavailable mnemonic scenarios
     - Update existing error messages for clarity
     - _Requirements: 5.1, 5.2, 5.4_
 
-  - [ ] 10.2 Implement context-aware error reporting
+  - [x] 10.2 Implement context-aware error reporting
     - Include import method in error messages
     - Provide specific guidance based on conflict type
     - Add helper methods for generating localized messages

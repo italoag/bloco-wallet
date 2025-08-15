@@ -7,7 +7,7 @@ import (
 
 func TestUniversalKDFService_ScryptParameterConversion(t *testing.T) {
 	service := NewUniversalKDFService()
-	
+
 	testCases := []struct {
 		name        string
 		kdfParams   map[string]interface{}
@@ -96,11 +96,11 @@ func TestUniversalKDFService_ScryptParameterConversion(t *testing.T) {
 			}
 
 			_, err := service.DeriveKey("testpassword", cryptoParams)
-			
+
 			if tc.expectError && err == nil {
 				t.Errorf("Expected error for %s, but got none", tc.description)
 			}
-			
+
 			if !tc.expectError && err != nil {
 				t.Errorf("Unexpected error for %s: %v", tc.description, err)
 			}
@@ -110,11 +110,11 @@ func TestUniversalKDFService_ScryptParameterConversion(t *testing.T) {
 
 func TestUniversalKDFService_KDFNameNormalization(t *testing.T) {
 	service := NewUniversalKDFService()
-	
+
 	testCases := []struct {
-		inputKDF     string
-		expectedKDF  string
-		expectError  bool
+		inputKDF    string
+		expectedKDF string
+		expectError bool
 	}{
 		{"scrypt", "scrypt", false},
 		{"Scrypt", "scrypt", false},
@@ -130,7 +130,7 @@ func TestUniversalKDFService_KDFNameNormalization(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.inputKDF, func(t *testing.T) {
 			normalized := service.normalizeKDFName(tc.inputKDF)
-			
+
 			if normalized != tc.expectedKDF {
 				t.Errorf("Expected normalized KDF %s, got %s", tc.expectedKDF, normalized)
 			}
@@ -149,7 +149,7 @@ func TestUniversalKDFService_KDFNameNormalization(t *testing.T) {
 
 func TestUniversalKDFService_SaltFormatConversion(t *testing.T) {
 	handler := &ScryptHandler{}
-	
+
 	testCases := []struct {
 		name        string
 		saltValue   interface{}
@@ -193,11 +193,11 @@ func TestUniversalKDFService_SaltFormatConversion(t *testing.T) {
 			}
 
 			_, err := handler.convertToBytes(tc.saltValue)
-			
+
 			if tc.expectError && err == nil {
 				t.Errorf("Expected error for %s, but got none", tc.description)
 			}
-			
+
 			if !tc.expectError && err != nil {
 				t.Errorf("Unexpected error for %s: %v", tc.description, err)
 			}
@@ -225,7 +225,7 @@ func TestUniversalKDFService_SaltFormatConversion(t *testing.T) {
 
 func TestUniversalKDFService_PBKDF2Support(t *testing.T) {
 	service := NewUniversalKDFService()
-	
+
 	testCases := []struct {
 		name        string
 		kdfParams   map[string]interface{}
@@ -286,11 +286,11 @@ func TestUniversalKDFService_PBKDF2Support(t *testing.T) {
 			}
 
 			_, err := service.DeriveKey("testpassword", cryptoParams)
-			
+
 			if tc.expectError && err == nil {
 				t.Errorf("Expected error for %s, but got none", tc.description)
 			}
-			
+
 			if !tc.expectError && err != nil {
 				t.Errorf("Unexpected error for %s: %v", tc.description, err)
 			}
@@ -300,13 +300,13 @@ func TestUniversalKDFService_PBKDF2Support(t *testing.T) {
 
 func TestKDFCompatibilityAnalyzer(t *testing.T) {
 	analyzer := NewKDFCompatibilityAnalyzer()
-	
+
 	testCases := []struct {
-		name           string
-		keystoreData   map[string]interface{}
+		name             string
+		keystoreData     map[string]interface{}
 		expectCompatible bool
 		expectedSecurity string
-		description    string
+		description      string
 	}{
 		{
 			name: "Geth standard keystore",
@@ -355,7 +355,7 @@ func TestKDFCompatibilityAnalyzer(t *testing.T) {
 					"kdfparams": map[string]interface{}{
 						"n":     1048576, // High security
 						"r":     8,
-						"p":     2,       // Increased parallelization
+						"p":     2, // Increased parallelization
 						"dklen": 32,
 						"salt":  "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
 					},
@@ -372,11 +372,11 @@ func TestKDFCompatibilityAnalyzer(t *testing.T) {
 				"crypto": map[string]interface{}{
 					"kdf": "argon2",
 					"kdfparams": map[string]interface{}{
-						"time":   3,
-						"memory": 65536,
+						"time":    3,
+						"memory":  65536,
 						"threads": 4,
-						"keylen": 32,
-						"salt":   "somesalt",
+						"keylen":  32,
+						"salt":    "somesalt",
 					},
 				},
 			},
@@ -389,17 +389,17 @@ func TestKDFCompatibilityAnalyzer(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			report := analyzer.AnalyzeKeyStoreCompatibility(tc.keystoreData)
-			
+
 			if report.Compatible != tc.expectCompatible {
-				t.Errorf("Expected compatibility %v, got %v for %s", 
+				t.Errorf("Expected compatibility %v, got %v for %s",
 					tc.expectCompatible, report.Compatible, tc.description)
 			}
-			
+
 			if tc.expectCompatible && report.SecurityLevel != tc.expectedSecurity {
-				t.Errorf("Expected security level %s, got %s for %s", 
+				t.Errorf("Expected security level %s, got %s for %s",
 					tc.expectedSecurity, report.SecurityLevel, tc.description)
 			}
-			
+
 			// Check that we have meaningful feedback
 			if tc.expectCompatible {
 				if len(report.Suggestions) == 0 {
@@ -416,7 +416,7 @@ func TestKDFCompatibilityAnalyzer(t *testing.T) {
 
 func TestSourceHashGenerator(t *testing.T) {
 	generator := &SourceHashGenerator{}
-	
+
 	testCases := []struct {
 		name        string
 		input1      string
@@ -450,7 +450,7 @@ func TestSourceHashGenerator(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			var hash1, hash2 string
-			
+
 			// Test mnemonic hashing
 			if tc.name == "Same mnemonic should produce same hash" || tc.name == "Different mnemonics should produce different hashes" {
 				hash1 = generator.GenerateFromMnemonic(tc.input1)
@@ -460,15 +460,15 @@ func TestSourceHashGenerator(t *testing.T) {
 				hash1 = generator.GenerateFromPrivateKey(tc.input1)
 				hash2 = generator.GenerateFromPrivateKey(tc.input2)
 			}
-			
+
 			if tc.shouldEqual && hash1 != hash2 {
 				t.Errorf("Expected equal hashes for %s, got %s != %s", tc.description, hash1, hash2)
 			}
-			
+
 			if !tc.shouldEqual && hash1 == hash2 {
 				t.Errorf("Expected different hashes for %s, got %s == %s", tc.description, hash1, hash2)
 			}
-			
+
 			// Verify hash format (should be 64 character hex string)
 			if len(hash1) != 64 {
 				t.Errorf("Expected hash length 64, got %d", len(hash1))
@@ -480,21 +480,21 @@ func TestSourceHashGenerator(t *testing.T) {
 func TestEnhancedKeyStoreService_Integration(t *testing.T) {
 	// This test would require actual keystore files
 	// For now, we'll test the service creation and basic functionality
-	
+
 	service := NewEnhancedKeyStoreService()
-	
+
 	if service == nil {
 		t.Fatal("Failed to create EnhancedKeyStoreService")
 	}
-	
+
 	if service.kdfService == nil {
 		t.Fatal("KDF service not initialized")
 	}
-	
+
 	if service.logger == nil {
 		t.Fatal("Logger not initialized")
 	}
-	
+
 	// Test that the service has the expected KDF handlers
 	expectedKDFs := []string{"scrypt", "pbkdf2", "pbkdf2-sha256", "pbkdf2-sha512"}
 	for _, kdf := range expectedKDFs {

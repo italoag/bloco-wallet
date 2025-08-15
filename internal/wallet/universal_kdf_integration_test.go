@@ -53,7 +53,7 @@ var testKeystores = map[string]string{
 
 func TestUniversalKDF_RealWorldKeystoreCompatibility(t *testing.T) {
 	analyzer := NewKDFCompatibilityAnalyzer()
-	
+
 	testCases := []struct {
 		name             string
 		keystoreJSON     string
@@ -88,23 +88,23 @@ func TestUniversalKDF_RealWorldKeystoreCompatibility(t *testing.T) {
 
 			// Analyze compatibility
 			report := analyzer.AnalyzeKeyStoreCompatibility(keystoreData)
-			
+
 			if report.Compatible != tc.expectCompatible {
-				t.Errorf("Expected compatibility %v, got %v for %s", 
+				t.Errorf("Expected compatibility %v, got %v for %s",
 					tc.expectCompatible, report.Compatible, tc.description)
 			}
-			
+
 			if tc.expectCompatible {
 				if report.SecurityLevel != tc.expectedSecurity {
-					t.Errorf("Expected security level %s, got %s for %s", 
+					t.Errorf("Expected security level %s, got %s for %s",
 						tc.expectedSecurity, report.SecurityLevel, tc.description)
 				}
-				
+
 				// Verify we have meaningful analysis
 				if len(report.Suggestions) == 0 {
 					t.Errorf("Expected security suggestions for %s", tc.description)
 				}
-				
+
 				t.Logf("✅ %s: Compatible (Security: %s)", tc.name, report.SecurityLevel)
 				t.Logf("   KDF: %s → %s", report.KDFType, report.NormalizedKDF)
 				for _, suggestion := range report.Suggestions {
@@ -114,7 +114,7 @@ func TestUniversalKDF_RealWorldKeystoreCompatibility(t *testing.T) {
 				if len(report.Issues) == 0 {
 					t.Errorf("Expected issues for incompatible keystore %s", tc.description)
 				}
-				
+
 				t.Logf("❌ %s: Incompatible", tc.name)
 				for _, issue := range report.Issues {
 					t.Logf("   ⚠️ %s", issue)
