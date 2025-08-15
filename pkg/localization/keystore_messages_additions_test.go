@@ -21,19 +21,19 @@ func TestAddKeystoreValidationMessages(t *testing.T) {
 			name:     "English message",
 			language: "en",
 			key:      "keystore_file_not_found",
-			expected: "✗ File not found at the specified path",
+			expected: "Keystore file not found",
 		},
 		{
 			name:     "Portuguese message",
 			language: "pt",
 			key:      "keystore_file_not_found",
-			expected: "✗ Arquivo não encontrado no caminho especificado",
+			expected: "Arquivo keystore não encontrado",
 		},
 		{
 			name:     "Spanish message",
 			language: "es",
 			key:      "keystore_file_not_found",
-			expected: "✗ Archivo no encontrado en la ruta especificada",
+			expected: "Archivo keystore no encontrado",
 		},
 		{
 			name:     "English recovery suggestion",

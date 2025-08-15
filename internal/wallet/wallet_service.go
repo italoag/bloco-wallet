@@ -3,6 +3,7 @@ package wallet
 import (
 	"crypto/ecdsa"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,10 +16,13 @@ import (
 )
 
 type WalletDetails struct {
-	Wallet     *Wallet
-	Mnemonic   string
-	PrivateKey *ecdsa.PrivateKey
-	PublicKey  *ecdsa.PublicKey
+	Wallet       *Wallet
+	Mnemonic     string
+	PrivateKey   *ecdsa.PrivateKey
+	PublicKey    *ecdsa.PublicKey
+	ImportMethod ImportMethod // Track import method
+	HasMnemonic  bool         // Helper field for UI
+	KDFInfo      *KDFInfo     // KDF analysis information
 }
 
 type WalletService struct {
@@ -27,6 +31,11 @@ type WalletService struct {
 }
 
 func NewWalletService(repo WalletRepository, ks *keystore.KeyStore) *WalletService {
+	// Verify that CryptoService is initialized
+	if defaultCryptoService == nil {
+		panic("CryptoService must be initialized before creating WalletService. Call wallet.InitCryptoService(cfg) first.")
+	}
+
 	return &WalletService{
 		Repo:     repo,
 		KeyStore: ks,
@@ -215,7 +224,7 @@ func (ws *WalletService) ImportWalletFromPrivateKey(name, privateKeyHex, passwor
 	return walletDetails, nil
 }
 
-// ImportWalletFromKeystoreV3 imports a wallet from a keystore v3 file with enhanced validation
+// ImportWalletFromKeystoreV3 imports a wallet from a keystore v3 file with Universal KDF support
 func (ws *WalletService) ImportWalletFromKeystoreV3(name, keystorePath, password string) (*WalletDetails, error) {
 	// Step 1: Validate file existence
 	if _, err := os.Stat(keystorePath); os.IsNotExist(err) {
@@ -236,28 +245,134 @@ func (ws *WalletService) ImportWalletFromKeystoreV3(name, keystorePath, password
 		)
 	}
 
-	// Step 3: Validate keystore structure
-	validator := &KeystoreValidator{}
-	keystoreData, err := validator.ValidateKeystoreV3(keyJSON)
-	if err != nil {
-		// The validator already returns a KeystoreImportError
-		return nil, err
-	}
+	// Step 3: Generate source hash from keystore JSON content for duplicate detection
+	hashGen := &SourceHashGenerator{}
+	sourceHash := hashGen.GenerateFromKeystore(keyJSON)
 
-	// Step 4: Decrypt the keystore file to verify the password and extract the private key
-	key, err := keystore.DecryptKey(keyJSON, password)
-	if err != nil {
+	// Step 4: Check for duplicates based on source hash (when model is updated)
+	// For now, we'll skip this check until the wallet model is updated with SourceHash field
+	// TODO: Uncomment when wallet model includes SourceHash field
+	_ = sourceHash // Prevent unused variable warning
+	/*
+		if existingWallet, err := ws.Repo.FindBySourceHash(sourceHash); err == nil && existingWallet != nil {
+			return nil, NewDuplicateWalletError(
+				string(ImportMethodKeystore),
+				existingWallet.Address,
+				"A wallet with this keystore already exists",
+			)
+		}
+	*/
+
+	// Step 5: Initialize Universal KDF Service for compatibility analysis
+	kdfService := NewUniversalKDFService()
+	compatAnalyzer := NewKDFCompatibilityAnalyzer()
+
+	// Step 6: Parse keystore JSON for compatibility analysis
+	var keystoreMap map[string]interface{}
+	if err := json.Unmarshal(keyJSON, &keystoreMap); err != nil {
 		return nil, NewKeystoreImportError(
-			ErrorIncorrectPassword,
-			"Incorrect password for keystore file",
+			ErrorInvalidJSON,
+			"Error parsing keystore JSON for compatibility analysis",
 			err,
 		)
 	}
 
-	// Step 5: Verify that the decrypted private key matches the address in the keystore
-	derivedAddress := crypto.PubkeyToAddress(key.PrivateKey.PublicKey).Hex()
+	// Step 7: Perform compatibility analysis before processing
+	compatReport := compatAnalyzer.AnalyzeKeyStoreCompatibility(keystoreMap)
+	if !compatReport.Compatible {
+		return nil, NewKeystoreImportError(
+			ErrorInvalidKeystore,
+			fmt.Sprintf("Keystore incompatible: %v", compatReport.Issues),
+			nil,
+		)
+	}
 
-	// Normalize addresses for comparison (ensure both have 0x prefix and are lowercase)
+	// Step 7a: Security analysis (logging removed to avoid cluttering TUI)
+	// Security warnings and info are now handled internally without console output
+	// The security level is still available in walletDetails.KDFInfo for programmatic use
+
+	// Step 8: Validate keystore structure using existing validator
+	validator := &KeystoreValidator{}
+	keystoreData, err := validator.ValidateKeystoreV3(keyJSON)
+	if err != nil {
+		return nil, err
+	}
+
+	// Step 9: Use Universal KDF Service to decrypt the keystore
+	cryptoData, ok := keystoreMap["crypto"].(map[string]interface{})
+	if !ok {
+		return nil, NewKeystoreImportError(
+			ErrorInvalidKeystore,
+			"Invalid crypto section in keystore",
+			nil,
+		)
+	}
+
+	kdfParams, ok := cryptoData["kdfparams"].(map[string]interface{})
+	if !ok {
+		return nil, NewKeystoreImportError(
+			ErrorInvalidKeystore,
+			"Invalid KDF parameters in keystore",
+			nil,
+		)
+	}
+
+	cryptoParams := &CryptoParams{
+		KDF:          keystoreData.Crypto.KDF,
+		KDFParams:    kdfParams,
+		Cipher:       keystoreData.Crypto.Cipher,
+		CipherText:   keystoreData.Crypto.CipherText,
+		CipherParams: map[string]interface{}{"iv": keystoreData.Crypto.CipherParams.IV},
+		MAC:          keystoreData.Crypto.MAC,
+	}
+
+	// Step 10: Derive key using Universal KDF Service
+	derivedKey, err := kdfService.DeriveKey(password, cryptoParams)
+	if err != nil {
+		// Provide KDF-specific error context
+		kdfContext := fmt.Sprintf("KDF: %s (%s), Security Level: %s",
+			compatReport.KDFType, compatReport.NormalizedKDF, compatReport.SecurityLevel)
+		return nil, NewKeystoreImportError(
+			ErrorIncorrectPassword,
+			fmt.Sprintf("Failed to derive key using Universal KDF (%s): %v", kdfContext, err),
+			err,
+		)
+	}
+
+	// Step 11: Use Enhanced KeyStore Service for decryption
+	enhancedService := NewEnhancedKeyStoreService()
+
+	// Verify MAC using derived key
+	if err := enhancedService.verifyMAC(derivedKey, cryptoParams); err != nil {
+		return nil, NewKeystoreImportError(
+			ErrorIncorrectPassword,
+			"Incorrect password or corrupted keystore file",
+			err,
+		)
+	}
+
+	// Step 12: Decrypt private key
+	privateKeyBytes, err := enhancedService.decryptPrivateKey(derivedKey, cryptoParams)
+	if err != nil {
+		return nil, NewKeystoreImportError(
+			ErrorCorruptedFile,
+			"Failed to decrypt private key",
+			err,
+		)
+	}
+
+	// Step 13: Convert to ECDSA private key
+	privateKey, err := crypto.ToECDSA(privateKeyBytes)
+	if err != nil {
+		return nil, NewKeystoreImportError(
+			ErrorCorruptedFile,
+			"Invalid private key format",
+			err,
+		)
+	}
+
+	// Step 14: Verify address matches derived address
+	derivedAddress := crypto.PubkeyToAddress(privateKey.PublicKey).Hex()
 	normalizedKeystoreAddress := common.HexToAddress(keystoreData.Address).Hex()
 	normalizedDerivedAddress := common.HexToAddress(derivedAddress).Hex()
 
@@ -270,8 +385,8 @@ func (ws *WalletService) ImportWalletFromKeystoreV3(name, keystorePath, password
 		)
 	}
 
-	// Step 6: Generate a deterministic mnemonic from private key
-	mnemonic, err := GenerateAndValidateDeterministicMnemonic(key.PrivateKey)
+	// Step 15: Generate deterministic mnemonic from private key (preserving existing behavior)
+	mnemonic, err := GenerateAndValidateDeterministicMnemonic(privateKey)
 	if err != nil {
 		return nil, NewKeystoreImportError(
 			ErrorCorruptedFile,
@@ -280,11 +395,10 @@ func (ws *WalletService) ImportWalletFromKeystoreV3(name, keystorePath, password
 		)
 	}
 
-	// Step 7: Create the destination filename with proper address format
-	address := key.Address.Hex()
+	// Step 16: Create destination path
+	address := normalizedDerivedAddress
 	destFilename := fmt.Sprintf("%s.json", address)
 
-	// Step 8: Get the keystore directory
 	var keystoreDir string
 	accounts := ws.KeyStore.Accounts()
 	if len(accounts) > 0 {
@@ -300,7 +414,6 @@ func (ws *WalletService) ImportWalletFromKeystoreV3(name, keystorePath, password
 		}
 		keystoreDir = filepath.Join(homeDir, ".wallets", "keystore")
 
-		// Ensure the directory exists
 		if err := os.MkdirAll(keystoreDir, 0700); err != nil {
 			return nil, NewKeystoreImportError(
 				ErrorFileNotFound,
@@ -310,10 +423,9 @@ func (ws *WalletService) ImportWalletFromKeystoreV3(name, keystorePath, password
 		}
 	}
 
-	// Step 9: Create the destination path
 	destPath := filepath.Join(keystoreDir, destFilename)
 
-	// Step 10: Copy the keystore file to the destination
+	// Step 17: Copy keystore file to destination
 	destFile, err := os.Create(destPath)
 	if err != nil {
 		return nil, NewKeystoreImportError(
@@ -324,9 +436,7 @@ func (ws *WalletService) ImportWalletFromKeystoreV3(name, keystorePath, password
 	}
 	defer destFile.Close()
 
-	// Write the keystore JSON to the destination file
-	_, err = destFile.Write(keyJSON)
-	if err != nil {
+	if _, err = destFile.Write(keyJSON); err != nil {
 		return nil, NewKeystoreImportError(
 			ErrorFileNotFound,
 			"Error writing to destination file",
@@ -334,7 +444,7 @@ func (ws *WalletService) ImportWalletFromKeystoreV3(name, keystorePath, password
 		)
 	}
 
-	// Step 11: Encrypt the mnemonic before storing
+	// Step 18: Encrypt mnemonic before storing
 	encryptedMnemonic, err := EncryptMnemonic(mnemonic, password)
 	if err != nil {
 		return nil, NewKeystoreImportError(
@@ -344,15 +454,16 @@ func (ws *WalletService) ImportWalletFromKeystoreV3(name, keystorePath, password
 		)
 	}
 
-	// Step 12: Create the wallet entry
+	// Step 19: Create wallet entry with import method and source hash
 	wallet := &Wallet{
 		Name:         name,
 		Address:      address,
 		KeyStorePath: destPath,
 		Mnemonic:     encryptedMnemonic,
+		// Note: ImportMethod and SourceHash fields will be added when wallet model is updated
 	}
 
-	// Step 13: Add wallet to repository
+	// Step 20: Add wallet to repository
 	err = ws.Repo.AddWallet(wallet)
 	if err != nil {
 		return nil, NewKeystoreImportError(
@@ -362,12 +473,23 @@ func (ws *WalletService) ImportWalletFromKeystoreV3(name, keystorePath, password
 		)
 	}
 
-	// Step 14: Return wallet details
+	// Step 21: Create KDF information for wallet details
+	kdfInfo := &KDFInfo{
+		Type:           compatReport.KDFType,
+		NormalizedType: compatReport.NormalizedKDF,
+		SecurityLevel:  compatReport.SecurityLevel,
+		Parameters:     compatReport.Parameters,
+	}
+
+	// Step 22: Return enhanced wallet details with KDF information
 	walletDetails := &WalletDetails{
-		Wallet:     wallet,
-		Mnemonic:   mnemonic,
-		PrivateKey: key.PrivateKey,
-		PublicKey:  &key.PrivateKey.PublicKey,
+		Wallet:       wallet,
+		Mnemonic:     mnemonic,
+		PrivateKey:   privateKey,
+		PublicKey:    &privateKey.PublicKey,
+		ImportMethod: ImportMethodKeystore,
+		HasMnemonic:  true, // Keystore imports preserve mnemonic generation
+		KDFInfo:      kdfInfo,
 	}
 
 	return walletDetails, nil

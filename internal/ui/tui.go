@@ -227,7 +227,7 @@ func (m *CLIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Tratar as teclas de navegação global (esc/backspace) antes de qualquer outro processamento
 	if keyMsg, ok := msg.(tea.KeyMsg); ok {
 		switch keyMsg.String() {
-		case "esc", "backspace":
+		case "esc":
 			// Se estiver na tela de lista de wallets e tiver um diálogo de exclusão aberto,
 			// não faça nada aqui e deixe o handler específico da view tratar
 			if m.currentView == constants.ListWalletsView && m.deletingWallet != nil {
@@ -661,7 +661,7 @@ func (m *CLIModel) updateMenu(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case tea.KeyCtrlX.String(), "q":
 			return m, tea.Quit
-		case "esc", "backspace":
+		case "esc":
 			// Voltar para o menu principal
 			m.menuItems = NewMenu() // Recarregar o menu principal
 			m.selectedMenu = 0      // Resetar a seleção
@@ -691,7 +691,7 @@ func (m *CLIModel) updateCreateWalletName(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.passwordInput.Focus()
 			m.currentView = constants.CreateWalletView
 			return m, nil
-		case "esc", "backspace":
+		case "esc":
 			// Reset the name input field and go back to menu
 			m.nameInput = textinput.New()
 			m.currentView = constants.DefaultView
@@ -732,7 +732,7 @@ func (m *CLIModel) updateCreateWalletPassword(msg tea.Msg) (tea.Model, tea.Cmd) 
 
 			// Atualizar a contagem de wallets
 			return m, m.refreshWalletsTable()
-		case "esc", "backspace":
+		case "esc":
 			// Go back to name input
 			m.nameInput.Focus()
 			m.currentView = constants.CreateWalletNameView
@@ -779,7 +779,7 @@ func (m *CLIModel) updateImportWallet(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.passwordInput.Focus()
 				m.currentView = constants.ImportWalletPasswordView
 			}
-		case "esc", "backspace":
+		case "esc":
 			m.currentView = constants.DefaultView
 		default:
 			var cmd tea.Cmd
@@ -877,7 +877,7 @@ func (m *CLIModel) updateImportWalletPassword(msg tea.Msg) (tea.Model, tea.Cmd) 
 
 			// Atualizar a contagem de wallets
 			return m, m.refreshWalletsTable()
-		case "esc", "backspace":
+		case "esc":
 			m.currentView = constants.DefaultView
 		default:
 			var cmd tea.Cmd
@@ -939,7 +939,7 @@ func (m *CLIModel) updateImportMethodSelection(msg tea.Msg) (tea.Model, tea.Cmd)
 				m.selectedMenu = 0      // Resetar a seleção
 				m.currentView = constants.DefaultView
 			}
-		case "esc", "backspace":
+		case "esc":
 			m.menuItems = NewMenu() // Recarregar o menu principal
 			m.selectedMenu = 0      // Resetar a seleção
 			m.currentView = constants.DefaultView
@@ -983,7 +983,7 @@ func (m *CLIModel) updateConfigMenu(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.selectedMenu = 0      // Resetar a seleção
 				m.currentView = constants.DefaultView
 			}
-		case "esc", "backspace":
+		case "esc":
 			m.menuItems = NewMenu() // Recarregar o menu principal
 			m.selectedMenu = 0      // Resetar a seleção
 			m.currentView = constants.DefaultView
@@ -1021,7 +1021,7 @@ func (m *CLIModel) updateImportPrivateKey(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.passwordInput.Focus()
 			m.currentView = constants.ImportWalletPasswordView
 
-		case "esc", "backspace":
+		case "esc":
 			m.currentView = constants.DefaultView
 		default:
 			var cmd tea.Cmd
@@ -1107,9 +1107,6 @@ func (m *CLIModel) updateImportKeystore(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 
-			// Removed file extension validation to allow any file extension
-			// The actual JSON content validation will be done by the wallet service
-
 			// Check file size to prevent memory exhaustion
 			fileInfo, err := os.Stat(keystorePath)
 			if err != nil {
@@ -1145,6 +1142,9 @@ func (m *CLIModel) updateImportKeystore(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Store the keystore path for later use
 			m.mnemonic = keystorePath // Reusing mnemonic field to store keystore path
 
+			// Clear the privateKeyInput to avoid confusion in updateImportWalletPassword
+			m.privateKeyInput.SetValue("")
+
 			// Move to password input screen
 			m.passwordInput = textinput.New()
 			m.passwordInput.Placeholder = localization.Labels["enter_password"]
@@ -1162,7 +1162,7 @@ func (m *CLIModel) updateImportKeystore(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.passwordInput.Focus()
 			m.currentView = constants.ImportWalletPasswordView
 
-		case "esc", "backspace":
+		case "esc":
 			m.currentView = constants.ImportMethodSelectionView
 		case "tab":
 			// Implement path autocomplete
@@ -1304,7 +1304,7 @@ func (m *CLIModel) updateListWallets(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				// Forçar uma atualização da tela
 				return m, m.refreshWalletsTable()
-			case "esc", "backspace":
+			case "esc":
 				// Limpar a referência do diálogo e forçar atualização
 				m.deletingWallet = nil
 				m.dialogButtonIndex = 0
@@ -1349,7 +1349,7 @@ func (m *CLIModel) updateListWallets(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 			}
-		case "esc", "backspace":
+		case "esc":
 			m.currentView = constants.DefaultView
 			return m, nil
 		}
@@ -1385,7 +1385,7 @@ func (m *CLIModel) updateWalletPassword(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.walletDetails = walletDetails
 			m.currentView = constants.WalletDetailsView
-		case "esc", "backspace":
+		case "esc":
 			m.currentView = constants.DefaultView
 		default:
 			var cmd tea.Cmd
@@ -1400,7 +1400,7 @@ func (m *CLIModel) updateWalletDetails(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "esc", "backspace":
+		case "esc":
 			m.walletDetails = nil
 			m.currentView = constants.ListWalletsView
 
@@ -1764,7 +1764,7 @@ func (m *CLIModel) updateLanguageSelection(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.selectedMenu = 0
 				m.currentView = constants.ConfigurationView
 			}
-		case "esc", "backspace":
+		case "esc":
 			// Return to the config menu
 			m.menuItems = NewConfigMenu()
 			m.selectedMenu = 0
@@ -1805,7 +1805,7 @@ func (m *CLIModel) updateNetworkMenu(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.initNetworkList()
 				return m, nil
 			}
-		case "esc", "backspace":
+		case "esc":
 			// Return to the config menu
 			m.menuItems = NewConfigMenu()
 			m.selectedMenu = 0

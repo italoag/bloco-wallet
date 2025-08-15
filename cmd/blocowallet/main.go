@@ -81,7 +81,9 @@ func main() {
 	}
 
 	// Inicializar o serviço de criptografia
+	log.Println("Inicializando serviço de criptografia...")
 	wallet.InitCryptoService(cfg)
+	log.Println("Serviço de criptografia inicializado com sucesso")
 
 	// Garantir que o diretório de wallets exista
 	if _, err := os.Stat(cfg.WalletsDir); os.IsNotExist(err) {

@@ -73,6 +73,19 @@ func (repo *GORMRepository) DeleteWallet(walletID int) error {
 	return repo.db.Delete(&wallet.Wallet{}, walletID).Error
 }
 
+// FindBySourceHash finds a wallet by its source hash
+func (repo *GORMRepository) FindBySourceHash(sourceHash string) (*wallet.Wallet, error) {
+	var w wallet.Wallet
+	result := repo.db.Where("source_hash = ?", sourceHash).First(&w)
+	if result.Error != nil {
+		if result.Error == gorm.ErrRecordNotFound {
+			return nil, nil // Return nil if not found, not an error
+		}
+		return nil, result.Error
+	}
+	return &w, nil
+}
+
 // Close fecha a conexão com o banco de dados
 func (repo *GORMRepository) Close() error {
 	sqlDB, err := repo.db.DB()

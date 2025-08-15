@@ -8,6 +8,8 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"golang.org/x/crypto/argon2"
 )
@@ -217,14 +219,38 @@ func InitCryptoService(cfg *config.Config) {
 // Funções auxiliares para compatibilidade com código existente
 func EncryptMnemonic(mnemonic, password string) (string, error) {
 	if defaultCryptoService == nil {
-		return "", fmt.Errorf(localization.Get("error_crypto_service_not_initialized"))
+		// Try to initialize with default config as fallback
+		homeDir, err := os.UserHomeDir()
+		if err == nil {
+			appDir := filepath.Join(homeDir, ".wallets")
+			if cfg, err := config.LoadConfig(appDir); err == nil {
+				InitCryptoService(cfg)
+			}
+		}
+
+		// If still not initialized, return error
+		if defaultCryptoService == nil {
+			return "", fmt.Errorf(localization.Get("error_crypto_service_not_initialized"))
+		}
 	}
 	return defaultCryptoService.EncryptMnemonic(mnemonic, password)
 }
 
 func DecryptMnemonic(encryptedMnemonic, password string) (string, error) {
 	if defaultCryptoService == nil {
-		return "", fmt.Errorf(localization.Get("error_crypto_service_not_initialized"))
+		// Try to initialize with default config as fallback
+		homeDir, err := os.UserHomeDir()
+		if err == nil {
+			appDir := filepath.Join(homeDir, ".wallets")
+			if cfg, err := config.LoadConfig(appDir); err == nil {
+				InitCryptoService(cfg)
+			}
+		}
+
+		// If still not initialized, return error
+		if defaultCryptoService == nil {
+			return "", fmt.Errorf(localization.Get("error_crypto_service_not_initialized"))
+		}
 	}
 	return defaultCryptoService.DecryptMnemonic(encryptedMnemonic, password)
 }
