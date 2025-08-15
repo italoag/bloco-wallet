@@ -221,3 +221,52 @@ func TestGORMRepository_SQLiteConfigurations(t *testing.T) {
 		})
 	}
 }
+
+
+func TestGORMRepository_FindBySourceHash_And_AddressQueries(t *testing.T) {
+	cfg := setupTestConfig(t)
+
+	repo, err := NewWalletRepository(cfg)
+	require.NoError(t, err)
+	defer func(repo *GORMRepository) {
+		_ = repo.Close()
+	}(repo)
+
+	addr := "0xABCDEF"
+	mnA := "alpha phrase"
+	mnB := "beta phrase"
+	hashA := (&wallet.SourceHashGenerator{}).GenerateFromMnemonic(mnA)
+	hashB := (&wallet.SourceHashGenerator{}).GenerateFromMnemonic(mnB)
+
+	wA := &wallet.Wallet{Address: addr, KeyStorePath: "/tmp/a.json", Mnemonic: &mnA, ImportMethod: string(wallet.ImportMethodMnemonic), SourceHash: hashA}
+	wB := &wallet.Wallet{Address: addr, KeyStorePath: "/tmp/b.json", Mnemonic: &mnB, ImportMethod: string(wallet.ImportMethodMnemonic), SourceHash: hashB}
+	wC := &wallet.Wallet{Address: addr, KeyStorePath: "/tmp/c.json", Mnemonic: nil, ImportMethod: string(wallet.ImportMethodPrivateKey), SourceHash: (&wallet.SourceHashGenerator{}).GenerateFromPrivateKey("deadbeef")}
+
+	for _, w := range []*wallet.Wallet{wA, wB, wC} {
+		require.NoError(t, repo.AddWallet(w))
+	}
+
+	// FindBySourceHash
+	gotA, err := repo.FindBySourceHash(hashA)
+	assert.NoError(t, err)
+	require.NotNil(t, gotA)
+	assert.Equal(t, wA.ID, gotA.ID)
+
+	gotNil, err := repo.FindBySourceHash("nonexistent")
+	assert.NoError(t, err)
+	assert.Nil(t, gotNil)
+
+	// FindByAddress should return 3 wallets (same address, different sources/methods)
+	list, err := repo.FindByAddress(addr)
+	assert.NoError(t, err)
+	assert.Len(t, list, 3)
+
+	// FindByAddressAndMethod should filter by method
+	listMnemonic, err := repo.FindByAddressAndMethod(addr, string(wallet.ImportMethodMnemonic))
+	assert.NoError(t, err)
+	assert.Len(t, listMnemonic, 2)
+
+	listPriv, err := repo.FindByAddressAndMethod(addr, string(wallet.ImportMethodPrivateKey))
+	assert.NoError(t, err)
+	assert.Len(t, listPriv, 1)
+}

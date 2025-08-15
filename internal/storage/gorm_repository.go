@@ -9,6 +9,7 @@ import (
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	gormlogger "gorm.io/gorm/logger"
 )
 
 // GORMRepository implementa a interface WalletRepository usando GORM
@@ -37,7 +38,9 @@ func NewWalletRepository(cfg *config.Config) (*GORMRepository, error) {
 
 	dialector = sqlite.Open(dbPath)
 
-	db, err := gorm.Open(dialector, &gorm.Config{})
+	db, err := gorm.Open(dialector, &gorm.Config{
+		Logger: gormlogger.Default.LogMode(gormlogger.Silent),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("falha ao conectar ao banco de dados: %w", err)
 	}
@@ -84,6 +87,20 @@ func (repo *GORMRepository) FindBySourceHash(sourceHash string) (*wallet.Wallet,
 		return nil, result.Error
 	}
 	return &w, nil
+}
+
+// FindByAddress returns all wallets that match the given address (may be multiple)
+func (repo *GORMRepository) FindByAddress(address string) ([]wallet.Wallet, error) {
+	var wallets []wallet.Wallet
+	result := repo.db.Where("address = ?", address).Find(&wallets)
+	return wallets, result.Error
+}
+
+// FindByAddressAndMethod returns wallets filtered by address and import method
+func (repo *GORMRepository) FindByAddressAndMethod(address, importMethod string) ([]wallet.Wallet, error) {
+	var wallets []wallet.Wallet
+	result := repo.db.Where("address = ? AND import_method = ?", address, importMethod).Find(&wallets)
+	return wallets, result.Error
 }
 
 // Close fecha a conexão com o banco de dados

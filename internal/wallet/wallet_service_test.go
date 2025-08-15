@@ -33,6 +33,23 @@ func (m *MockWalletRepository) FindBySourceHash(sourceHash string) (*Wallet, err
 	return args.Get(0).(*Wallet), args.Error(1)
 }
 
+// New interface methods to satisfy WalletRepository
+func (m *MockWalletRepository) FindByAddress(address string) ([]Wallet, error) {
+	args := m.Called(address)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]Wallet), args.Error(1)
+}
+
+func (m *MockWalletRepository) FindByAddressAndMethod(address, importMethod string) ([]Wallet, error) {
+	args := m.Called(address, importMethod)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]Wallet), args.Error(1)
+}
+
 func (m *MockWalletRepository) GetWalletByID(id int) (*Wallet, error) {
 	args := m.Called(id)
 	if args.Get(0) == nil {

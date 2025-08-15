@@ -6,78 +6,78 @@
   - Create enhanced error types for duplicate detection
   - _Requirements: 3.1, 3.2, 5.4_
 
-- [ ] 2. Update Wallet model structure
-  - [ ] 2.1 Modify Wallet struct to support new fields
+- [x] 2. Update Wallet model structure
+  - [x] 2.1 Modify Wallet struct to support new fields
     - Make Mnemonic field nullable (*string)
     - Add ImportMethod field with validation
     - Add SourceHash field with unique constraint
     - Remove unique constraint from Address field
     - _Requirements: 3.1, 3.2, 3.3_
 
-  - [ ] 2.2 Update WalletDetails struct
+  - [x] 2.2 Update WalletDetails struct
     - Add ImportMethod field to WalletDetails
     - Add HasMnemonic boolean helper field
     - Make Mnemonic field nullable in WalletDetails
     - _Requirements: 3.1, 5.1, 5.2_
 
-- [ ] 3. Implement source hash generation logic
-  - [ ] 3.1 Create SourceHashGenerator with hash methods
-    - Implement GenerateFromMnemonic method using SHA-256
-    - Implement GenerateFromPrivateKey method using SHA-256
-    - Implement GenerateFromKeystore method using SHA-256
+- [x] 3. Implement source hash generation logic
+  - [x] 3.1 Create SourceHashGenerator with hash methods
+    - Implement GenerateFromMnemonic method using kecak256, SHA-256 or sha3-256, what fits better
+    - Implement GenerateFromPrivateKey method using kecak256, SHA-256 or sha3-256, what fits better
+    - Implement GenerateFromKeystore method using kecak256, SHA-256 or sha3-256, what fits better
     - Write unit tests for hash generation consistency
     - _Requirements: 4.1, 4.2, 6.3_
 
-  - [ ] 3.2 Add hash validation and collision handling
+  - [x] 3.2 Add hash validation and collision handling
     - Implement hash uniqueness validation
     - Add error handling for hash collisions
     - Write tests for edge cases in hash generation
     - _Requirements: 4.4, 6.3_
 
-- [ ] 4. Enhance repository layer for new duplicate detection
-  - [ ] 4.1 Update WalletRepository interface
+- [x] 4. Enhance repository layer for new duplicate detection
+  - [x] 4.1 Update WalletRepository interface
     - Add FindBySourceHash method
     - Modify FindByAddress to return multiple wallets
     - Add methods for duplicate checking by import method
     - _Requirements: 4.1, 4.2, 4.3_
 
-  - [ ] 4.2 Implement enhanced GORM repository methods
+  - [x] 4.2 Implement enhanced GORM repository methods
     - Implement FindBySourceHash in GORMRepository
     - Update FindByAddress to handle multiple results
     - Add database migration logic for new schema
     - Write integration tests for repository methods
     - _Requirements: 3.4, 4.1, 4.2_
 
-- [ ] 5. Fix ImportWallet method for mnemonic-based imports
-  - [ ] 5.1 Update mnemonic import duplicate detection
+- [x] 5. Fix ImportWallet method for mnemonic-based imports
+  - [x] 5.1 Update mnemonic import duplicate detection
     - Generate source hash from mnemonic before checking duplicates
     - Compare source hashes instead of addresses for mnemonic imports
     - Update error messages to specify mnemonic-based conflicts
     - _Requirements: 1.1, 1.2, 1.3, 1.5_
 
-  - [ ] 5.2 Implement proper mnemonic validation and storage
+  - [x] 5.2 Implement proper mnemonic validation and storage
     - Validate mnemonic before generating source hash
     - Store ImportMethod as "mnemonic" for mnemonic imports
     - Ensure encrypted mnemonic is properly stored
     - Write unit tests for mnemonic import scenarios
     - _Requirements: 1.1, 1.4, 6.1_
 
-- [ ] 6. Fix ImportWalletFromPrivateKey method
-  - [ ] 6.1 Remove incorrect mnemonic generation
+- [x] 6. Fix ImportWalletFromPrivateKey method
+  - [x] 6.1 Remove incorrect mnemonic generation
     - Remove calls to GenerateDeterministicMnemonic
     - Set Mnemonic field to nil for private key imports
     - Update WalletDetails to not include fake mnemonic
     - _Requirements: 2.1, 2.2, 2.3_
 
-  - [ ] 6.2 Implement private key duplicate detection
-    - Generate source hash from private key for duplicate checking
+  - [x] 6.2 Implement private key duplicate detection
+    - Generate source hash from a private key for duplicate checking
     - Check duplicates based on source hash, not just address
     - Store ImportMethod as "private_key" for private key imports
     - Update error messages for private key conflicts
     - _Requirements: 4.2, 4.4, 2.4_
 
-  - [ ] 6.3 Update private key import validation
-    - Validate private key format before processing
+  - [x] 6.3 Update private key import validation
+    - Validate a private key format before processing
     - Ensure proper error handling for invalid private keys
     - Write unit tests for private key import scenarios
     - _Requirements: 2.5, 6.2_
@@ -145,7 +145,7 @@
     - Add messages for unavailable mnemonic scenarios
     - Update existing error messages for clarity
     - _Requirements: 5.1, 5.2, 5.4_
-ComplexPassword123!@#
+
   - [ ] 10.2 Implement context-aware error reporting
     - Include import method in error messages
     - Provide specific guidance based on conflict type
@@ -160,7 +160,7 @@ ComplexPassword123!@#
     - Add rollback functionality for migrations
     - _Requirements: 3.3, 3.4_
 
-  - [ ] 12.2 Implement data migration for existing wallets
+  - [ ] 11.2 Implement data migration for existing wallets
     - Migrate existing wallets to use new schema
     - Generate source hashes for existing mnemonic-based wallets
     - Set appropriate ImportMethod for existing wallets
@@ -168,28 +168,28 @@ ComplexPassword123!@#
     - Write tests for migration scenarios
     - _Requirements: 3.5, 6.4_
 
-- [ ] 13. Update UI components and user feedback
-  - [ ] 13.1 Update wallet display logic
+- [ ] 12. Update UI components and user feedback
+  - [ ] 12.1 Update wallet display logic
     - Show "Mnemonic not available" for private key imports
     - Display import method in wallet details
     - Add conditional mnemonic export options
     - _Requirements: 5.1, 5.2, 5.5_
 
-  - [ ] 13.2 Enhance error display in UI
+  - [ ] 12.2 Enhance error display in UI
     - Show specific error messages for different conflict types
     - Provide clear guidance for resolving import issues
     - Update help text to explain import method differences
     - _Requirements: 5.3, 5.4, 5.5_
 
-- [ ] 14. Comprehensive testing implementation
-  - [ ] 14.1 Create unit tests for duplicate detection scenarios
+- [ ] 13. Comprehensive testing implementation
+  - [ ] 13.1 Create unit tests for duplicate detection scenarios
     - Test multiple mnemonic imports with same/different addresses
     - Test private key import without mnemonic generation
     - Test source hash generation and uniqueness
     - Test error message generation for different scenarios
     - _Requirements: 8.1, 8.2, 8.3_
 
-  - [ ] 14.2 Create Universal KDF unit tests
+  - [ ] 13.2 Create Universal KDF unit tests
     - Test KDF parameter conversion for different JSON types
     - Test KDF name normalization and case variations
     - Test salt format conversion (hex, array, string)
@@ -197,7 +197,7 @@ ComplexPassword123!@#
     - Test compatibility analysis for various KeyStore formats
     - _Requirements: 8.6, 8.7, 8.8, 8.9_
 
-  - [ ] 14.3 Create integration tests for import workflows
+  - [ ] 13.3 Create integration tests for import workflows
     - Test end-to-end mnemonic import with duplicate detection
     - Test end-to-end private key import without mnemonic
     - Test coexistence of wallets with same address but different methods
@@ -205,7 +205,7 @@ ComplexPassword123!@#
     - Test Universal KDF keystore import with real-world KeyStore files
     - _Requirements: 8.4, 8.5, 8.10_
 
-  - [ ] 14.4 Create comprehensive KeyStore compatibility test suite
+  - [ ] 13.4 Create comprehensive KeyStore compatibility test suite
     - Test KeyStores from different wallet providers (Geth, MetaMask, Trust Wallet, etc.)
     - Test KeyStores with various KDF configurations and parameter types
     - Test KeyStores with edge cases and unusual parameter values
@@ -213,15 +213,15 @@ ComplexPassword123!@#
     - Create test data generator for comprehensive coverage
     - _Requirements: 8.10, 6.5, 7.1_
 
-- [ ] 15. Remove deprecated deterministic mnemonic functionality
-  - [ ] 15.1 Clean up deterministic mnemonic code
+- [ ] 14. Remove deprecated deterministic mnemonic functionality
+  - [ ] 14.1 Clean up deterministic mnemonic code
     - Remove GenerateDeterministicMnemonic function
     - Remove related validation functions
     - Update any remaining references to deterministic mnemonics
     - Clean up unused imports and dependencies
     - _Requirements: 2.1, 2.2_
 
-  - [ ] 15.2 Update documentation and comments
+  - [ ] 14.2 Update documentation and comments
     - Remove references to deterministic mnemonic generation
     - Update code comments to reflect new import logic
     - Add documentation for new duplicate detection approach

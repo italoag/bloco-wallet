@@ -103,8 +103,18 @@ func (ws *WalletService) CreateWallet(name, password string) (*WalletDetails, er
 }
 
 func (ws *WalletService) ImportWallet(name, mnemonic, password string) (*WalletDetails, error) {
+	// 5.2 Validate mnemonic before any processing
 	if !bip39.IsMnemonicValid(mnemonic) {
-		return nil, fmt.Errorf("invalid mnemonic phrase")
+		return nil, NewInvalidImportDataError(string(ImportMethodMnemonic), "Invalid mnemonic phrase")
+	}
+
+	// 5.1 Generate source hash and check duplicates by mnemonic-based source
+	hashGen := &SourceHashGenerator{}
+	sourceHash := hashGen.GenerateFromMnemonic(mnemonic)
+	if existingWallet, err := ws.Repo.FindBySourceHash(sourceHash); err == nil && existingWallet != nil {
+		return nil, NewDuplicateWalletError(string(ImportMethodMnemonic), existingWallet.Address, "A wallet with this mnemonic phrase already exists")
+	} else if err != nil {
+		return nil, err
 	}
 
 	privateKeyHex, err := DerivePrivateKey(mnemonic)
@@ -162,26 +172,33 @@ func (ws *WalletService) ImportWallet(name, mnemonic, password string) (*WalletD
 }
 
 func (ws *WalletService) ImportWalletFromPrivateKey(name, privateKeyHex, password string) (*WalletDetails, error) {
-	// Remove "0x" prefix if present
-	if len(privateKeyHex) > 2 && privateKeyHex[:2] == "0x" {
+	// Normalize: remove 0x prefix if present
+	if len(privateKeyHex) > 2 && (privateKeyHex[:2] == "0x" || privateKeyHex[:2] == "0X") {
 		privateKeyHex = privateKeyHex[2:]
 	}
 
-	// Validate private key format
+	// 6.3 Validate private key format before processing
 	if len(privateKeyHex) != 64 {
-		return nil, fmt.Errorf("invalid private key format")
+		return nil, NewInvalidImportDataError(string(ImportMethodPrivateKey), "Invalid private key format")
+	}
+	// ensure hex characters decode
+	if _, err := hex.DecodeString(privateKeyHex); err != nil {
+		return nil, NewInvalidImportDataError(string(ImportMethodPrivateKey), "Invalid private key format")
+	}
+
+	// 6.2 Duplicate detection by source hash (private key)
+	hashGen := &SourceHashGenerator{}
+	sourceHash := hashGen.GenerateFromPrivateKey(privateKeyHex)
+	if existingWallet, err := ws.Repo.FindBySourceHash(sourceHash); err == nil && existingWallet != nil {
+		return nil, NewDuplicateWalletError(string(ImportMethodPrivateKey), existingWallet.Address, "A wallet with this private key already exists")
+	} else if err != nil {
+		return nil, err
 	}
 
 	// Convert hex to ECDSA private key
 	privKey, err := HexToECDSA(privateKeyHex)
 	if err != nil {
-		return nil, fmt.Errorf("invalid private key: %v", err)
-	}
-
-	// Generate a deterministic mnemonic from private key
-	mnemonic, err := GenerateDeterministicMnemonic(privKey)
-	if err != nil {
-		return nil, fmt.Errorf("error generating deterministic mnemonic: %v", err)
+		return nil, NewInvalidImportDataError(string(ImportMethodPrivateKey), "Invalid private key format")
 	}
 
 	// Import the private key to keystore
@@ -194,43 +211,39 @@ func (ws *WalletService) ImportWalletFromPrivateKey(name, privateKeyHex, passwor
 	originalPath := account.URL.Path
 	newFilename := fmt.Sprintf("%s.json", account.Address.Hex())
 	newPath := filepath.Join(filepath.Dir(originalPath), newFilename)
-	err = os.Rename(originalPath, newPath)
-	if err != nil {
+	if err = os.Rename(originalPath, newPath); err != nil {
 		return nil, fmt.Errorf("error renaming the wallet file: %v", err)
 	}
 
-	// Encrypt the mnemonic before storing
-	encryptedMnemonic, err := EncryptMnemonic(mnemonic, password)
-	if err != nil {
-		return nil, fmt.Errorf("failed to encrypt mnemonic: %v", err)
+	// 6.1 Mnemonic must be unavailable for private key imports
+	var nilMnemonic *string = nil
+
+	// Create the wallet entry without mnemonic
+	wallet := &Wallet{
+		Name:         name,
+		Address:      account.Address.Hex(),
+		KeyStorePath: newPath,
+		Mnemonic:     nilMnemonic, // No mnemonic stored for private key imports
+		ImportMethod: string(ImportMethodPrivateKey),
+		SourceHash:   sourceHash,
 	}
 
- // Create the wallet entry with the encrypted mnemonic
- wallet := &Wallet{
- 	Name:         name,
- 	Address:      account.Address.Hex(),
- 	KeyStorePath: newPath,
- 	Mnemonic:     &encryptedMnemonic, // Store the encrypted mnemonic
- 	ImportMethod: string(ImportMethodPrivateKey),
- 	SourceHash:   (&SourceHashGenerator{}).GenerateFromPrivateKey(privateKeyHex),
- }
+	// Add wallet to repository
+	if err = ws.Repo.AddWallet(wallet); err != nil {
+		return nil, err
+	}
 
- // Add wallet to repository
- if err = ws.Repo.AddWallet(wallet); err != nil {
- 	return nil, err
- }
+	// Return wallet details without mnemonic
+	walletDetails := &WalletDetails{
+		Wallet:       wallet,
+		Mnemonic:     nil,
+		PrivateKey:   privKey,
+		PublicKey:    &privKey.PublicKey,
+		ImportMethod: ImportMethodPrivateKey,
+		HasMnemonic:  false,
+	}
 
- // Return wallet details with the generated mnemonic
- walletDetails := &WalletDetails{
- 	Wallet:       wallet,
- 	Mnemonic:     &mnemonic,
- 	PrivateKey:   privKey,
- 	PublicKey:    &privKey.PublicKey,
- 	ImportMethod: ImportMethodPrivateKey,
- 	HasMnemonic:  true,
- }
-
- return walletDetails, nil
+	return walletDetails, nil
 }
 
 // ImportWalletFromKeystoreV3 imports a wallet from a keystore v3 file with Universal KDF support
