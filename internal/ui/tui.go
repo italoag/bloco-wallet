@@ -864,7 +864,14 @@ func (m *CLIModel) updateImportWalletPassword(msg tea.Msg) (tea.Model, tea.Cmd) 
 
 					m.err = errors.Wrap(fmt.Errorf("%s\n%s", localizedMsg, recoverySuggestion), 0)
 				} else {
-					m.err = errors.Wrap(err, 0)
+					// Detect duplicate wallet conflicts and show context-aware localized message
+					if dupErr, ok := err.(*wallet.DuplicateWalletError); ok {
+						// Use the conflict type as both the import method context and conflict type when unknown
+						formatted := localization.FormatDuplicateImportError(dupErr.Type, dupErr.Type, dupErr.Address)
+						m.err = errors.Wrap(fmt.Errorf(formatted), 0)
+					} else {
+						m.err = errors.Wrap(err, 0)
+					}
 				}
 
 				log.Println(m.err.(*errors.Error).ErrorStack())

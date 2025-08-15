@@ -168,14 +168,14 @@
     - Write tests for migration scenarios
     - _Requirements: 3.5, 6.4_
 
-- [ ] 12. Update UI components and user feedback
-  - [ ] 12.1 Update wallet display logic
+- [x] 12. Update UI components and user feedback
+  - [x] 12.1 Update wallet display logic
     - Show "Mnemonic not available" for private key imports
     - Display import method in wallet details
     - Add conditional mnemonic export options
     - _Requirements: 5.1, 5.2, 5.5_
 
-  - [ ] 12.2 Enhance error display in UI
+  - [x] 12.2 Enhance error display in UI
     - Show specific error messages for different conflict types
     - Provide clear guidance for resolving import issues
     - Update help text to explain import method differences
