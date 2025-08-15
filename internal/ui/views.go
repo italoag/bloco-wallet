@@ -187,7 +187,7 @@ func (m *CLIModel) renderStatusBar() string {
 	// Center part: Current view and shortcut keys
 	var centerContent string
 	if m.currentView == constants.ListWalletsView {
-		// Special case for wallet list view to include delete instruction
+		// Special case for the wallet list view to include delete instruction
 		centerContent = fmt.Sprintf("View: %s | Press 'd' to delete | Press 'esc' to return | Press 'q' to quit", viewName)
 	} else {
 		centerContent = fmt.Sprintf("View: %s | Press 'esc' to return | Press 'q' to quit", viewName)
