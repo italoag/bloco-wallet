@@ -6,29 +6,29 @@
   - Create enhanced error types for duplicate detection
   - _Requirements: 3.1, 3.2, 5.4_
 
-- [ ] 2. Update Wallet model structure
-  - [ ] 2.1 Modify Wallet struct to support new fields
+- [x] 2. Update Wallet model structure
+  - [x] 2.1 Modify Wallet struct to support new fields
     - Make Mnemonic field nullable (*string)
     - Add ImportMethod field with validation
     - Add SourceHash field with unique constraint
     - Remove unique constraint from Address field
     - _Requirements: 3.1, 3.2, 3.3_
 
-  - [ ] 2.2 Update WalletDetails struct
+  - [x] 2.2 Update WalletDetails struct
     - Add ImportMethod field to WalletDetails
     - Add HasMnemonic boolean helper field
     - Make Mnemonic field nullable in WalletDetails
     - _Requirements: 3.1, 5.1, 5.2_
 
-- [ ] 3. Implement source hash generation logic
-  - [ ] 3.1 Create SourceHashGenerator with hash methods
-    - Implement GenerateFromMnemonic method using SHA-256
-    - Implement GenerateFromPrivateKey method using SHA-256
-    - Implement GenerateFromKeystore method using SHA-256
+- [x] 3. Implement source hash generation logic
+  - [x] 3.1 Create SourceHashGenerator with hash methods
+    - Implement GenerateFromMnemonic method using kecak256, SHA-256 or sha3-256, what fits better
+    - Implement GenerateFromPrivateKey method using kecak256, SHA-256 or sha3-256, what fits better
+    - Implement GenerateFromKeystore method using kecak256, SHA-256 or sha3-256, what fits better
     - Write unit tests for hash generation consistency
     - _Requirements: 4.1, 4.2, 6.3_
 
-  - [ ] 3.2 Add hash validation and collision handling
+  - [x] 3.2 Add hash validation and collision handling
     - Implement hash uniqueness validation
     - Add error handling for hash collisions
     - Write tests for edge cases in hash generation
