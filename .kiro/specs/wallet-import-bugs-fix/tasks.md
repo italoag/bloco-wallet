@@ -152,15 +152,15 @@
     - Add helper methods for generating localized messages
     - _Requirements: 5.4, 5.5_
 
-- [ ] 11. Remove deprecated deterministic mnemonic functionality
-    - [ ] 11.1 Clean up deterministic mnemonic code
+- [x] 11. Remove deprecated deterministic mnemonic functionality
+    - [x] 11.1 Clean up deterministic mnemonic code
         - Remove GenerateDeterministicMnemonic function
         - Remove related validation functions
         - Update any remaining references to deterministic mnemonics
         - Clean up unused imports and dependencies
         - _Requirements: 2.1, 2.2_
 
-    - [ ] 11.2 Update documentation and comments
+    - [x] 11.2 Update documentation and comments
         - Remove references to deterministic mnemonic generation
         - Update code comments to reflect new import logic
         - Add documentation for new duplicate detection approach

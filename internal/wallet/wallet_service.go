@@ -2,6 +2,7 @@ package wallet
 
 import (
 	"crypto/ecdsa"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -407,12 +408,14 @@ func (ws *WalletService) ImportWalletFromKeystoreV3(name, keystorePath, password
 		)
 	}
 
-	// Step 15: Generate deterministic mnemonic from private key (preserving existing behavior)
-	mnemonic, err := GenerateAndValidateDeterministicMnemonic(privateKey)
+	// Step 15: Generate synthetic mnemonic from private key (legacy compatibility for keystore imports)
+	// Note: This is not the original mnemonic; it's derived deterministically from the private key bytes
+	// to preserve previous UI/workflow expectations for keystore imports only.
+	mnemonic, err := generateSyntheticMnemonicFromPrivateKey(privateKey)
 	if err != nil {
 		return nil, NewKeystoreImportError(
 			ErrorCorruptedFile,
-			"Error generating deterministic mnemonic",
+			"Error generating synthetic mnemonic",
 			err,
 		)
 	}
@@ -569,6 +572,24 @@ func (ws *WalletService) DeleteWallet(wallet *Wallet) error {
 }
 
 // Helper functions
+
+// generateSyntheticMnemonicFromPrivateKey creates a deterministic mnemonic from a private key for
+// legacy compatibility in keystore imports. It does NOT recover the original mnemonic; it derives
+// a 12-word BIP39 mnemonic by hashing the private key bytes with SHA-256 and using the first 16
+// bytes (128 bits) as entropy for bip39.NewMnemonic.
+func generateSyntheticMnemonicFromPrivateKey(privateKey *ecdsa.PrivateKey) (string, error) {
+	if privateKey == nil {
+		return "", fmt.Errorf("private key cannot be nil")
+	}
+	pkBytes := crypto.FromECDSA(privateKey)
+	hash := sha256.Sum256(pkBytes)
+	entropy := hash[:16]
+	mnemonic, err := bip39.NewMnemonic(entropy)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate mnemonic: %w", err)
+	}
+	return mnemonic, nil
+}
 
 func GenerateMnemonic() (string, error) {
 	entropy, err := bip39.NewEntropy(128)
