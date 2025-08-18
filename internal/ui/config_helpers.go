@@ -67,6 +67,41 @@ func addNetworkWithClassification(network config.Network) error {
 	return nm.AddNetwork(network)
 }
 
+// addNetworkWithClassificationInfo adds a network and returns classification information
+func addNetworkWithClassificationInfo(network config.Network) (*NetworkClassificationInfo, error) {
+	nm := getNetworkManager()
+
+	// Get classification information before adding
+	classification, err := nm.classificationService.ClassifyNetwork(int(network.ChainID), network.Name, network.RPCEndpoint)
+	if err != nil {
+		return nil, fmt.Errorf("failed to classify network: %w", err)
+	}
+
+	// Add the network
+	err = nm.AddNetwork(network)
+	if err != nil {
+		return nil, err
+	}
+
+	// Return classification info
+	return &NetworkClassificationInfo{
+		Type:        classification.Type,
+		IsValidated: classification.IsValidated,
+		Source:      classification.Source,
+		Key:         classification.Key,
+		ChainInfo:   classification.ChainInfo,
+	}, nil
+}
+
+// NetworkClassificationInfo contains information about network classification
+type NetworkClassificationInfo struct {
+	Type        blockchain.NetworkType `json:"type"`
+	IsValidated bool                   `json:"is_validated"`
+	Source      string                 `json:"source"`
+	Key         string                 `json:"key"`
+	ChainInfo   *blockchain.ChainInfo  `json:"chain_info,omitempty"`
+}
+
 // removeNetworkWithManager removes a network using the NetworkManager
 func removeNetworkWithManager(key string) error {
 	nm := getNetworkManager()

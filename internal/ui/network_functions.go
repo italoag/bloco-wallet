@@ -1,11 +1,13 @@
 package ui
 
 import (
+	"blocowallet/internal/blockchain"
 	"blocowallet/internal/constants"
 	"blocowallet/pkg/config"
 	"blocowallet/pkg/localization"
 	"fmt"
 	"strconv"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -263,20 +265,65 @@ func (m *CLIModel) updateAddNetwork(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+		// Validate required fields
+		if strings.TrimSpace(msg.Name) == "" {
+			m.addNetworkComponent.SetError(fmt.Errorf("network name cannot be empty"))
+			return m, nil
+		}
+
+		if strings.TrimSpace(msg.RPCEndpoint) == "" {
+			m.addNetworkComponent.SetError(fmt.Errorf("RPC endpoint cannot be empty"))
+			return m, nil
+		}
+
+		if strings.TrimSpace(msg.Symbol) == "" {
+			m.addNetworkComponent.SetError(fmt.Errorf("symbol cannot be empty"))
+			return m, nil
+		}
+
 		// Create network configuration
 		network := config.Network{
-			Name:        msg.Name,
-			RPCEndpoint: msg.RPCEndpoint,
+			Name:        strings.TrimSpace(msg.Name),
+			RPCEndpoint: strings.TrimSpace(msg.RPCEndpoint),
 			ChainID:     chainID,
-			Symbol:      msg.Symbol,
+			Symbol:      strings.TrimSpace(msg.Symbol),
 			IsActive:    true,
 		}
 
-		// Add the network using NetworkManager (with automatic classification)
-		err = addNetworkWithClassification(network)
+		// Get the network manager to perform classification and validation
+		nm := getNetworkManager()
+
+		// First, validate the network configuration
+		if err := nm.ValidateNetwork(network); err != nil {
+			m.addNetworkComponent.SetError(fmt.Errorf("network validation failed: %v", err))
+			return m, nil
+		}
+
+		// Add the network using NetworkManager with classification info
+		classificationInfo, err := addNetworkWithClassificationInfo(network)
 		if err != nil {
 			m.addNetworkComponent.SetError(fmt.Errorf("failed to add network: %v", err))
 			return m, nil
+		}
+
+		// Provide user feedback about the classification
+		var feedbackMsg string
+		switch classificationInfo.Type {
+		case blockchain.NetworkTypeStandard:
+			if classificationInfo.ChainInfo != nil {
+				feedbackMsg = fmt.Sprintf("Network added successfully as standard network (found in ChainList: %s)", classificationInfo.ChainInfo.Name)
+			} else {
+				feedbackMsg = "Network added successfully as standard network"
+			}
+		case blockchain.NetworkTypeCustom:
+			feedbackMsg = "Network added successfully as custom network (not found in ChainList)"
+		default:
+			feedbackMsg = "Network added successfully"
+		}
+
+		// Set success message (if the component supports it)
+		if setter, ok := interface{}(m.addNetworkComponent).(interface{ SetSuccessMessage(string) }); ok {
+			setter.SetSuccessMessage(feedbackMsg)
 		}
 
 		// Reload configuration to get the updated networks
