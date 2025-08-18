@@ -1,78 +1,98 @@
 package ui
 
 import (
+	"blocowallet/internal/blockchain"
 	"blocowallet/pkg/config"
 	"fmt"
-	"os"
-	"path/filepath"
-
-	"github.com/spf13/viper"
 )
 
-// loadOrCreateConfig loads the configuration from the specified directory
-// or creates a new one if it doesn't exist
-func loadOrCreateConfig(appDir string) (*config.Config, error) {
-	// Try to load the existing configuration
-	cfg, err := config.LoadConfig(appDir)
+// Global configuration manager instance
+var globalConfigManager *config.ConfigurationManager
+
+// Global network manager instance
+var globalNetworkManager *NetworkManager
+
+// getConfigurationManager returns the global configuration manager instance
+func getConfigurationManager() *config.ConfigurationManager {
+	if globalConfigManager == nil {
+		globalConfigManager = config.NewConfigurationManager()
+	}
+	return globalConfigManager
+}
+
+// loadOrCreateConfig loads the configuration using the ConfigurationManager
+func loadOrCreateConfig() (*config.Config, error) {
+	cm := getConfigurationManager()
+	cfg, err := cm.LoadConfiguration()
 	if err != nil {
-		// If the configuration doesn't exist, create a new one
-		if os.IsNotExist(err) {
-			// Create the directory if it doesn't exist
-			if err := os.MkdirAll(appDir, os.ModePerm); err != nil {
-				return nil, fmt.Errorf("failed to create config directory: %w", err)
-			}
-
-			// Create a new configuration
-			cfg = &config.Config{
-				AppDir:     appDir,
-				Language:   "en",
-				WalletsDir: filepath.Join(appDir, "wallets"),
-				Networks:   make(map[string]config.Network),
-			}
-
-			// Save the configuration
-			configPath := filepath.Join(appDir, "config.toml")
-			v := viper.New()
-			v.SetConfigFile(configPath)
-
-			// Set the configuration values
-			v.Set("app.language", cfg.Language)
-			v.Set("app.app_dir", cfg.AppDir)
-			v.Set("app.wallets_dir", cfg.WalletsDir)
-
-			// Write the configuration to file
-			if err := v.WriteConfigAs(configPath); err != nil {
-				return nil, fmt.Errorf("failed to write config file: %w", err)
-			}
-
-			return cfg, nil
-		}
-
 		return nil, fmt.Errorf("failed to load configuration: %w", err)
 	}
-
 	return cfg, nil
 }
 
 // updateLanguageInConfig updates the language in the configuration file
-func updateLanguageInConfig(configPath string, language string) error {
-	// Create a new Viper instance
-	v := viper.New()
-	v.SetConfigFile(configPath)
+func updateLanguageInConfig(language string) error {
+	cm := getConfigurationManager()
 
-	// Try to read the existing config
-	err := v.ReadInConfig()
+	// Load current configuration
+	cfg, err := cm.LoadConfiguration()
 	if err != nil {
-		return fmt.Errorf("failed to read config file: %w", err)
+		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
 	// Update the language
-	v.Set("app.language", language)
+	cfg.Language = language
 
-	// Write the updated config back to the file
-	if err := v.WriteConfig(); err != nil {
-		return fmt.Errorf("failed to write config file: %w", err)
+	// Save the updated configuration
+	if err := cm.SaveConfiguration(cfg); err != nil {
+		return fmt.Errorf("failed to save configuration: %w", err)
 	}
 
 	return nil
+}
+
+// getNetworkManager returns the global network manager instance
+func getNetworkManager() *NetworkManager {
+	if globalNetworkManager == nil {
+		configManager := getConfigurationManager()
+		chainListService := blockchain.NewChainListService()
+		globalNetworkManager = NewNetworkManager(configManager, chainListService)
+	}
+	return globalNetworkManager
+}
+
+// addNetworkWithClassification adds a network using the NetworkManager with automatic classification
+func addNetworkWithClassification(network config.Network) error {
+	nm := getNetworkManager()
+	return nm.AddNetwork(network)
+}
+
+// removeNetworkWithManager removes a network using the NetworkManager
+func removeNetworkWithManager(key string) error {
+	nm := getNetworkManager()
+	return nm.RemoveNetwork(key)
+}
+
+// loadNetworksWithManager loads networks using the NetworkManager
+func loadNetworksWithManager() (map[string]config.Network, error) {
+	nm := getNetworkManager()
+	return nm.LoadNetworks()
+}
+
+// getNetworkWithManager gets a specific network using the NetworkManager
+func getNetworkWithManager(key string) (*config.Network, error) {
+	nm := getNetworkManager()
+	return nm.GetNetwork(key)
+}
+
+// listNetworksWithClassification lists networks with their classification information
+func listNetworksWithClassification() (map[string]NetworkInfo, error) {
+	nm := getNetworkManager()
+	return nm.ListNetworks()
+}
+
+// migrateExistingNetworks migrates existing networks to the new classification system
+func migrateExistingNetworks() error {
+	nm := getNetworkManager()
+	return nm.MigrateExistingNetworks()
 }

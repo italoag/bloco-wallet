@@ -5,37 +5,47 @@ import (
 	"blocowallet/pkg/config"
 	"blocowallet/pkg/localization"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strconv"
-	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
+
+// ensureConfigAndNetworksLoaded ensures that the current configuration and networks are loaded
+func (m *CLIModel) ensureConfigAndNetworksLoaded() error {
+	// Ensure currentConfig is initialized
+	if m.currentConfig == nil {
+		cfg, err := loadOrCreateConfig()
+		if err != nil {
+			return fmt.Errorf("failed to load configuration: %w", err)
+		}
+		m.currentConfig = cfg
+	}
+
+	// Ensure networks are properly loaded using NetworkManager
+	networks, err := loadNetworksWithManager()
+	if err != nil {
+		return fmt.Errorf("failed to load networks: %w", err)
+	}
+
+	// Update the current config with loaded networks
+	if m.currentConfig.Networks == nil {
+		m.currentConfig.Networks = make(map[string]config.Network)
+	}
+	m.currentConfig.Networks = networks
+
+	return nil
+}
 
 // initNetworkList initializes the network list view
 func (m *CLIModel) initNetworkList() {
 	// Initialize the network list component if it hasn't been initialized yet
 	m.networkListComponent = NewNetworkListComponent()
 
-	// Load the current configuration if it hasn't been loaded yet
-	if m.currentConfig == nil {
-		// Load the current configuration
-		appDir := filepath.Join(os.Getenv("HOME"), ".wallets")
-		cfg, err := config.LoadConfig(appDir)
-		if err != nil {
-			m.err = fmt.Errorf("failed to load configuration: %v", err)
-			m.currentView = constants.DefaultView
-			return
-		}
-
-		// Store the current configuration
-		m.currentConfig = cfg
-	}
-
-	// Initialize Networks map if it's nil
-	if m.currentConfig.Networks == nil {
-		m.currentConfig.Networks = make(map[string]config.Network)
+	// Ensure configuration and networks are loaded
+	if err := m.ensureConfigAndNetworksLoaded(); err != nil {
+		m.err = err
+		m.currentView = constants.DefaultView
+		return
 	}
 
 	// Update the network list with the current networks
@@ -50,24 +60,11 @@ func (m *CLIModel) initAddNetwork() {
 	// Initialize the add network component if it hasn't been initialized yet
 	m.addNetworkComponent = NewAddNetworkComponent()
 
-	// Load the current configuration if it hasn't been loaded yet
-	if m.currentConfig == nil {
-		// Load the current configuration
-		appDir := filepath.Join(os.Getenv("HOME"), ".wallets")
-		cfg, err := config.LoadConfig(appDir)
-		if err != nil {
-			m.err = fmt.Errorf("failed to load configuration: %v", err)
-			m.currentView = constants.DefaultView
-			return
-		}
-
-		// Store the current configuration
-		m.currentConfig = cfg
-	}
-
-	// Initialize Networks map if it's nil
-	if m.currentConfig.Networks == nil {
-		m.currentConfig.Networks = make(map[string]config.Network)
+	// Ensure configuration and networks are loaded
+	if err := m.ensureConfigAndNetworksLoaded(); err != nil {
+		m.err = err
+		m.currentView = constants.DefaultView
+		return
 	}
 
 	// Set the current view to the add network view
@@ -116,24 +113,14 @@ func (m *CLIModel) updateNetworkList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 
-			// Ensure currentConfig is initialized
-			if m.currentConfig == nil {
-				// Load the current configuration
-				appDir := filepath.Join(os.Getenv("HOME"), ".wallets")
-				cfg, err := config.LoadConfig(appDir)
-				if err != nil {
-					m.err = fmt.Errorf("failed to load configuration: %v", err)
-					m.currentView = constants.DefaultView
-					return m, nil
-				}
-
-				// Store the current configuration
-				m.currentConfig = cfg
+			// Ensure configuration and networks are loaded
+			if err := m.ensureConfigAndNetworksLoaded(); err != nil {
+				m.networkListComponent.SetError(fmt.Errorf("failed to load configuration: %v", err))
+				return m, nil
 			}
 
-			// Ensure Networks map is initialized
-			if m.currentConfig.Networks == nil {
-				m.currentConfig.Networks = make(map[string]config.Network)
+			// Check if we have networks
+			if len(m.currentConfig.Networks) == 0 {
 				m.networkListComponent.SetError(fmt.Errorf(localization.Labels["no_network_selected"]))
 				return m, nil
 			}
@@ -169,35 +156,28 @@ func (m *CLIModel) updateNetworkList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 
-			// Ensure currentConfig is initialized
-			if m.currentConfig == nil {
-				// Load the current configuration
-				appDir := filepath.Join(os.Getenv("HOME"), ".wallets")
-				cfg, err := config.LoadConfig(appDir)
-				if err != nil {
-					m.err = fmt.Errorf("failed to load configuration: %v", err)
-					m.currentView = constants.DefaultView
-					return m, nil
-				}
-
-				// Store the current configuration
-				m.currentConfig = cfg
+			// Ensure configuration and networks are loaded
+			if err := m.ensureConfigAndNetworksLoaded(); err != nil {
+				m.networkListComponent.SetError(fmt.Errorf("failed to load configuration: %v", err))
+				return m, nil
 			}
 
-			// Ensure Networks map is initialized
-			if m.currentConfig.Networks == nil {
-				m.currentConfig.Networks = make(map[string]config.Network)
+			// Check if we have networks
+			if len(m.currentConfig.Networks) == 0 {
 				m.networkListComponent.SetError(fmt.Errorf(localization.Labels["no_network_selected"]))
 				return m, nil
 			}
 
-			// Remove the network from the configuration
-			delete(m.currentConfig.Networks, key)
-
-			// Save the configuration to file
-			err := m.saveConfigToFile()
+			// Remove the network using NetworkManager
+			err := removeNetworkWithManager(key)
 			if err != nil {
-				m.networkListComponent.SetError(fmt.Errorf("falha ao salvar configuração: %v", err))
+				m.networkListComponent.SetError(fmt.Errorf("failed to remove network: %v", err))
+				return m, nil
+			}
+
+			// Reload configuration to get the updated networks
+			if err := m.ensureConfigAndNetworksLoaded(); err != nil {
+				m.networkListComponent.SetError(fmt.Errorf("failed to reload configuration: %v", err))
 				return m, nil
 			}
 
@@ -218,24 +198,11 @@ func (m *CLIModel) updateNetworkList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Return to the network list view
 		m.currentView = constants.NetworkListView
 
-		// Ensure currentConfig is initialized
-		if m.currentConfig == nil {
-			// Load the current configuration
-			appDir := filepath.Join(os.Getenv("HOME"), ".wallets")
-			cfg, err := config.LoadConfig(appDir)
-			if err != nil {
-				m.err = fmt.Errorf("failed to load configuration: %v", err)
-				m.currentView = constants.DefaultView
-				return m, nil
-			}
-
-			// Store the current configuration
-			m.currentConfig = cfg
-		}
-
-		// Ensure Networks map is initialized
-		if m.currentConfig.Networks == nil {
-			m.currentConfig.Networks = make(map[string]config.Network)
+		// Ensure configuration and networks are loaded
+		if err := m.ensureConfigAndNetworksLoaded(); err != nil {
+			m.err = fmt.Errorf("failed to load configuration: %v", err)
+			m.currentView = constants.DefaultView
+			return m, nil
 		}
 
 		// Update the network list
@@ -251,109 +218,27 @@ func (m *CLIModel) updateNetworkList(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-// saveConfigToFile saves the current configuration to the config file
+// saveConfigToFile saves the current configuration to the config file using ConfigurationManager
 func (m *CLIModel) saveConfigToFile() error {
 	if m.currentConfig == nil {
 		return fmt.Errorf("no configuration to save")
 	}
 
-	// Get the config file path
-	configPath := filepath.Join(m.currentConfig.AppDir, "config.toml")
+	// Get the ConfigurationManager
+	cm := getConfigurationManager()
 
-	// Create backup of existing config if it exists
-	if _, err := os.Stat(configPath); err == nil {
-		backupPath := configPath + ".bak"
-		if err := copyFile(configPath, backupPath); err != nil {
-			return fmt.Errorf("failed to create backup: %w", err)
+	// If the ConfigurationManager hasn't been loaded yet, load it first
+	if cm.GetConfigPath() == "" {
+		// Try to load the configuration to initialize the ConfigurationManager
+		_, err := cm.LoadConfiguration()
+		if err != nil {
+			return fmt.Errorf("failed to initialize configuration manager: %w", err)
 		}
 	}
 
-	// Ensure the directory exists
-	dir := filepath.Dir(configPath)
-	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
-		return fmt.Errorf("failed to create config directory: %w", err)
-	}
-
-	// Criar o conteúdo do arquivo TOML manualmente
-	var sb strings.Builder
-
-	// Seção [app]
-	sb.WriteString("[app]\n")
-	sb.WriteString(fmt.Sprintf("language = %q\n", m.currentConfig.Language))
-	sb.WriteString(fmt.Sprintf("app_dir = %q\n", m.currentConfig.AppDir))
-	sb.WriteString(fmt.Sprintf("wallets_dir = %q\n", m.currentConfig.WalletsDir))
-	sb.WriteString(fmt.Sprintf("database_path = %q\n", m.currentConfig.DatabasePath))
-	sb.WriteString(fmt.Sprintf("locale_dir = %q\n", m.currentConfig.LocaleDir))
-	sb.WriteString("\n")
-
-	// Seção [database]
-	sb.WriteString("[database]\n")
-	sb.WriteString(fmt.Sprintf("type = %q\n", m.currentConfig.Database.Type))
-	sb.WriteString(fmt.Sprintf("dsn = %q\n", m.currentConfig.Database.DSN))
-	sb.WriteString("\n")
-
-	// Seção [security]
-	sb.WriteString("[security]\n")
-	sb.WriteString(fmt.Sprintf("argon2_time = %d\n", m.currentConfig.Security.Argon2Time))
-	sb.WriteString(fmt.Sprintf("argon2_memory = %d\n", m.currentConfig.Security.Argon2Memory))
-	sb.WriteString(fmt.Sprintf("argon2_threads = %d\n", m.currentConfig.Security.Argon2Threads))
-	sb.WriteString(fmt.Sprintf("argon2_key_len = %d\n", m.currentConfig.Security.Argon2KeyLen))
-	sb.WriteString(fmt.Sprintf("salt_length = %d\n", m.currentConfig.Security.SaltLength))
-	sb.WriteString("\n")
-
-	// Seção [fonts]
-	sb.WriteString("[fonts]\n")
-	sb.WriteString("available = [")
-	for i, font := range m.currentConfig.Fonts {
-		if i > 0 {
-			sb.WriteString(", ")
-		}
-		sb.WriteString(fmt.Sprintf("%q", font))
-	}
-	sb.WriteString("]\n\n")
-
-	// Seção [networks]
-	if len(m.currentConfig.Networks) > 0 {
-		sb.WriteString("[networks]\n")
-
-		// Adicionar cada rede como uma subseção
-		first := true
-		for key, network := range m.currentConfig.Networks {
-			if !first {
-				sb.WriteString("\n")
-			}
-			first = false
-
-			// Sanitizar a chave para garantir que seja válida para TOML
-			sanitizedKey := sanitizeNetworkKey(key)
-
-			sb.WriteString(fmt.Sprintf("[networks.%s]\n", sanitizedKey))
-			sb.WriteString(fmt.Sprintf("name = %q\n", network.Name))
-			sb.WriteString(fmt.Sprintf("rpc_endpoint = %q\n", network.RPCEndpoint))
-			sb.WriteString(fmt.Sprintf("chain_id = %d\n", network.ChainID))
-			sb.WriteString(fmt.Sprintf("symbol = %q\n", network.Symbol))
-			sb.WriteString(fmt.Sprintf("explorer = %q\n", network.Explorer))
-			sb.WriteString(fmt.Sprintf("is_active = %t\n", network.IsActive))
-		}
-	}
-
-	// Escrever o conteúdo no arquivo
-	err := os.WriteFile(configPath, []byte(sb.String()), 0644)
-	if err != nil {
-		return fmt.Errorf("failed to write config file: %w", err)
-	}
-
-	// Validar o arquivo após a escrita
-	_, err = config.LoadConfig(m.currentConfig.AppDir)
-	if err != nil {
-		// Se houver erro na validação, restaurar o backup
-		backupPath := configPath + ".bak"
-		if _, statErr := os.Stat(backupPath); statErr == nil {
-			if restoreErr := copyFile(backupPath, configPath); restoreErr != nil {
-				return fmt.Errorf("failed to validate config and restore backup: %w (original error: %v)", restoreErr, err)
-			}
-		}
-		return fmt.Errorf("failed to validate config file: %w", err)
+	// Save the configuration
+	if err := cm.SaveConfiguration(m.currentConfig); err != nil {
+		return fmt.Errorf("failed to save configuration: %w", err)
 	}
 
 	return nil
@@ -371,46 +256,15 @@ func (m *CLIModel) updateAddNetwork(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.currentView = constants.NetworkMenuView
 		return m, nil
 	case AddNetworkRequestMsg:
-		// Add the network to the configuration
+		// Parse and validate chain ID
 		chainID, err := strconv.ParseInt(msg.ChainID, 10, 64)
 		if err != nil {
 			m.addNetworkComponent.SetError(fmt.Errorf(localization.Labels["invalid_chain_id"]))
 			return m, nil
 		}
 
-		// Create a unique key for the network
-		// Replace spaces and special characters with underscores to create a valid TOML key
-		sanitizedName := strings.ReplaceAll(msg.Name, " ", "_")
-		sanitizedName = strings.Map(func(r rune) rune {
-			if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' {
-				return r
-			}
-			return '_'
-		}, sanitizedName)
-		key := fmt.Sprintf("custom_%s_%d", sanitizedName, chainID)
-
-		// Ensure currentConfig is initialized
-		if m.currentConfig == nil {
-			// Load the current configuration
-			appDir := filepath.Join(os.Getenv("HOME"), ".wallets")
-			cfg, err := config.LoadConfig(appDir)
-			if err != nil {
-				m.err = fmt.Errorf("failed to load configuration: %v", err)
-				m.currentView = constants.DefaultView
-				return m, nil
-			}
-
-			// Store the current configuration
-			m.currentConfig = cfg
-		}
-
-		// Ensure Networks map is initialized
-		if m.currentConfig.Networks == nil {
-			m.currentConfig.Networks = make(map[string]config.Network)
-		}
-
-		// Add the network to the configuration
-		m.currentConfig.Networks[key] = config.Network{
+		// Create network configuration
+		network := config.Network{
 			Name:        msg.Name,
 			RPCEndpoint: msg.RPCEndpoint,
 			ChainID:     chainID,
@@ -418,16 +272,22 @@ func (m *CLIModel) updateAddNetwork(msg tea.Msg) (tea.Model, tea.Cmd) {
 			IsActive:    true,
 		}
 
+		// Add the network using NetworkManager (with automatic classification)
+		err = addNetworkWithClassification(network)
+		if err != nil {
+			m.addNetworkComponent.SetError(fmt.Errorf("failed to add network: %v", err))
+			return m, nil
+		}
+
+		// Reload configuration to get the updated networks
+		if err := m.ensureConfigAndNetworksLoaded(); err != nil {
+			m.addNetworkComponent.SetError(fmt.Errorf("failed to reload configuration: %v", err))
+			return m, nil
+		}
+
 		// Initialize the network list component if it hasn't been initialized yet
 		if m.networkListComponent.table.Rows() == nil {
 			m.networkListComponent = NewNetworkListComponent()
-		}
-
-		// Save the configuration to file
-		err = m.saveConfigToFile()
-		if err != nil {
-			m.addNetworkComponent.SetError(fmt.Errorf("failed to save configuration: %v", err))
-			return m, nil
 		}
 
 		// Update the network list
