@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	logFileName        = "blocowallet.log"
+	logFileName        = "bloco_wallet.log"
 	logFilePermissions = 0666
 )
 
@@ -39,7 +39,7 @@ func main() {
 		handleError("Erro ao obter o diretório home do usuário", err)
 	}
 
-	appDir := filepath.Join(homeDir, ".wallets")
+	appDir := filepath.Join(homeDir, ".bloco")
 
 	// Garantir que o diretório base exista
 	if _, err := os.Stat(appDir); os.IsNotExist(err) {
@@ -63,14 +63,13 @@ func main() {
 
 	// Set version from build info
 	if info, ok := debug.ReadBuildInfo(); ok {
-		version := "0.1.0" // Default version if not found
+		version := "0.2.0"
 
 		// Try to find a version from build info
 		for _, setting := range info.Settings {
 			if strings.HasPrefix(setting.Key, "vcs.revision") {
-				// Use first 7 characters of commit hash
 				if len(setting.Value) >= 7 {
-					version = "0.2.0" // Use semantic versioning
+					version = "0.2.0"
 					break
 				}
 			}
