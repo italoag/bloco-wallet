@@ -20,6 +20,9 @@ type NetworkListComponent struct {
 	table  table.Model
 	err    error
 
+	// Cached classification info to avoid network calls during View rendering
+	networksInfo map[string]NetworkInfo
+
 	// Network service
 	chainListService *blockchain.ChainListService
 }
@@ -29,6 +32,7 @@ func NewNetworkListComponent() NetworkListComponent {
 	c := NetworkListComponent{
 		id:               "network-list",
 		chainListService: blockchain.NewChainListService(),
+		networksInfo:     make(map[string]NetworkInfo),
 	}
 	c.initTable()
 	return c
@@ -96,13 +100,15 @@ func (c *NetworkListComponent) UpdateNetworks(cfg *config.Config) {
 		return
 	}
 
-	// Get network manager to retrieve classification information
+	// Get network manager to retrieve classification information (once)
 	nm := getNetworkManager()
 	networksWithInfo, err := nm.ListNetworks()
 	if err != nil {
 		c.SetError(fmt.Errorf("failed to load network information: %v", err))
 		return
 	}
+	// Cache to avoid repeated network calls during table navigation/render
+	c.networksInfo = networksWithInfo
 
 	var rows []table.Row
 
@@ -172,14 +178,11 @@ func (c *NetworkListComponent) GetSelectedNetworkInfo() (*NetworkInfo, error) {
 		return nil, fmt.Errorf("no network selected")
 	}
 
-	nm := getNetworkManager()
-	networksWithInfo, err := nm.ListNetworks()
-	if err != nil {
-		return nil, fmt.Errorf("failed to load network information: %v", err)
-	}
-
-	if networkInfo, exists := networksWithInfo[key]; exists {
-		return &networkInfo, nil
+	// Use cached info to avoid network calls during navigation/render
+	if c.networksInfo != nil {
+		if networkInfo, exists := c.networksInfo[key]; exists {
+			return &networkInfo, nil
+		}
 	}
 
 	return nil, fmt.Errorf("network information not found")

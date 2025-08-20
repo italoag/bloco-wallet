@@ -656,7 +656,7 @@ func (m *CLIModel) renderWalletBalances() string {
 	balanceView.WriteString(lipgloss.NewStyle().Bold(true).Render("Balance Information:\n"))
 
 	// Create a simple provider for Ethereum mainnet
-	ethProvider, err := blockchain.NewEthereum("https://eth.llamarpc.com", 30*time.Second, "ETH", 18, "Ethereum")
+ ethProvider, err := blockchain.NewEthereum("https://eth.llamarpc.com", 5*time.Second, "ETH", 18, "Ethereum")
 	if err != nil {
 		balanceView.WriteString("❌ Failed to connect to Ethereum network\n")
 		return balanceView.String()

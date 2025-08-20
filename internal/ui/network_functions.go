@@ -295,7 +295,7 @@ func (m *CLIModel) updateAddNetwork(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// First, validate the network configuration
 		if err := nm.ValidateNetwork(network); err != nil {
-			m.addNetworkComponent.SetError(fmt.Errorf("network validation failed: %v", err))
+			m.addNetworkComponent.SetError(fmt.Errorf("%s: %v", localization.Labels["network_validation_failed"], err))
 			return m, nil
 		}
 
@@ -317,6 +317,9 @@ func (m *CLIModel) updateAddNetwork(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case blockchain.NetworkTypeCustom:
 			feedbackMsg = "Network added successfully as custom network (not found in ChainList)"
+			if classificationInfo.Source == "manual_offline" {
+				feedbackMsg += " - " + localization.Labels["chainlist_unavailable_warning"]
+			}
 		default:
 			feedbackMsg = "Network added successfully"
 		}

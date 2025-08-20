@@ -3,6 +3,7 @@ package blockchain
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,6 +12,9 @@ import (
 	"sync"
 	"time"
 )
+
+// ErrChainlistUnavailable is returned when ChainList API cannot be reached or responds with an error
+var ErrChainlistUnavailable = errors.New("chainlist unavailable")
 
 // RPCEndpoint represents an RPC endpoint from ChainList API
 type RPCEndpoint struct {
@@ -77,7 +81,7 @@ func (s *ChainListService) GetChainInfo(chainID int) (*ChainInfo, error) {
 
 	resp, err := s.client.Get(url)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch chain list: %w", err)
+		return nil, fmt.Errorf("%w: failed to fetch chain list: %v", ErrChainlistUnavailable, err)
 	}
 	defer func(Body io.ReadCloser) {
 		err := Body.Close()
@@ -87,17 +91,17 @@ func (s *ChainListService) GetChainInfo(chainID int) (*ChainInfo, error) {
 	}(resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API request failed with status: %d", resp.StatusCode)
+		return nil, fmt.Errorf("%w: API request failed with status: %d", ErrChainlistUnavailable, resp.StatusCode)
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read response body: %w", err)
+		return nil, fmt.Errorf("%w: failed to read response body: %v", ErrChainlistUnavailable, err)
 	}
 
 	var chains []ChainInfo
 	if err := json.Unmarshal(body, &chains); err != nil {
-		return nil, fmt.Errorf("failed to parse JSON response: %w", err)
+		return nil, fmt.Errorf("%w: failed to parse JSON response: %v", ErrChainlistUnavailable, err)
 	}
 
 	// Find chain by ID
@@ -199,7 +203,7 @@ func (s *ChainListService) loadChains() error {
 	resp, err := s.client.Get(url)
 	if err != nil {
 		// Debug log removed
-		return fmt.Errorf("failed to fetch chain list: %w", err)
+		return fmt.Errorf("%w: failed to fetch chain list: %v", ErrChainlistUnavailable, err)
 	}
 	defer func(Body io.ReadCloser) {
 		err := Body.Close()
@@ -211,21 +215,21 @@ func (s *ChainListService) loadChains() error {
 
 	if resp.StatusCode != http.StatusOK {
 		// Debug log removed
-		return fmt.Errorf("API request failed with status: %d", resp.StatusCode)
+		return fmt.Errorf("%w: API request failed with status: %d", ErrChainlistUnavailable, resp.StatusCode)
 	}
 
 	// Debug log removed
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		// Debug log removed
-		return fmt.Errorf("failed to read response body: %w", err)
+		return fmt.Errorf("%w: failed to read response body: %v", ErrChainlistUnavailable, err)
 	}
 
 	// Debug log removed
 	var chains []ChainInfo
 	if err := json.Unmarshal(body, &chains); err != nil {
 		// Debug log removed
-		return fmt.Errorf("failed to parse JSON response: %w", err)
+		return fmt.Errorf("%w: failed to parse JSON response: %v", ErrChainlistUnavailable, err)
 	}
 
 	// Debug log removed

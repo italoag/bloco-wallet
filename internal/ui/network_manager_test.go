@@ -45,6 +45,14 @@ type MockChainListService struct {
 	mock.Mock
 }
 
+func (m *MockChainListService) GetChainInfo(chainID int) (*blockchain.ChainInfo, error) {
+	args := m.Called(chainID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*blockchain.ChainInfo), args.Error(1)
+}
+
 func (m *MockChainListService) GetChainInfoWithRetry(chainID int) (*blockchain.ChainInfo, string, error) {
 	args := m.Called(chainID)
 	if args.Get(0) == nil {
@@ -152,7 +160,7 @@ func TestNetworkManager_AddNetwork_Custom(t *testing.T) {
 	mockConfigManager.On("SaveConfiguration", mock.AnythingOfType("*config.Config")).Return(nil)
 
 	// Mock chainlist response - network not found (will be classified as custom)
-	mockChainListService.On("GetChainInfoWithRetry", 12345).Return(nil, "", assert.AnError)
+	mockChainListService.On("GetChainInfo", 12345).Return(nil, assert.AnError)
 
 	nm := NewNetworkManager(mockConfigManager, mockChainListService)
 
@@ -225,8 +233,8 @@ func TestNetworkManager_Integration(t *testing.T) {
 	// Create mock ChainListService
 	mockChainListService := &MockChainListService{}
 
-	// Mock chainlist response for custom network
-	mockChainListService.On("GetChainInfoWithRetry", 12345).Return(nil, "", assert.AnError)
+ // Mock chainlist response for custom network
+	mockChainListService.On("GetChainInfo", 12345).Return(nil, assert.AnError)
 
 	nm := NewNetworkManager(configManager, mockChainListService)
 

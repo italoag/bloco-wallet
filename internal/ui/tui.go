@@ -727,6 +727,10 @@ func (m *CLIModel) updateCreateWalletPassword(msg tea.Msg) (tea.Model, tea.Cmd) 
 				return m, nil
 			}
 			m.walletDetails = walletDetails
+			// Ensure networks/config are loaded for balances rendering
+			if err := m.ensureConfigAndNetworksLoaded(); err != nil {
+				// Non-fatal: continue even if networks fail to load
+			}
 			m.currentView = constants.WalletDetailsView
 
 			// Atualizar a contagem de wallets

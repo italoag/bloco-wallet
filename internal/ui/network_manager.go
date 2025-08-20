@@ -60,11 +60,12 @@ func (nm *NetworkManager) AddNetwork(network config.Network) error {
 		if network.Explorer == "" && len(classification.ChainInfo.Explorers) > 0 {
 			network.Explorer = classification.ChainInfo.Explorers[0].URL
 		}
-		// Use the working RPC endpoint if available
-		if classification.ChainInfo != nil {
-			_, workingRPC, err := nm.chainListService.GetChainInfoWithRetry(int(network.ChainID))
-			if err == nil && workingRPC != "" && network.RPCEndpoint == "" {
-				network.RPCEndpoint = workingRPC
+		// Use a suggested RPC endpoint if available (no probing to avoid delays)
+		if classification.ChainInfo != nil && network.RPCEndpoint == "" {
+			if info, err := nm.chainListService.GetChainInfo(int(network.ChainID)); err == nil {
+				if len(info.RPC) > 0 {
+					network.RPCEndpoint = info.RPC[0].URL
+				}
 			}
 		}
 	}
@@ -204,25 +205,23 @@ func (nm *NetworkManager) ListNetworks() (map[string]NetworkInfo, error) {
 	result := make(map[string]NetworkInfo)
 
 	for key, network := range networks {
-		// Classify existing network to get type information
-		classification, err := nm.classificationService.ClassifyExistingNetwork(key, int(network.ChainID), network.Name, network.RPCEndpoint)
-		if err != nil {
-			// If classification fails, treat as custom
-			classification = &blockchain.NetworkClassification{
-				Type:        blockchain.NetworkTypeCustom,
-				IsValidated: false,
-				ChainInfo:   nil,
-				Key:         key,
-				Source:      "manual",
-			}
+		// Lightweight classification by key prefix only (no network calls)
+		var nType blockchain.NetworkType
+		var source string
+		if nm.classificationService.IsNetworkStandard(key) {
+			nType = blockchain.NetworkTypeStandard
+			source = "chainlist"
+		} else {
+			nType = blockchain.NetworkTypeCustom
+			source = "manual"
 		}
 
 		result[key] = NetworkInfo{
 			Network:     network,
-			Type:        classification.Type,
-			IsValidated: classification.IsValidated,
-			Source:      classification.Source,
-			ChainInfo:   classification.ChainInfo,
+			Type:        nType,
+			IsValidated: false, // avoid slow validation during listing
+			Source:      source,
+			ChainInfo:   nil,
 		}
 	}
 
