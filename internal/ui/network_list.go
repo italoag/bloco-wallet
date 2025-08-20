@@ -41,7 +41,7 @@ func NewNetworkListComponent() NetworkListComponent {
 // initTable initializes the table with empty rows
 func (c *NetworkListComponent) initTable() {
 	columns := []table.Column{
-		{Title: "#", Width: 4},
+		{Title: "№", Width: 4},
 		{Title: localization.Labels["network_name"], Width: 18},
 		{Title: "Type", Width: 12},
 		{Title: localization.Labels["chain_id"], Width: 10},

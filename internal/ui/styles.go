@@ -29,9 +29,19 @@ type Styles struct {
 	DialogButtonActive lipgloss.Style
 	GreenCheck         lipgloss.Style
 	RedCross           lipgloss.Style
+	// New styles for wallet details panels (aligned with bloco-eth visual patterns)
+	Panel              lipgloss.Style
+	SectionTitle       lipgloss.Style
+	KVLabel            lipgloss.Style
+	KVValue            lipgloss.Style
+	BalancePanel       lipgloss.Style
 }
 
 func createStyles() Styles {
+	primary := lipgloss.Color("#7D56F4")
+	accent := lipgloss.Color("#04B575")
+	muted := lipgloss.Color("244")
+	light := lipgloss.Color("#F5F5F5")
 	return Styles{
 		Header: lipgloss.NewStyle().
 			Align(lipgloss.Left).
@@ -45,7 +55,7 @@ func createStyles() Styles {
 			Align(lipgloss.Left).
 			PaddingLeft(1).
 			PaddingRight(1).
-			Background(lipgloss.Color("#7D56F4")),
+			Background(primary),
 
 		TopStrip: lipgloss.NewStyle().Margin(1, constants.StyleMargin).Padding(0, constants.StyleMargin),
 		MenuItem: lipgloss.NewStyle().
@@ -72,7 +82,7 @@ func createStyles() Styles {
 			Margin(0, constants.StyleMargin).
 			Padding(0, constants.StyleMargin).
 			Width(constants.StyleWidth).
-			Foreground(lipgloss.Color("244")),
+			Foreground(muted),
 		ErrorStyle: lipgloss.NewStyle().
 			Padding(1, 2).
 			Margin(1, constants.StyleMargin).
@@ -90,7 +100,7 @@ func createStyles() Styles {
 		Splash: lipgloss.NewStyle().
 			Align(lipgloss.Center).Padding(1, 2),
 		StatusBarLeft: lipgloss.NewStyle().
-			Background(lipgloss.Color("#7D56F4")).
+			Background(primary).
 			PaddingLeft(1).
 			PaddingRight(1),
 		StatusBarCenter: lipgloss.NewStyle().
@@ -103,29 +113,47 @@ func createStyles() Styles {
 			PaddingRight(1),
 		Dialog: lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("#7D56F4")).
-			Foreground(lipgloss.Color("#F5F5F5")).
+			BorderForeground(primary).
+			Foreground(light).
 			Padding(1, 4).
 			Align(lipgloss.Center),
 		DialogButton: lipgloss.NewStyle().
 			Padding(0, 2).
 			Margin(0, 1).
 			Bold(true).
-			Foreground(lipgloss.Color("#7D56F4")).
-			Background(lipgloss.Color("#F5F5F5")).
+			Foreground(primary).
+			Background(light).
 			Border(lipgloss.HiddenBorder()).
-			BorderForeground(lipgloss.Color("#7D56F4")),
+			BorderForeground(primary),
 		DialogButtonActive: lipgloss.NewStyle().
 			Padding(0, 2).
 			Margin(0, 1).
 			Bold(true).
-			Foreground(lipgloss.Color("#F5F5F5")).
-			Background(lipgloss.Color("#7D56F4")).
+			Foreground(light).
+			Background(primary).
 			Border(lipgloss.HiddenBorder()).
-			BorderForeground(lipgloss.Color("#7D56F4")),
+			BorderForeground(primary),
 		GreenCheck: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("70")),
 		RedCross: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("1")),
+		// New styles inspired by bloco-eth
+		Panel: lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(primary).
+			Padding(1, 2).
+			Margin(1, constants.StyleMargin),
+		SectionTitle: lipgloss.NewStyle().
+			Bold(true).
+			Foreground(primary),
+		KVLabel: lipgloss.NewStyle().
+			Bold(true),
+		KVValue: lipgloss.NewStyle().
+			Foreground(accent),
+		BalancePanel: lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("#454544")).
+			Padding(1, 2).
+			Margin(0, constants.StyleMargin),
 	}
 }

@@ -44,9 +44,7 @@ func buildFontsList(customFontDir string) []*tdf.FontInfo {
 			}
 		}
 	}
-
-	// Se nenhuma fonte foi encontrada no diretório personalizado ou se ele não existe,
-	// usar as fontes embutidas
+	
 	if len(fonts) == 0 {
 		builtinFonts := tdf.SearchBuiltinFonts("*")
 		fonts = append(fonts, builtinFonts...)
@@ -182,16 +180,10 @@ func loadSelectedFont(model *CLIModel, fontInfo *tdf.FontInfo) error {
 
 // loadFontsList returns the list of available fonts from the configuration
 func loadFontsList(appDir string) ([]string, error) {
-	// The fonts are now loaded from the main configuration
-	// This function is kept for compatibility, but it's now a simple wrapper
-	// that returns the fonts from the global configuration
-
-	// Get the fonts from the global configuration
 	cfg, err := loadOrCreateConfig()
 	if err != nil {
 		return nil, fmt.Errorf("erro ao carregar a configuração: %v", err)
 	}
-
 	return cfg.GetFontsList(), nil
 }
 
@@ -1712,8 +1704,6 @@ func (m *CLIModel) updateLanguageSelection(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 
-			// Otherwise, change the language
-			// Extract the language code from the description (format: "language: XX")
 			descParts := strings.Split(m.menuItems[m.selectedMenu].description, ": ")
 			if len(descParts) < 2 {
 				m.err = errors.Wrap(fmt.Errorf("invalid language selection format"), 0)
@@ -1834,19 +1824,12 @@ func (m *CLIModel) refreshWalletsTable() tea.Cmd {
 			return nil
 		}
 
-		// Atualizar a lista de wallets no modelo
 		m.wallets = wallets
 
-		// Atualizar a contagem de wallets
 		m.walletCount = len(wallets)
-
-		// Se houver wallets, reconstruir a tabela completamente
-		// para garantir que ela seja inicializada corretamente
 		if len(m.wallets) > 0 {
 			m.rebuildWalletsTable()
 		}
-
-		// Retornar uma mensagem personalizada para indicar que a lista foi atualizada
 		return walletsRefreshedMsg{}
 	}
 }

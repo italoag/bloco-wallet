@@ -55,7 +55,7 @@ func (m *CLIModel) renderPasswordValidation(password string) string {
 		builder.WriteString(" has 8 characters or more\n")
 	}
 
-	// Check for lowercase letter
+	// Check for a lowercase letter
 	if password == "" || validationErr.NoLowercase {
 		builder.WriteString(m.styles.RedCross.Render("✗"))
 		builder.WriteString(" has a lowercase letter\n")
@@ -64,7 +64,7 @@ func (m *CLIModel) renderPasswordValidation(password string) string {
 		builder.WriteString(" has a lowercase letter\n")
 	}
 
-	// Check for uppercase letter
+	// Check for an uppercase letter
 	if password == "" || validationErr.NoUppercase {
 		builder.WriteString(m.styles.RedCross.Render("✗"))
 		builder.WriteString(" has an uppercase letter\n")
@@ -73,7 +73,7 @@ func (m *CLIModel) renderPasswordValidation(password string) string {
 		builder.WriteString(" has an uppercase letter\n")
 	}
 
-	// Check for digit or special character
+	// Check for a digit or special character
 	if password == "" || validationErr.NoDigitOrSpecial {
 		builder.WriteString(m.styles.RedCross.Render("✗"))
 		builder.WriteString(" has a digit or special character")
@@ -178,7 +178,7 @@ func (m *CLIModel) renderStatusBar() string {
 		constants.AddNetworkView:            localization.Labels["add_network"],
 	}
 
-	// Get the view name from the map, or use the current view constant if not found
+	// Get the view name from the map or use the current view constant if not found
 	viewName := viewNames[m.currentView]
 	if viewName == "" {
 		viewName = m.currentView
@@ -300,7 +300,7 @@ func (m *CLIModel) viewImportWallet() string {
 
 	view.WriteString(title + "\n")
 
-	// Pequena descrição do método de importação por mnemônica
+	// Pequena descrição do metodo de importação por mnemônica
 	desc := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#AAAAAA")).
 		Render(localization.Labels["import_mnemonic_desc"])
@@ -367,9 +367,6 @@ func (m *CLIModel) viewImportMethodSelection() string {
 	if localization.Labels == nil {
 		return "Localization labels not initialized."
 	}
-
-	// Em vez de renderizar o menu de importação novamente, exibir apenas uma mensagem informativa
-	// já que o menu já é exibido na área padrão de menu
 	return localization.Labels["welcome_message"]
 }
 
@@ -378,9 +375,6 @@ func (m *CLIModel) viewConfigMenu() string {
 	if localization.Labels == nil {
 		return "Localization labels not initialized."
 	}
-
-	// Em vez de renderizar o menu de configuração novamente, exibir apenas uma mensagem informativa
-	// já que o menu já é exibido na área padrão de menu
 	return localization.Labels["welcome_message"]
 }
 
@@ -419,20 +413,13 @@ func (m *CLIModel) viewImportKeystore() string {
 	keystorePath := strings.TrimSpace(m.privateKeyInput.Value())
 
 	if keystorePath != "" {
-		// Check if file exists
 		if fileInfo, err := os.Stat(keystorePath); os.IsNotExist(err) {
-			// File doesn't exist
 			validationMsg = m.styles.ErrorStyle.Render(localization.Labels["keystore_file_not_found"])
 		} else if err != nil {
-			// Error accessing file
 			validationMsg = m.styles.ErrorStyle.Render(localization.Labels["keystore_access_error"])
 		} else if fileInfo.IsDir() {
-			// Path is a directory, not a file
 			validationMsg = m.styles.ErrorStyle.Render(localization.Labels["keystore_is_directory"])
-			// Removed file extension validation to allow any file extension
-			// The actual JSON content validation will be done by the wallet service
 		} else {
-			// File exists
 			validationMsg = m.styles.SuccessStyle.Render(localization.Labels["keystore_file_valid"])
 		}
 	}
@@ -604,7 +591,12 @@ func (m *CLIModel) viewWalletDetails() string {
 	}
 
 	if m.walletDetails != nil {
-		var view strings.Builder
+		// Helper to render key-value rows consistently
+		kv := func(label, value string) string {
+			left := m.styles.KVLabel.Width(22).Render(label)
+			right := m.styles.KVValue.Render(value)
+			return lipgloss.JoinHorizontal(lipgloss.Top, left, " ", right)
+		}
 
 		// Resolve import method display name
 		methodLabel := localization.Labels["method_label"]
@@ -628,20 +620,23 @@ func (m *CLIModel) viewWalletDetails() string {
 			mnemonicText = localization.GetWalletImportMessage("no_mnemonic_available")
 		}
 
-		view.WriteString(
-			lipgloss.NewStyle().Bold(true).Render(localization.Labels["wallet_details_title"]+"\n\n") +
-				fmt.Sprintf("%-*s %s\n", 20, localization.Labels["ethereum_address"], m.walletDetails.Wallet.Address) +
-				fmt.Sprintf("%-*s 0x%x\n", 20, localization.Labels["private_key"], crypto.FromECDSA(m.walletDetails.PrivateKey)) +
-				fmt.Sprintf("%-*s %x\n", 20, localization.Labels["public_key"], crypto.FromECDSAPub(m.walletDetails.PublicKey)) +
-				fmt.Sprintf("%-*s %s\n", 20, methodLabel+":", methodName) +
-				fmt.Sprintf("%-*s %s\n\n", 20, localization.Labels["mnemonic_phrase_label"], mnemonicText),
-		)
+		var details strings.Builder
+		details.WriteString(m.styles.SectionTitle.Render(localization.Labels["wallet_details_title"]) + "\n\n")
+		details.WriteString(kv(localization.Labels["ethereum_address"]+":", m.walletDetails.Wallet.Address) + "\n")
+		details.WriteString(kv(localization.Labels["private_key"]+":", fmt.Sprintf("0x%x", crypto.FromECDSA(m.walletDetails.PrivateKey))) + "\n")
+		details.WriteString(kv(localization.Labels["public_key"]+":", fmt.Sprintf("%x", crypto.FromECDSAPub(m.walletDetails.PublicKey))) + "\n")
+		details.WriteString(kv(methodLabel+":", methodName) + "\n")
+		details.WriteString(kv(localization.Labels["mnemonic_phrase_label"]+":", mnemonicText) + "\n")
 
-		// Add balance information
-		view.WriteString(m.renderWalletBalances())
+		detailsPanel := m.styles.Panel.Render(details.String())
 
-		view.WriteString("\n" + localization.Labels["press_esc"])
-		return view.String()
+		// Balance panel (already styled inside renderWalletBalances)
+		balancesPanel := m.renderWalletBalances()
+
+		// Footer hint
+		footer := localization.Labels["press_esc"]
+
+		return lipgloss.JoinVertical(lipgloss.Left, detailsPanel, balancesPanel, "", footer)
 	}
 	return localization.Labels["select_wallet_prompt"]
 }
@@ -653,13 +648,13 @@ func (m *CLIModel) renderWalletBalances() string {
 	}
 
 	var balanceView strings.Builder
-	balanceView.WriteString(lipgloss.NewStyle().Bold(true).Render("Balance Information:\n"))
+	balanceView.WriteString(m.styles.SectionTitle.Render("Balances") + "\n")
 
 	// Create a simple provider for Ethereum mainnet
- ethProvider, err := blockchain.NewEthereum("https://eth.llamarpc.com", 5*time.Second, "ETH", 18, "Ethereum")
+	ethProvider, err := blockchain.NewEthereum("https://eth.llamarpc.com", 5*time.Second, "ETH", 18, "Ethereum")
 	if err != nil {
 		balanceView.WriteString("❌ Failed to connect to Ethereum network\n")
-		return balanceView.String()
+		return m.styles.BalancePanel.Render(balanceView.String())
 	}
 	defer ethProvider.Close()
 
@@ -670,7 +665,7 @@ func (m *CLIModel) renderWalletBalances() string {
 	balance, err := ethProvider.GetBalance(ctx, m.walletDetails.Wallet.Address)
 	if err != nil {
 		balanceView.WriteString("❌ Failed to fetch balance: " + err.Error() + "\n")
-		return balanceView.String()
+		return m.styles.BalancePanel.Render(balanceView.String())
 	}
 
 	// Convert Wei to ETH
@@ -710,7 +705,7 @@ func (m *CLIModel) renderWalletBalances() string {
 		}
 	}
 
-	return balanceView.String()
+	return m.styles.BalancePanel.Render(balanceView.String())
 }
 
 // viewLanguageSelection renderiza a visualização de seleção de idioma
@@ -718,9 +713,6 @@ func (m *CLIModel) viewLanguageSelection() string {
 	if localization.Labels == nil {
 		return "Localization labels not initialized."
 	}
-
-	// Em vez de renderizar o menu de idiomas novamente, exibir apenas uma mensagem informativa
-	// já que o menu já é exibido na área padrão de menu
 	return localization.Labels["welcome_message"]
 }
 
