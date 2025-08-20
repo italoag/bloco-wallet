@@ -2,6 +2,7 @@ package wallet
 
 import (
 	"crypto/ecdsa"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -17,12 +18,12 @@ import (
 
 type WalletDetails struct {
 	Wallet       *Wallet
-	Mnemonic     *string        // Nullable for non-mnemonic imports
+	Mnemonic     *string // Nullable for non-mnemonic imports
 	PrivateKey   *ecdsa.PrivateKey
 	PublicKey    *ecdsa.PublicKey
-	ImportMethod ImportMethod   // Track import method
-	HasMnemonic  bool           // Helper field for UI
-	KDFInfo      *KDFInfo       // KDF analysis information
+	ImportMethod ImportMethod // Track import method
+	HasMnemonic  bool         // Helper field for UI
+	KDFInfo      *KDFInfo     // KDF analysis information
 }
 
 type WalletService struct {
@@ -146,7 +147,7 @@ func (ws *WalletService) ImportWallet(name, mnemonic, password string) (*WalletD
 		return nil, fmt.Errorf("failed to encrypt mnemonic: %v", err)
 	}
 
- wallet := &Wallet{
+	wallet := &Wallet{
 		Name:         name,
 		Address:      account.Address.Hex(),
 		KeyStorePath: newPath,
@@ -407,12 +408,14 @@ func (ws *WalletService) ImportWalletFromKeystoreV3(name, keystorePath, password
 		)
 	}
 
-	// Step 15: Generate deterministic mnemonic from private key (preserving existing behavior)
-	mnemonic, err := GenerateAndValidateDeterministicMnemonic(privateKey)
+	// Step 15: Generate synthetic mnemonic from private key (legacy compatibility for keystore imports)
+	// Note: This is not the original mnemonic; it's derived deterministically from the private key bytes
+	// to preserve previous UI/workflow expectations for keystore imports only.
+	mnemonic, err := generateSyntheticMnemonicFromPrivateKey(privateKey)
 	if err != nil {
 		return nil, NewKeystoreImportError(
 			ErrorCorruptedFile,
-			"Error generating deterministic mnemonic",
+			"Error generating synthetic mnemonic",
 			err,
 		)
 	}
@@ -476,27 +479,27 @@ func (ws *WalletService) ImportWalletFromKeystoreV3(name, keystorePath, password
 		)
 	}
 
- // Step 19: Create wallet entry with import method and source hash
- wallet := &Wallet{
- 	Name:         name,
- 	Address:      address,
- 	KeyStorePath: destPath,
- 	Mnemonic:     &encryptedMnemonic,
- 	ImportMethod: string(ImportMethodKeystore),
- 	SourceHash:   sourceHash,
- }
+	// Step 19: Create wallet entry with import method and source hash
+	wallet := &Wallet{
+		Name:         name,
+		Address:      address,
+		KeyStorePath: destPath,
+		Mnemonic:     &encryptedMnemonic,
+		ImportMethod: string(ImportMethodKeystore),
+		SourceHash:   sourceHash,
+	}
 
- // Step 20: Add wallet to repository
- if err = ws.Repo.AddWallet(wallet); err != nil {
- 	return nil, NewKeystoreImportError(
- 		ErrorCorruptedFile,
- 		"Failed to add wallet to repository",
- 		err,
- 	)
- }
+	// Step 20: Add wallet to repository
+	if err = ws.Repo.AddWallet(wallet); err != nil {
+		return nil, NewKeystoreImportError(
+			ErrorCorruptedFile,
+			"Failed to add wallet to repository",
+			err,
+		)
+	}
 
- // Step 21: Create KDF information for wallet details
- kdfInfo := &KDFInfo{
+	// Step 21: Create KDF information for wallet details
+	kdfInfo := &KDFInfo{
 		Type:           compatReport.KDFType,
 		NormalizedType: compatReport.NormalizedKDF,
 		SecurityLevel:  compatReport.SecurityLevel,
@@ -504,7 +507,7 @@ func (ws *WalletService) ImportWalletFromKeystoreV3(name, keystorePath, password
 	}
 
 	// Step 22: Return enhanced wallet details with KDF information
- walletDetails := &WalletDetails{
+	walletDetails := &WalletDetails{
 		Wallet:       wallet,
 		Mnemonic:     &mnemonic,
 		PrivateKey:   privateKey,
@@ -533,25 +536,25 @@ func (ws *WalletService) LoadWallet(wallet *Wallet, password string) (*WalletDet
 		return nil, fmt.Errorf("incorrect password")
 	}
 
- // Decrypt the mnemonic
- var mnemonicPtr *string
- if wallet.Mnemonic != nil {
- 	decryptedMnemonic, err := DecryptMnemonic(*wallet.Mnemonic, password)
- 	if err != nil {
- 		return nil, fmt.Errorf("failed to decrypt mnemonic: %v", err)
- 	}
- 	mnemonicPtr = &decryptedMnemonic
- }
+	// Decrypt the mnemonic
+	var mnemonicPtr *string
+	if wallet.Mnemonic != nil {
+		decryptedMnemonic, err := DecryptMnemonic(*wallet.Mnemonic, password)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decrypt mnemonic: %v", err)
+		}
+		mnemonicPtr = &decryptedMnemonic
+	}
 
- walletDetails := &WalletDetails{
- 	Wallet:       wallet,
- 	Mnemonic:     mnemonicPtr,
- 	PrivateKey:   key.PrivateKey,
- 	PublicKey:    &key.PrivateKey.PublicKey,
- 	ImportMethod: ImportMethod(wallet.ImportMethod),
- 	HasMnemonic:  wallet.Mnemonic != nil,
- }
- return walletDetails, nil
+	walletDetails := &WalletDetails{
+		Wallet:       wallet,
+		Mnemonic:     mnemonicPtr,
+		PrivateKey:   key.PrivateKey,
+		PublicKey:    &key.PrivateKey.PublicKey,
+		ImportMethod: ImportMethod(wallet.ImportMethod),
+		HasMnemonic:  wallet.Mnemonic != nil,
+	}
+	return walletDetails, nil
 }
 
 func (ws *WalletService) GetAllWallets() ([]Wallet, error) {
@@ -569,6 +572,24 @@ func (ws *WalletService) DeleteWallet(wallet *Wallet) error {
 }
 
 // Helper functions
+
+// generateSyntheticMnemonicFromPrivateKey creates a deterministic mnemonic from a private key for
+// legacy compatibility in keystore imports. It does NOT recover the original mnemonic; it derives
+// a 12-word BIP39 mnemonic by hashing the private key bytes with SHA-256 and using the first 16
+// bytes (128 bits) as entropy for bip39.NewMnemonic.
+func generateSyntheticMnemonicFromPrivateKey(privateKey *ecdsa.PrivateKey) (string, error) {
+	if privateKey == nil {
+		return "", fmt.Errorf("private key cannot be nil")
+	}
+	pkBytes := crypto.FromECDSA(privateKey)
+	hash := sha256.Sum256(pkBytes)
+	entropy := hash[:16]
+	mnemonic, err := bip39.NewMnemonic(entropy)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate mnemonic: %w", err)
+	}
+	return mnemonic, nil
+}
 
 func GenerateMnemonic() (string, error) {
 	entropy, err := bip39.NewEntropy(128)

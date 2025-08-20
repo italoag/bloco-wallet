@@ -3,7 +3,6 @@ package ui
 import (
 	"blocowallet/internal/constants"
 	"blocowallet/internal/wallet"
-	"blocowallet/pkg/config"
 	"blocowallet/pkg/localization"
 	"bytes"
 	"fmt"
@@ -76,14 +75,14 @@ func NewCLIModel(service *wallet.WalletService) *CLIModel {
 }
 
 func initializeFont(model *CLIModel) error {
-	// Obter o diretório home do usuário
-	homeDir, err := os.UserHomeDir()
+	// Load configuration to get the proper app directory
+	cfg, err := loadOrCreateConfig()
 	if err != nil {
 		return errors.Wrap(err, 0)
 	}
 
-	// Definir o diretório da aplicação
-	appDir := filepath.Join(homeDir, ".wallets")
+	// Use the configured app directory instead of hardcoded path
+	appDir := cfg.AppDir
 
 	// Definir o diretório de fontes personalizado
 	customFontDir := filepath.Join(appDir, "config", "fonts")
@@ -188,7 +187,7 @@ func loadFontsList(appDir string) ([]string, error) {
 	// that returns the fonts from the global configuration
 
 	// Get the fonts from the global configuration
-	cfg, err := config.LoadConfig(appDir)
+	cfg, err := loadOrCreateConfig()
 	if err != nil {
 		return nil, fmt.Errorf("erro ao carregar a configuração: %v", err)
 	}
@@ -728,6 +727,10 @@ func (m *CLIModel) updateCreateWalletPassword(msg tea.Msg) (tea.Model, tea.Cmd) 
 				return m, nil
 			}
 			m.walletDetails = walletDetails
+			// Ensure networks/config are loaded for balances rendering
+			if err := m.ensureConfigAndNetworksLoaded(); err != nil {
+				// Non-fatal: continue even if networks fail to load
+			}
 			m.currentView = constants.WalletDetailsView
 
 			// Atualizar a contagem de wallets
@@ -864,7 +867,14 @@ func (m *CLIModel) updateImportWalletPassword(msg tea.Msg) (tea.Model, tea.Cmd) 
 
 					m.err = errors.Wrap(fmt.Errorf("%s\n%s", localizedMsg, recoverySuggestion), 0)
 				} else {
-					m.err = errors.Wrap(err, 0)
+					// Detect duplicate wallet conflicts and show context-aware localized message
+					if dupErr, ok := err.(*wallet.DuplicateWalletError); ok {
+						// Use the conflict type as both the import method context and conflict type when unknown
+						formatted := localization.FormatDuplicateImportError(dupErr.Type, dupErr.Type, dupErr.Address)
+						m.err = errors.Wrap(fmt.Errorf(formatted), 0)
+					} else {
+						m.err = errors.Wrap(err, 0)
+					}
 				}
 
 				log.Println(m.err.(*errors.Error).ErrorStack())
@@ -1651,8 +1661,7 @@ func (m *CLIModel) initLanguageSelection() {
 	// Use the existing configuration if available
 	if m.currentConfig == nil {
 		// Load or create the configuration
-		appDir := filepath.Join(os.Getenv("HOME"), ".wallets")
-		cfg, err := loadOrCreateConfig(appDir)
+		cfg, err := loadOrCreateConfig()
 		if err != nil {
 			m.err = errors.Wrap(err, 0)
 			m.currentView = constants.DefaultView
@@ -1715,18 +1724,16 @@ func (m *CLIModel) updateLanguageSelection(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			// Update the configuration
 			if m.currentConfig != nil && selectedLang != m.currentConfig.Language {
-				// Get the config file path
-				configPath := filepath.Join(m.currentConfig.AppDir, "config.toml")
-
 				// Atualizar o idioma no arquivo de configuração
-				err := updateLanguageInConfig(configPath, selectedLang)
+				err := updateLanguageInConfig(selectedLang)
 				if err != nil {
 					m.err = errors.Wrap(err, 0)
 					return m, nil
 				}
 
 				// Reload the configuration
-				newCfg, err := config.LoadConfig(m.currentConfig.AppDir)
+				cm := getConfigurationManager()
+				newCfg, err := cm.ReloadConfiguration()
 				if err != nil {
 					m.err = errors.Wrap(err, 0)
 					return m, nil

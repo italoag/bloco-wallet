@@ -120,7 +120,7 @@ func TestFinalIntegrationComplexPassword(t *testing.T) {
 		keystoreErr, ok := err.(*KeystoreImportError)
 		require.True(t, ok, "Should be a KeystoreImportError")
 		assert.Equal(t, ErrorIncorrectPassword, keystoreErr.Type)
-		
+
 		// The error message should indicate password/MAC issues
 		assert.Contains(t, err.Error(), "MAC inválido")
 
@@ -134,7 +134,7 @@ func TestFinalIntegrationComplexPassword(t *testing.T) {
 
 	t.Logf("🎉 Final integration test completed successfully!")
 	t.Logf("   ✅ Direct method works")
-	t.Logf("   ✅ TUI method works") 
+	t.Logf("   ✅ TUI method works")
 	t.Logf("   ✅ Both methods are consistent")
 	t.Logf("   ✅ Error handling works correctly")
 	t.Logf("   ✅ Universal KDF integration is complete")
