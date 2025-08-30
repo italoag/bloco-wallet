@@ -436,6 +436,8 @@ func populateLabelsMap() error {
 	AddKeystoreValidationMessages()
 	// Add wallet import messages
 	AddWalletImportMessages()
+	// Add password file messages
+	AddPasswordFileMessages()
 
 	return nil
 }

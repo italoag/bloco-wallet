@@ -29,6 +29,7 @@ type Styles struct {
 	DialogButtonActive lipgloss.Style
 	GreenCheck         lipgloss.Style
 	RedCross           lipgloss.Style
+	SelectedStyle      lipgloss.Style
 }
 
 func createStyles() Styles {
@@ -127,5 +128,8 @@ func createStyles() Styles {
 			Foreground(lipgloss.Color("70")),
 		RedCross: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("1")),
+		SelectedStyle: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("99")).
+			Bold(true),
 	}
 }
