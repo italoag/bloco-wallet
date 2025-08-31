@@ -656,7 +656,7 @@ func (m *CLIModel) updateImportWallet(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			word := strings.TrimSpace(m.textInputs[m.importStage].Value())
 			if word == "" {
-				m.err = errors.Wrap(fmt.Errorf(localization.Labels["all_words_required"]), 0)
+				m.err = errors.Wrap(errors.New(localization.Labels["all_words_required"]), 0)
 				log.Println(m.err.(*errors.Error).ErrorStack())
 				return m, nil
 			}
@@ -910,7 +910,7 @@ func (m *CLIModel) updateImportPrivateKey(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			privateKey := strings.TrimSpace(m.privateKeyInput.Value())
 			if privateKey == "" {
-				m.err = errors.Wrap(fmt.Errorf(localization.Labels["invalid_private_key"]), 0)
+				m.err = errors.Wrap(errors.New(localization.Labels["invalid_private_key"]), 0)
 				log.Println(m.err.(*errors.Error).ErrorStack())
 				return m, nil
 			}
@@ -1282,7 +1282,7 @@ func (m *CLIModel) updateWalletPassword(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			password := strings.TrimSpace(m.passwordInput.Value())
 			if password == "" {
-				m.err = errors.Wrap(fmt.Errorf(localization.Labels["password_cannot_be_empty"]), 0)
+				m.err = errors.Wrap(errors.New(localization.Labels["password_cannot_be_empty"]), 0)
 				log.Println(m.err.(*errors.Error).ErrorStack())
 				m.currentView = constants.DefaultView
 				return m, nil
@@ -1589,7 +1589,7 @@ func (m *CLIModel) initEnhancedImport() tea.Cmd {
 func (m *CLIModel) initListWallets() {
 	wallets, err := m.Service.GetAllWallets()
 	if err != nil {
-		m.err = errors.Wrap(fmt.Errorf(localization.Labels["error_loading_wallets"], err), 0)
+		m.err = errors.Wrap(fmt.Errorf("%s: %v", localization.Labels["error_loading_wallets"], err), 0)
 		log.Println(m.err.(*errors.Error).ErrorStack())
 		m.currentView = constants.DefaultView
 		return

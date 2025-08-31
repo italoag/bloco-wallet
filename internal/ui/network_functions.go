@@ -5,6 +5,7 @@ import (
 	"blocowallet/internal/constants"
 	"blocowallet/pkg/config"
 	"blocowallet/pkg/localization"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -111,7 +112,7 @@ func (m *CLIModel) updateNetworkList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Edit the selected network
 			key := m.networkListComponent.GetSelectedNetworkKey()
 			if key == "" {
-				m.networkListComponent.SetError(fmt.Errorf(localization.Labels["no_network_selected"]))
+				m.networkListComponent.SetError(errors.New(localization.Labels["no_network_selected"]))
 				return m, nil
 			}
 
@@ -123,7 +124,7 @@ func (m *CLIModel) updateNetworkList(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			// Check if we have networks
 			if len(m.currentConfig.Networks) == 0 {
-				m.networkListComponent.SetError(fmt.Errorf(localization.Labels["no_network_selected"]))
+				m.networkListComponent.SetError(errors.New(localization.Labels["no_network_selected"]))
 				return m, nil
 			}
 
@@ -154,7 +155,7 @@ func (m *CLIModel) updateNetworkList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Delete the selected network
 			key := m.networkListComponent.GetSelectedNetworkKey()
 			if key == "" {
-				m.networkListComponent.SetError(fmt.Errorf(localization.Labels["no_network_selected"]))
+				m.networkListComponent.SetError(errors.New(localization.Labels["no_network_selected"]))
 				return m, nil
 			}
 
@@ -166,7 +167,7 @@ func (m *CLIModel) updateNetworkList(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			// Check if we have networks
 			if len(m.currentConfig.Networks) == 0 {
-				m.networkListComponent.SetError(fmt.Errorf(localization.Labels["no_network_selected"]))
+				m.networkListComponent.SetError(errors.New(localization.Labels["no_network_selected"]))
 				return m, nil
 			}
 
@@ -261,7 +262,7 @@ func (m *CLIModel) updateAddNetwork(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Parse and validate chain ID
 		chainID, err := strconv.ParseInt(msg.ChainID, 10, 64)
 		if err != nil {
-			m.addNetworkComponent.SetError(fmt.Errorf(localization.Labels["invalid_chain_id"]))
+			m.addNetworkComponent.SetError(errors.New(localization.Labels["invalid_chain_id"]))
 			return m, nil
 		}
 
