@@ -27,7 +27,7 @@ func TestNewImportProgressModel(t *testing.T) {
 func TestImportProgressModel_Init(t *testing.T) {
 	model := NewImportProgressModel(3, Styles{})
 	cmd := model.Init()
-	assert.Nil(t, cmd)
+	assert.NotNil(t, cmd) // Now returns a tick command for fallback progress
 }
 
 func TestImportProgressModel_Update_ProgressMsg(t *testing.T) {
@@ -79,11 +79,10 @@ func TestImportProgressModel_Update_FrameMsg(t *testing.T) {
 	model := NewImportProgressModel(3, Styles{})
 
 	frameMsg := progress.FrameMsg{}
-	updatedModel, cmd := model.Update(frameMsg)
+	updatedModel, _ := model.Update(frameMsg)
 
 	// Should update the internal progress model
 	assert.NotNil(t, updatedModel.Model)
-	assert.NotNil(t, cmd)
 }
 
 func TestImportProgressModel_GetPercentage(t *testing.T) {

@@ -338,15 +338,31 @@ type RetryRecommendation struct {
 
 // categorizeKeystoreError categorizes a keystore error type
 func categorizeKeystoreError(errorType KeystoreErrorType) ErrorCategory {
-	switch {
-	case errorType.IsFileSystemRelated():
-		return CategoryFileSystem
-	case errorType.IsValidationRelated():
-		return CategoryValidation
-	case errorType.IsPasswordRelated():
-		return CategoryPassword
-	case errorType.IsUserActionRelated():
+	// Use explicit categorization to avoid ambiguity
+	switch errorType {
+	// User action errors (most specific)
+	case ErrorPasswordInputCancelled, ErrorPasswordInputSkipped, ErrorImportInterrupted:
 		return CategoryUserAction
+
+	// File system errors (file access issues)
+	case ErrorFileNotFound, ErrorCorruptedFile, ErrorPasswordFileUnreadable,
+		ErrorPasswordFileOversized, ErrorDirectoryScanFailed:
+		return CategoryFileSystem
+
+	// Validation errors (format/structure issues)
+	case ErrorInvalidJSON, ErrorInvalidKeystore, ErrorPasswordFileEmpty,
+		ErrorPasswordFileInvalid, ErrorPasswordFileCorrupted:
+		return CategoryValidation
+
+	// Password errors (authentication issues)
+	case ErrorIncorrectPassword, ErrorPasswordFileNotFound, ErrorPasswordInputTimeout,
+		ErrorMaxAttemptsExceeded:
+		return CategoryPassword
+
+	// System errors (everything else)
+	case ErrorBatchImportFailed:
+		return CategorySystem
+
 	default:
 		return CategorySystem
 	}

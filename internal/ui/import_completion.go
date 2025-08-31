@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -10,70 +9,135 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"blocowallet/internal/wallet"
-	"blocowallet/pkg/localization"
 )
 
-// ImportCompletionModel represents the completion phase UI for import operations
-type ImportCompletionModel struct {
-	summary         wallet.ImportSummary
-	results         []wallet.ImportResult
-	startTime       time.Time
-	elapsedTime     time.Duration
-	selectedAction  int
-	showErrorDetail bool
-	selectedError   int
-	styles          Styles
-	width           int
-	height          int
-}
-
-// CompletionAction represents available actions in the completion phase
+// CompletionAction represents actions available in the completion phase
 type CompletionAction int
 
 const (
-	ActionReturnToMenu CompletionAction = iota
-	ActionRetryFailed
-	ActionRetryWithManualPasswords
-	ActionViewErrorDetails
-	ActionSelectDifferentFiles
+	CompletionActionNone CompletionAction = iota
+	CompletionActionReturnToMenu
+	CompletionActionRetryFailed
+	CompletionActionRetrySkipped
+	CompletionActionRetryAll
+	CompletionActionViewErrors
+	CompletionActionSelectDifferentFiles
 )
 
-// String returns a string representation of the completion action
-func (a CompletionAction) String() string {
-	switch a {
-	case ActionReturnToMenu:
-		return localization.GetEnhancedImportErrorMessage("action_return_to_menu")
-	case ActionRetryFailed:
-		return localization.GetEnhancedImportErrorMessage("action_retry_failed_imports")
-	case ActionRetryWithManualPasswords:
-		return localization.GetEnhancedImportErrorMessage("action_retry_with_manual_passwords")
-	case ActionViewErrorDetails:
-		return localization.GetEnhancedImportErrorMessage("action_view_error_details")
-	case ActionSelectDifferentFiles:
-		return localization.GetEnhancedImportErrorMessage("action_select_different_files")
-	default:
-		return "Unknown Action"
-	}
+// ImportCompletionModel represents the completion phase UI component
+type ImportCompletionModel struct {
+	summary     wallet.ImportSummary
+	results     []wallet.ImportResult
+	startTime   time.Time
+	elapsedTime time.Duration
+	styles      Styles
+
+	// UI state
+	selectedAction int
+	showingErrors  bool
+	errorIndex     int
+	maxErrorIndex  int
+
+	// Available actions based on results
+	availableActions []CompletionActionItem
+}
+
+// CompletionActionItem represents an available action in the completion phase
+type CompletionActionItem struct {
+	Action      CompletionAction
+	Label       string
+	Description string
+	Key         string
+	Enabled     bool
 }
 
 // NewImportCompletionModel creates a new import completion model
-func NewImportCompletionModel(
-	summary wallet.ImportSummary,
-	results []wallet.ImportResult,
-	startTime time.Time,
-	styles Styles,
-) ImportCompletionModel {
-	return ImportCompletionModel{
-		summary:         summary,
-		results:         results,
-		startTime:       startTime,
-		elapsedTime:     time.Since(startTime),
-		selectedAction:  0,
-		showErrorDetail: false,
-		selectedError:   0,
-		styles:          styles,
-		width:           80,
-		height:          24,
+func NewImportCompletionModel(summary wallet.ImportSummary, results []wallet.ImportResult, startTime time.Time, styles Styles) ImportCompletionModel {
+	elapsedTime := time.Since(startTime)
+
+	model := ImportCompletionModel{
+		summary:        summary,
+		results:        results,
+		startTime:      startTime,
+		elapsedTime:    elapsedTime,
+		styles:         styles,
+		selectedAction: 0,
+		showingErrors:  false,
+		errorIndex:     0,
+	}
+
+	// Initialize available actions based on results
+	model.initializeActions()
+
+	return model
+}
+
+// initializeActions sets up the available actions based on import results
+func (m *ImportCompletionModel) initializeActions() {
+	m.availableActions = []CompletionActionItem{}
+
+	// Always available: Return to menu
+	m.availableActions = append(m.availableActions, CompletionActionItem{
+		Action:      CompletionActionReturnToMenu,
+		Label:       "Return to Main Menu",
+		Description: "Go back to the main wallet management menu",
+		Key:         "ENTER",
+		Enabled:     true,
+	})
+
+	// Always available: Select different files
+	m.availableActions = append(m.availableActions, CompletionActionItem{
+		Action:      CompletionActionSelectDifferentFiles,
+		Label:       "Select Different Files",
+		Description: "Choose different keystore files to import",
+		Key:         "S",
+		Enabled:     true,
+	})
+
+	// Retry failed imports (only if there are failed imports)
+	if m.summary.FailedImports > 0 {
+		m.availableActions = append(m.availableActions, CompletionActionItem{
+			Action:      CompletionActionRetryFailed,
+			Label:       fmt.Sprintf("Retry Failed Imports (%d)", m.summary.FailedImports),
+			Description: "Retry importing files that failed due to errors",
+			Key:         "F",
+			Enabled:     true,
+		})
+	}
+
+	// Retry skipped imports (only if there are skipped imports)
+	if m.summary.SkippedImports > 0 {
+		m.availableActions = append(m.availableActions, CompletionActionItem{
+			Action:      CompletionActionRetrySkipped,
+			Label:       fmt.Sprintf("Retry Skipped Imports (%d)", m.summary.SkippedImports),
+			Description: "Retry importing files that were skipped (password input cancelled)",
+			Key:         "K",
+			Enabled:     true,
+		})
+	}
+
+	// Retry all failed and skipped (only if there are any failures or skips)
+	if m.summary.FailedImports > 0 || m.summary.SkippedImports > 0 {
+		totalRetryable := m.summary.FailedImports + m.summary.SkippedImports
+		m.availableActions = append(m.availableActions, CompletionActionItem{
+			Action:      CompletionActionRetryAll,
+			Label:       fmt.Sprintf("Retry All Failed/Skipped (%d)", totalRetryable),
+			Description: "Retry all files that failed or were skipped",
+			Key:         "A",
+			Enabled:     true,
+		})
+	}
+
+	// View error details (only if there are errors)
+	if len(m.summary.Errors) > 0 {
+		m.availableActions = append(m.availableActions, CompletionActionItem{
+			Action:      CompletionActionViewErrors,
+			Label:       fmt.Sprintf("View Error Details (%d)", len(m.summary.Errors)),
+			Description: "View detailed information about errors that occurred",
+			Key:         "E",
+			Enabled:     true,
+		})
+		m.maxErrorIndex = len(m.summary.Errors) - 1
 	}
 }
 
@@ -82,157 +146,182 @@ func (m ImportCompletionModel) Init() tea.Cmd {
 	return nil
 }
 
-// Update handles user input in the completion phase
+// Update handles completion model updates
 func (m ImportCompletionModel) Update(msg tea.Msg) (ImportCompletionModel, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
-		m.width = msg.Width
-		m.height = msg.Height
-		return m, nil
-
 	case tea.KeyMsg:
-		if m.showErrorDetail {
-			return m.handleErrorDetailInput(msg)
-		}
-		return m.handleMainInput(msg)
+		return (&m).handleKeyPress(msg)
 	}
 
 	return m, nil
 }
 
-// handleMainInput handles input in the main completion view
-func (m ImportCompletionModel) handleMainInput(msg tea.KeyMsg) (ImportCompletionModel, tea.Cmd) {
+// handleKeyPress handles keyboard input in the completion phase
+func (m *ImportCompletionModel) handleKeyPress(msg tea.KeyMsg) (ImportCompletionModel, tea.Cmd) {
+	if m.showingErrors {
+		return m.handleErrorViewKeyPress(msg)
+	}
+
 	switch msg.String() {
-	case "up", "k":
+	case "up":
 		if m.selectedAction > 0 {
 			m.selectedAction--
 		}
-		return m, nil
 
-	case "down", "j":
-		maxActions := m.getAvailableActionsCount() - 1
-		if m.selectedAction < maxActions {
+	case "down":
+		if m.selectedAction < len(m.availableActions)-1 {
 			m.selectedAction++
 		}
-		return m, nil
 
-	case "enter", " ":
-		return m.executeSelectedAction()
-
-	case "r", "R":
-		// Quick retry shortcut
-		if m.hasRetryableErrors() {
-			return m, func() tea.Msg { return RetryImportMsg{Strategy: "retry_failed"} }
+	case "j":
+		if m.selectedAction < len(m.availableActions)-1 {
+			m.selectedAction++
 		}
-		return m, nil
 
-	case "d", "D":
-		// Quick error details shortcut
-		if len(m.summary.Errors) > 0 {
-			m.showErrorDetail = true
-			m.selectedError = 0
+	case "k":
+		// Check if this is for navigation or retry skipped action
+		if m.hasActionWithKey("K") {
+			return *m, m.executeActionByKey("K")
 		}
-		return m, nil
-
-	case "esc":
-		// Return to menu
-		return m, func() tea.Msg { return ReturnToMenuMsg{} }
-
-	case "q", "ctrl+c":
-		return m, tea.Quit
-	}
-
-	return m, nil
-}
-
-// handleErrorDetailInput handles input in the error detail view
-func (m ImportCompletionModel) handleErrorDetailInput(msg tea.KeyMsg) (ImportCompletionModel, tea.Cmd) {
-	switch msg.String() {
-	case "up", "k":
-		if m.selectedError > 0 {
-			m.selectedError--
+		// Otherwise, use for navigation
+		if m.selectedAction > 0 {
+			m.selectedAction--
 		}
-		return m, nil
 
-	case "down", "j":
-		if m.selectedError < len(m.summary.Errors)-1 {
-			m.selectedError++
+	case "enter":
+		if m.selectedAction < len(m.availableActions) {
+			action := m.availableActions[m.selectedAction]
+			return *m, m.executeAction(action.Action)
 		}
-		return m, nil
+
+	case "f", "F":
+		return *m, m.executeActionByKey("F")
+
+	case "s", "S":
+		return *m, m.executeActionByKey("S")
+
+	case "a", "A":
+		return *m, m.executeActionByKey("A")
+
+	case "e", "E":
+		if m.hasActionWithKey("E") {
+			return *m, m.executeActionByKey("E")
+		}
 
 	case "esc", "q":
-		m.showErrorDetail = false
-		return m, nil
-
-	case "r", "R":
-		// Retry this specific error
-		if m.selectedError < len(m.summary.Errors) {
-			errorFile := m.summary.Errors[m.selectedError].File
-			return m, func() tea.Msg { return RetrySpecificFileMsg{File: errorFile} }
-		}
-		return m, nil
+		// ESC or Q returns to menu
+		return *m, m.executeAction(CompletionActionReturnToMenu)
 	}
 
-	return m, nil
+	return *m, nil
 }
 
-// executeSelectedAction executes the currently selected action
-func (m ImportCompletionModel) executeSelectedAction() (ImportCompletionModel, tea.Cmd) {
-	actions := m.getAvailableActions()
-	if m.selectedAction >= len(actions) {
-		return m, nil
+// handleErrorViewKeyPress handles keyboard input when viewing error details
+func (m *ImportCompletionModel) handleErrorViewKeyPress(msg tea.KeyMsg) (ImportCompletionModel, tea.Cmd) {
+	switch msg.String() {
+	case "up", "k":
+		if m.errorIndex > 0 {
+			m.errorIndex--
+		}
+
+	case "down", "j":
+		if m.errorIndex < m.maxErrorIndex {
+			m.errorIndex++
+		}
+
+	case "esc", "q":
+		m.showingErrors = false
+		m.errorIndex = 0
+
+	case "r", "R":
+		// Retry this specific file
+		if m.errorIndex < len(m.summary.Errors) {
+			errorItem := m.summary.Errors[m.errorIndex]
+			return *m, func() tea.Msg {
+				return RetrySpecificFileMsg{File: errorItem.File}
+			}
+		}
 	}
 
-	selectedAction := actions[m.selectedAction]
+	return *m, nil
+}
 
-	switch selectedAction {
-	case ActionReturnToMenu:
-		return m, func() tea.Msg { return ReturnToMenuMsg{} }
-
-	case ActionRetryFailed:
-		return m, func() tea.Msg { return RetryImportMsg{Strategy: "retry_failed"} }
-
-	case ActionRetryWithManualPasswords:
-		return m, func() tea.Msg { return RetryImportMsg{Strategy: "manual_passwords"} }
-
-	case ActionViewErrorDetails:
-		if len(m.summary.Errors) > 0 {
-			m.showErrorDetail = true
-			m.selectedError = 0
+// executeActionByKey executes an action based on its key binding
+func (m *ImportCompletionModel) executeActionByKey(key string) tea.Cmd {
+	for _, action := range m.availableActions {
+		if action.Key == key && action.Enabled {
+			return m.executeAction(action.Action)
 		}
-		return m, nil
+	}
+	return nil
+}
 
-	case ActionSelectDifferentFiles:
-		return m, func() tea.Msg { return SelectDifferentFilesMsg{} }
+// executeAction executes the specified completion action
+func (m *ImportCompletionModel) executeAction(action CompletionAction) tea.Cmd {
+	switch action {
+	case CompletionActionReturnToMenu:
+		return func() tea.Msg {
+			return ReturnToMenuMsg{}
+		}
+
+	case CompletionActionRetryFailed:
+		return func() tea.Msg {
+			return RetryImportMsg{Strategy: "retry_failed"}
+		}
+
+	case CompletionActionRetrySkipped:
+		return func() tea.Msg {
+			return RetryImportMsg{Strategy: "retry_skipped"}
+		}
+
+	case CompletionActionRetryAll:
+		return func() tea.Msg {
+			return RetryImportMsg{Strategy: "retry_all"}
+		}
+
+	case CompletionActionViewErrors:
+		m.showingErrors = true
+		m.errorIndex = 0
+		return nil
+
+	case CompletionActionSelectDifferentFiles:
+		return func() tea.Msg {
+			return SelectDifferentFilesMsg{}
+		}
 
 	default:
-		return m, nil
+		return nil
 	}
 }
 
 // View renders the completion phase UI
 func (m ImportCompletionModel) View() string {
-	if m.showErrorDetail {
-		return m.renderErrorDetailView()
+	if m.showingErrors {
+		return m.renderErrorDetailsView()
 	}
-	return m.renderMainCompletionView()
+
+	return m.renderCompletionSummaryView()
 }
 
-// renderMainCompletionView renders the main completion view
-func (m ImportCompletionModel) renderMainCompletionView() string {
+// renderCompletionSummaryView renders the main completion summary
+func (m ImportCompletionModel) renderCompletionSummaryView() string {
 	var sections []string
 
-	// Header with completion status
-	header := m.renderCompletionHeader()
-	sections = append(sections, header)
+	// Title with completion status
+	title := m.renderCompletionTitle()
+	sections = append(sections, title)
 
 	// Summary statistics
-	summary := m.renderSummaryStatistics()
-	sections = append(sections, summary)
+	stats := m.renderSummaryStats()
+	sections = append(sections, stats)
 
-	// Error summary (if any errors)
+	// Elapsed time
+	timeInfo := m.renderTimeInfo()
+	sections = append(sections, timeInfo)
+
+	// Quick error summary if there are errors
 	if len(m.summary.Errors) > 0 {
-		errorSummary := m.renderErrorSummary()
+		errorSummary := m.renderQuickErrorSummary()
 		sections = append(sections, errorSummary)
 	}
 
@@ -244,146 +333,163 @@ func (m ImportCompletionModel) renderMainCompletionView() string {
 	instructions := m.renderInstructions()
 	sections = append(sections, instructions)
 
-	content := lipgloss.JoinVertical(lipgloss.Left, sections...)
-
-	// Center the content if we have enough space
-	if m.width > 0 && m.height > 0 {
-		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, content)
-	}
-
-	return content
+	return lipgloss.JoinVertical(lipgloss.Left, sections...)
 }
 
-// renderCompletionHeader renders the completion status header
-func (m ImportCompletionModel) renderCompletionHeader() string {
+// renderCompletionTitle renders the completion title with appropriate styling
+func (m ImportCompletionModel) renderCompletionTitle() string {
 	var title string
-	var titleStyle lipgloss.Style
+	var style lipgloss.Style
 
 	if m.summary.FailedImports == 0 && m.summary.SkippedImports == 0 {
-		// All successful
-		title = "✓ " + localization.GetEnhancedImportErrorMessage("import_summary_all_successful")
-		titleStyle = m.styles.SuccessStyle.Bold(true)
+		// Complete success
+		title = "✓ Import Completed Successfully"
+		style = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("70")) // Green
 	} else if m.summary.SuccessfulImports > 0 {
 		// Partial success
-		title = "⚠ " + localization.GetEnhancedImportErrorMessage("import_summary_partial_success")
-		titleStyle = m.styles.MenuTitle.Foreground(lipgloss.Color("214")) // Orange
+		title = "⚠ Import Completed with Issues"
+		style = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("214")) // Orange
 	} else {
-		// All failed
-		title = "✗ " + localization.GetEnhancedImportErrorMessage("import_summary_all_failed")
-		titleStyle = m.styles.ErrorStyle.Bold(true)
+		// Complete failure
+		title = "✗ Import Failed"
+		style = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("196")) // Red
 	}
 
-	return titleStyle.Render(title)
+	return style.Render(title)
 }
 
-// renderSummaryStatistics renders the import statistics
-func (m ImportCompletionModel) renderSummaryStatistics() string {
+// renderSummaryStats renders the summary statistics
+func (m ImportCompletionModel) renderSummaryStats() string {
 	var sections []string
 
-	// Basic statistics
+	// Main statistics line
 	stats := fmt.Sprintf("Total: %d | Success: %d | Failed: %d | Skipped: %d",
 		m.summary.TotalFiles,
 		m.summary.SuccessfulImports,
 		m.summary.FailedImports,
-		m.summary.SkippedImports,
-	)
-	sections = append(sections, m.styles.MenuDesc.Render(stats))
+		m.summary.SkippedImports)
 
-	// Elapsed time
-	elapsed := m.elapsedTime.Round(time.Second)
-	timeText := fmt.Sprintf("Completed in: %v", elapsed)
-	sections = append(sections, m.styles.MenuDesc.Render(timeText))
+	sections = append(sections, stats)
 
-	// Success rate
+	// Success rate if there were any files processed
 	if m.summary.TotalFiles > 0 {
 		successRate := float64(m.summary.SuccessfulImports) / float64(m.summary.TotalFiles) * 100
-		rateText := fmt.Sprintf("Success rate: %.1f%%", successRate)
-		sections = append(sections, m.styles.MenuDesc.Render(rateText))
+		rateText := fmt.Sprintf("Success Rate: %.1f%%", successRate)
+
+		var rateStyle lipgloss.Style
+		if successRate >= 90 {
+			rateStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("70")) // Green
+		} else if successRate >= 70 {
+			rateStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("214")) // Orange
+		} else {
+			rateStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("196")) // Red
+		}
+
+		sections = append(sections, rateStyle.Render(rateText))
 	}
 
 	return lipgloss.JoinVertical(lipgloss.Left, sections...)
 }
 
-// renderErrorSummary renders a summary of errors
-func (m ImportCompletionModel) renderErrorSummary() string {
+// renderTimeInfo renders timing information
+func (m ImportCompletionModel) renderTimeInfo() string {
+	timeText := fmt.Sprintf("Completed in: %v", m.elapsedTime.Round(time.Second))
+
+	// Add performance info if we have multiple files
+	if m.summary.TotalFiles > 1 {
+		avgTime := m.elapsedTime / time.Duration(m.summary.TotalFiles)
+		timeText += fmt.Sprintf(" (avg: %v per file)", avgTime.Round(time.Millisecond))
+	}
+
+	return timeText
+}
+
+// renderQuickErrorSummary renders a quick summary of errors
+func (m ImportCompletionModel) renderQuickErrorSummary() string {
 	var sections []string
 
 	sections = append(sections, "")
-	errorTitle := m.styles.ErrorStyle.Render("Import Issues:")
+
+	errorTitle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("196")).Render("Issues Encountered:")
 	sections = append(sections, errorTitle)
 
-	// Categorize errors
-	failedErrors := make([]wallet.ImportError, 0)
-	skippedErrors := make([]wallet.ImportError, 0)
+	// Group errors by type
+	failedFiles := []string{}
+	skippedFiles := []string{}
 
 	for _, err := range m.summary.Errors {
 		if err.Skipped {
-			skippedErrors = append(skippedErrors, err)
+			skippedFiles = append(skippedFiles, err.File)
 		} else {
-			failedErrors = append(failedErrors, err)
+			failedFiles = append(failedFiles, err.File)
 		}
 	}
 
-	// Show failed imports
-	if len(failedErrors) > 0 {
-		sections = append(sections, m.styles.ErrorStyle.Render("Failed Imports:"))
-		for i, err := range failedErrors {
-			if i >= 5 { // Limit to first 5 errors
-				remaining := len(failedErrors) - 5
-				sections = append(sections, m.styles.MenuDesc.Render(fmt.Sprintf("  ... and %d more failed imports", remaining)))
+	// Show failed files (up to 3)
+	if len(failedFiles) > 0 {
+		sections = append(sections, lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render("Failed:"))
+		for i, file := range failedFiles {
+			if i >= 3 {
+				sections = append(sections, fmt.Sprintf("  ... and %d more", len(failedFiles)-3))
 				break
 			}
-			fileName := filepath.Base(err.File)
-			errorText := fmt.Sprintf("  • %s: %s", fileName, m.getShortErrorMessage(err.Error))
-			sections = append(sections, m.styles.MenuDesc.Render(errorText))
+			sections = append(sections, fmt.Sprintf("  • %s", file))
 		}
 	}
 
-	// Show skipped imports
-	if len(skippedErrors) > 0 {
-		sections = append(sections, m.styles.MenuDesc.Foreground(lipgloss.Color("214")).Render("Skipped Imports:"))
-		for i, err := range skippedErrors {
-			if i >= 5 { // Limit to first 5 errors
-				remaining := len(skippedErrors) - 5
-				sections = append(sections, m.styles.MenuDesc.Render(fmt.Sprintf("  ... and %d more skipped imports", remaining)))
+	// Show skipped files (up to 3)
+	if len(skippedFiles) > 0 {
+		sections = append(sections, lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Render("Skipped:"))
+		for i, file := range skippedFiles {
+			if i >= 3 {
+				sections = append(sections, fmt.Sprintf("  ... and %d more", len(skippedFiles)-3))
 				break
 			}
-			fileName := filepath.Base(err.File)
-			reason := m.getSkipReason(err.Error)
-			errorText := fmt.Sprintf("  • %s: %s", fileName, reason)
-			sections = append(sections, m.styles.MenuDesc.Render(errorText))
+			sections = append(sections, fmt.Sprintf("  • %s", file))
 		}
-	}
-
-	// Recovery information
-	if m.hasRetryableErrors() {
-		sections = append(sections, "")
-		recoveryText := localization.GetEnhancedImportErrorMessage("import_summary_recoverable_errors")
-		sections = append(sections, m.styles.MenuDesc.Foreground(lipgloss.Color("70")).Render(recoveryText))
 	}
 
 	return lipgloss.JoinVertical(lipgloss.Left, sections...)
 }
 
-// renderAvailableActions renders the available actions menu
+// renderAvailableActions renders the list of available actions
 func (m ImportCompletionModel) renderAvailableActions() string {
+	if len(m.availableActions) == 0 {
+		return ""
+	}
+
 	var sections []string
-
 	sections = append(sections, "")
-	sections = append(sections, m.styles.MenuTitle.Render("Available Actions:"))
 
-	actions := m.getAvailableActions()
-	for i, action := range actions {
-		actionText := action.String()
+	actionsTitle := lipgloss.NewStyle().Bold(true).Render("Available Actions:")
+	sections = append(sections, actionsTitle)
 
-		if i == m.selectedAction {
-			// Highlight selected action
-			actionText = m.styles.SelectedStyle.Render("▶ " + actionText)
-		} else {
-			actionText = m.styles.MenuDesc.Render("  " + actionText)
+	for i, action := range m.availableActions {
+		if !action.Enabled {
+			continue
 		}
 
-		sections = append(sections, actionText)
+		var style lipgloss.Style
+		if i == m.selectedAction {
+			// Highlight selected action
+			style = lipgloss.NewStyle().
+				Background(lipgloss.Color("62")).
+				Foreground(lipgloss.Color("230")).
+				Bold(true)
+		} else {
+			style = lipgloss.NewStyle()
+		}
+
+		actionText := fmt.Sprintf("  [%s] %s", action.Key, action.Label)
+		sections = append(sections, style.Render(actionText))
+
+		// Add description for selected action
+		if i == m.selectedAction {
+			descStyle := lipgloss.NewStyle().
+				Foreground(lipgloss.Color("244")).
+				Italic(true)
+			sections = append(sections, descStyle.Render(fmt.Sprintf("      %s", action.Description)))
+		}
 	}
 
 	return lipgloss.JoinVertical(lipgloss.Left, sections...)
@@ -391,274 +497,182 @@ func (m ImportCompletionModel) renderAvailableActions() string {
 
 // renderInstructions renders user instructions
 func (m ImportCompletionModel) renderInstructions() string {
-	var instructions []string
-
-	instructions = append(instructions, "")
-	instructions = append(instructions, m.styles.MenuDesc.Render("Navigation:"))
-	instructions = append(instructions, m.styles.MenuDesc.Render("  ↑/↓ or k/j: Navigate actions"))
-	instructions = append(instructions, m.styles.MenuDesc.Render("  Enter/Space: Execute selected action"))
-
-	if m.hasRetryableErrors() {
-		instructions = append(instructions, m.styles.MenuDesc.Render("  R: Quick retry failed imports"))
-	}
-
-	if len(m.summary.Errors) > 0 {
-		instructions = append(instructions, m.styles.MenuDesc.Render("  D: View error details"))
-	}
-
-	instructions = append(instructions, m.styles.MenuDesc.Render("  ESC: Return to menu"))
-	instructions = append(instructions, m.styles.MenuDesc.Render("  Q/Ctrl+C: Quit"))
-
-	return lipgloss.JoinVertical(lipgloss.Left, instructions...)
-}
-
-// renderErrorDetailView renders the detailed error view
-func (m ImportCompletionModel) renderErrorDetailView() string {
 	var sections []string
-
-	// Header
-	header := m.styles.MenuTitle.Render("Error Details")
-	sections = append(sections, header)
-
-	if len(m.summary.Errors) == 0 {
-		sections = append(sections, m.styles.MenuDesc.Render("No errors to display"))
-		return lipgloss.JoinVertical(lipgloss.Left, sections...)
-	}
-
-	// Error navigation info
-	navInfo := fmt.Sprintf("Error %d of %d", m.selectedError+1, len(m.summary.Errors))
-	sections = append(sections, m.styles.MenuDesc.Render(navInfo))
-
-	// Current error details
-	if m.selectedError < len(m.summary.Errors) {
-		currentError := m.summary.Errors[m.selectedError]
-		errorDetail := m.renderSingleErrorDetail(currentError)
-		sections = append(sections, errorDetail)
-	}
-
-	// Instructions
 	sections = append(sections, "")
-	sections = append(sections, m.styles.MenuDesc.Render("Navigation:"))
-	sections = append(sections, m.styles.MenuDesc.Render("  ↑/↓ or k/j: Navigate errors"))
-	sections = append(sections, m.styles.MenuDesc.Render("  R: Retry this specific file"))
-	sections = append(sections, m.styles.MenuDesc.Render("  ESC/Q: Return to summary"))
 
-	content := lipgloss.JoinVertical(lipgloss.Left, sections...)
-
-	// Center the content
-	if m.width > 0 && m.height > 0 {
-		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, content)
+	instructions := []string{
+		"Use ↑/↓ or j/k to navigate actions",
+		"Press ENTER to execute selected action",
+		"Press ESC or Q to return to main menu",
 	}
 
-	return content
-}
-
-// renderSingleErrorDetail renders details for a single error
-func (m ImportCompletionModel) renderSingleErrorDetail(err wallet.ImportError) string {
-	var sections []string
-
-	// File information
-	sections = append(sections, "")
-	fileInfo := fmt.Sprintf("File: %s", err.File)
-	sections = append(sections, m.styles.MenuTitle.Render(fileInfo))
-
-	// Error type and status
-	errorType := "Failed"
-	statusStyle := m.styles.ErrorStyle
-	if err.Skipped {
-		errorType = "Skipped"
-		statusStyle = m.styles.MenuDesc.Foreground(lipgloss.Color("214"))
+	// Add specific key instructions if actions are available
+	if m.hasActionWithKey("E") {
+		instructions = append(instructions, "Press E to view detailed error information")
 	}
-	sections = append(sections, statusStyle.Render(fmt.Sprintf("Status: %s", errorType)))
 
-	// Error message
-	sections = append(sections, "")
-	sections = append(sections, m.styles.MenuDesc.Render("Error Message:"))
-	errorMsg := m.getDetailedErrorMessage(err.Error)
-	sections = append(sections, m.styles.MenuDesc.Render(errorMsg))
-
-	// Recovery suggestions
-	if !err.Skipped {
-		sections = append(sections, "")
-		sections = append(sections, m.styles.MenuDesc.Render("Suggested Actions:"))
-		suggestions := m.getRecoverySuggestions(err.Error)
-		for _, suggestion := range suggestions {
-			sections = append(sections, m.styles.MenuDesc.Render("  • "+suggestion))
-		}
-	} else {
-		sections = append(sections, "")
-		skipReason := m.getSkipReason(err.Error)
-		sections = append(sections, m.styles.MenuDesc.Render("Reason: "+skipReason))
+	instructionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
+	for _, instruction := range instructions {
+		sections = append(sections, instructionStyle.Render(instruction))
 	}
 
 	return lipgloss.JoinVertical(lipgloss.Left, sections...)
 }
 
-// getAvailableActions returns the list of available actions based on current state
-func (m ImportCompletionModel) getAvailableActions() []CompletionAction {
-	actions := []CompletionAction{ActionReturnToMenu}
-
-	// Add retry options if there are retryable errors
-	if m.hasRetryableErrors() {
-		actions = append(actions, ActionRetryFailed)
-		actions = append(actions, ActionRetryWithManualPasswords)
+// renderErrorDetailsView renders the detailed error view
+func (m ImportCompletionModel) renderErrorDetailsView() string {
+	if len(m.summary.Errors) == 0 {
+		return "No errors to display"
 	}
 
-	// Add error details if there are errors
-	if len(m.summary.Errors) > 0 {
-		actions = append(actions, ActionViewErrorDetails)
+	var sections []string
+
+	// Title
+	title := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("196")).Render("Error Details")
+	sections = append(sections, title)
+
+	// Error navigation info
+	navInfo := fmt.Sprintf("Error %d of %d", m.errorIndex+1, len(m.summary.Errors))
+	sections = append(sections, navInfo)
+
+	// Current error details
+	if m.errorIndex < len(m.summary.Errors) {
+		errorDetails := m.renderSingleErrorDetails(m.summary.Errors[m.errorIndex])
+		sections = append(sections, errorDetails)
 	}
 
-	// Always allow selecting different files
-	actions = append(actions, ActionSelectDifferentFiles)
+	// Navigation instructions
+	sections = append(sections, "")
+	instructions := []string{
+		"Use ↑/↓ or j/k to navigate between errors",
+		"Press R to retry this specific file",
+		"Press ESC or Q to return to summary",
+	}
 
-	return actions
+	instructionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
+	for _, instruction := range instructions {
+		sections = append(sections, instructionStyle.Render(instruction))
+	}
+
+	return lipgloss.JoinVertical(lipgloss.Left, sections...)
 }
 
-// getAvailableActionsCount returns the number of available actions
-func (m ImportCompletionModel) getAvailableActionsCount() int {
-	return len(m.getAvailableActions())
-}
+// renderSingleErrorDetails renders details for a single error
+func (m ImportCompletionModel) renderSingleErrorDetails(err wallet.ImportError) string {
+	var sections []string
 
-// hasRetryableErrors checks if there are errors that can be retried
-func (m ImportCompletionModel) hasRetryableErrors() bool {
-	for _, err := range m.summary.Errors {
-		if !err.Skipped {
-			// Check if this is a retryable error type
-			if m.isRetryableError(err.Error) {
-				return true
-			}
+	// File information
+	fileStyle := lipgloss.NewStyle().Bold(true)
+	sections = append(sections, fileStyle.Render(fmt.Sprintf("File: %s", err.File)))
+
+	// Error type
+	errorType := "Failed"
+	typeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
+	if err.Skipped {
+		errorType = "Skipped"
+		typeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
+	}
+	sections = append(sections, typeStyle.Render(fmt.Sprintf("Status: %s", errorType)))
+
+	// Error message
+	sections = append(sections, "")
+	sections = append(sections, "Error Details:")
+
+	errorMsg := err.Error.Error()
+	// Wrap long error messages
+	if len(errorMsg) > 80 {
+		errorMsg = m.wrapText(errorMsg, 80)
+	}
+
+	errorStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("196")).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("196")).
+		Padding(1)
+
+	sections = append(sections, errorStyle.Render(errorMsg))
+
+	// Suggested actions
+	suggestions := m.getSuggestedActions(err)
+	if len(suggestions) > 0 {
+		sections = append(sections, "")
+		sections = append(sections, "Suggested Actions:")
+		for _, suggestion := range suggestions {
+			sections = append(sections, fmt.Sprintf("  • %s", suggestion))
 		}
 	}
-	return false
+
+	return lipgloss.JoinVertical(lipgloss.Left, sections...)
 }
 
-// isRetryableError checks if an error can be retried
-func (m ImportCompletionModel) isRetryableError(err error) bool {
-	if err == nil {
-		return false
-	}
-
-	errorMsg := strings.ToLower(err.Error())
-
-	// Password-related errors are retryable
-	if strings.Contains(errorMsg, "password") ||
-		strings.Contains(errorMsg, "incorrect") ||
-		strings.Contains(errorMsg, "invalid") ||
-		strings.Contains(errorMsg, "decrypt") {
-		return true
-	}
-
-	// File access errors might be retryable
-	if strings.Contains(errorMsg, "permission") ||
-		strings.Contains(errorMsg, "access") {
-		return true
-	}
-
-	// Timeout errors are retryable
-	if strings.Contains(errorMsg, "timeout") {
-		return true
-	}
-
-	return false
-}
-
-// getShortErrorMessage returns a shortened version of the error message
-func (m ImportCompletionModel) getShortErrorMessage(err error) string {
-	if err == nil {
-		return "Unknown error"
-	}
-
-	msg := err.Error()
-	if len(msg) > 60 {
-		return msg[:57] + "..."
-	}
-	return msg
-}
-
-// getDetailedErrorMessage returns a detailed error message
-func (m ImportCompletionModel) getDetailedErrorMessage(err error) string {
-	if err == nil {
-		return "Unknown error occurred"
-	}
-
-	return err.Error()
-}
-
-// getSkipReason returns a user-friendly reason for why a file was skipped
-func (m ImportCompletionModel) getSkipReason(err error) string {
-	if err == nil {
-		return "User chose to skip"
-	}
-
-	errorMsg := strings.ToLower(err.Error())
-
-	if strings.Contains(errorMsg, "cancelled") {
-		return "User cancelled password input"
-	}
-
-	if strings.Contains(errorMsg, "skipped") {
-		return "User chose to skip this file"
-	}
-
-	if strings.Contains(errorMsg, "timeout") {
-		return "Password input timed out"
-	}
-
-	return "User action required"
-}
-
-// getRecoverySuggestions returns recovery suggestions for an error
-func (m ImportCompletionModel) getRecoverySuggestions(err error) []string {
-	if err == nil {
-		return []string{"Try the operation again"}
-	}
-
-	errorMsg := strings.ToLower(err.Error())
+// getSuggestedActions returns suggested actions based on the error type
+func (m ImportCompletionModel) getSuggestedActions(err wallet.ImportError) []string {
 	var suggestions []string
 
-	if strings.Contains(errorMsg, "password") || strings.Contains(errorMsg, "decrypt") {
+	errorMsg := strings.ToLower(err.Error.Error())
+
+	if err.Skipped {
+		suggestions = append(suggestions, "File was skipped due to user cancellation")
+		suggestions = append(suggestions, "Retry with manual password input")
+	} else if strings.Contains(errorMsg, "password") || strings.Contains(errorMsg, "decrypt") {
 		suggestions = append(suggestions, "Verify the password is correct")
 		suggestions = append(suggestions, "Check if a .pwd file exists with the correct password")
-		suggestions = append(suggestions, "Try entering the password manually")
-	}
-
-	if strings.Contains(errorMsg, "permission") || strings.Contains(errorMsg, "access") {
-		suggestions = append(suggestions, "Check file permissions")
-		suggestions = append(suggestions, "Ensure the file is not locked by another process")
-		suggestions = append(suggestions, "Try running with appropriate permissions")
-	}
-
-	if strings.Contains(errorMsg, "not found") {
-		suggestions = append(suggestions, "Verify the file path is correct")
-		suggestions = append(suggestions, "Ensure the file exists and is accessible")
-	}
-
-	if strings.Contains(errorMsg, "format") || strings.Contains(errorMsg, "invalid") {
+		suggestions = append(suggestions, "Retry with manual password input")
+	} else if strings.Contains(errorMsg, "format") || strings.Contains(errorMsg, "invalid") {
 		suggestions = append(suggestions, "Verify the file is a valid KeyStore V3 format")
 		suggestions = append(suggestions, "Check if the file is corrupted")
-	}
-
-	if len(suggestions) == 0 {
-		suggestions = append(suggestions, "Review the error message and try again")
-		suggestions = append(suggestions, "Contact support if the issue persists")
+	} else if strings.Contains(errorMsg, "permission") || strings.Contains(errorMsg, "access") {
+		suggestions = append(suggestions, "Check file permissions")
+		suggestions = append(suggestions, "Ensure the file is not locked by another process")
+	} else {
+		suggestions = append(suggestions, "Check the error details above")
+		suggestions = append(suggestions, "Verify the file is accessible and valid")
 	}
 
 	return suggestions
 }
 
-// Custom messages for the completion phase
-type RetryImportMsg struct {
-	Strategy string // "retry_failed", "manual_passwords", etc.
+// wrapText wraps text to the specified width
+func (m ImportCompletionModel) wrapText(text string, width int) string {
+	if len(text) <= width {
+		return text
+	}
+
+	var lines []string
+	words := strings.Fields(text)
+	currentLine := ""
+
+	for _, word := range words {
+		if len(currentLine)+len(word)+1 <= width {
+			if currentLine == "" {
+				currentLine = word
+			} else {
+				currentLine += " " + word
+			}
+		} else {
+			if currentLine != "" {
+				lines = append(lines, currentLine)
+			}
+			currentLine = word
+		}
+	}
+
+	if currentLine != "" {
+		lines = append(lines, currentLine)
+	}
+
+	return strings.Join(lines, "\n")
 }
 
-type RetrySpecificFileMsg struct {
-	File string
+// hasActionWithKey checks if there's an enabled action with the specified key
+func (m ImportCompletionModel) hasActionWithKey(key string) bool {
+	for _, action := range m.availableActions {
+		if action.Key == key && action.Enabled {
+			return true
+		}
+	}
+	return false
 }
-
-type ReturnToMenuMsg struct{}
-
-type SelectDifferentFilesMsg struct{}
 
 // GetSummary returns the import summary
 func (m ImportCompletionModel) GetSummary() wallet.ImportSummary {
@@ -670,50 +684,61 @@ func (m ImportCompletionModel) GetResults() []wallet.ImportResult {
 	return m.results
 }
 
+// GetElapsedTime returns the elapsed time for the import
+func (m ImportCompletionModel) GetElapsedTime() time.Duration {
+	return m.elapsedTime
+}
+
+// IsShowingErrors returns whether the error details view is active
+func (m ImportCompletionModel) IsShowingErrors() bool {
+	return m.showingErrors
+}
+
 // GetSelectedAction returns the currently selected action
 func (m ImportCompletionModel) GetSelectedAction() CompletionAction {
-	actions := m.getAvailableActions()
-	if m.selectedAction >= len(actions) {
-		return ActionReturnToMenu
+	if m.selectedAction < len(m.availableActions) {
+		return m.availableActions[m.selectedAction].Action
 	}
-	return actions[m.selectedAction]
+	return CompletionActionNone
 }
 
-// SetDimensions sets the display dimensions
-func (m *ImportCompletionModel) SetDimensions(width, height int) {
-	m.width = width
-	m.height = height
-}
+// GetRetryableFiles returns files that can be retried based on the strategy
+func (m ImportCompletionModel) GetRetryableFiles(strategy string) []string {
+	var files []string
 
-// GetFailedFiles returns a list of files that failed to import
-func (m ImportCompletionModel) GetFailedFiles() []string {
-	var failedFiles []string
-	for _, err := range m.summary.Errors {
-		if !err.Skipped {
-			failedFiles = append(failedFiles, err.File)
+	switch strategy {
+	case "retry_failed":
+		for _, result := range m.results {
+			if !result.Success && !result.Skipped {
+				files = append(files, result.Job.KeystorePath)
+			}
+		}
+	case "retry_skipped":
+		for _, result := range m.results {
+			if result.Skipped {
+				files = append(files, result.Job.KeystorePath)
+			}
+		}
+	case "retry_all":
+		for _, result := range m.results {
+			if !result.Success {
+				files = append(files, result.Job.KeystorePath)
+			}
 		}
 	}
-	return failedFiles
+
+	return files
 }
 
-// GetSkippedFiles returns a list of files that were skipped
-func (m ImportCompletionModel) GetSkippedFiles() []string {
-	var skippedFiles []string
-	for _, err := range m.summary.Errors {
-		if err.Skipped {
-			skippedFiles = append(skippedFiles, err.File)
-		}
-	}
-	return skippedFiles
+// Custom messages for the completion phase
+type RetryImportMsg struct {
+	Strategy string
 }
 
-// GetRetryableFiles returns a list of files that can be retried
-func (m ImportCompletionModel) GetRetryableFiles() []string {
-	var retryableFiles []string
-	for _, err := range m.summary.Errors {
-		if !err.Skipped && m.isRetryableError(err.Error) {
-			retryableFiles = append(retryableFiles, err.File)
-		}
-	}
-	return retryableFiles
+type RetrySpecificFileMsg struct {
+	File string
 }
+
+type ReturnToMenuMsg struct{}
+
+type SelectDifferentFilesMsg struct{}

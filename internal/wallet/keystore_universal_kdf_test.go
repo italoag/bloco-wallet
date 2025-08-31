@@ -97,11 +97,11 @@ func TestImportWalletFromKeystoreV3WithUniversalKDF(t *testing.T) {
 			assert.NotNil(t, walletDetails.Wallet)
 			assert.NotNil(t, walletDetails.PrivateKey)
 			assert.NotNil(t, walletDetails.PublicKey)
-			assert.NotEmpty(t, walletDetails.Mnemonic)
+			assert.Nil(t, walletDetails.Mnemonic) // Keystore imports don't have mnemonics
 
 			// Verify import method
 			assert.Equal(t, ImportMethodKeystore, walletDetails.ImportMethod)
-			assert.True(t, walletDetails.HasMnemonic)
+			assert.False(t, walletDetails.HasMnemonic) // Keystore imports don't have mnemonics
 
 			// Verify KDF information
 			require.NotNil(t, walletDetails.KDFInfo)

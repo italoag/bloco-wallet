@@ -37,98 +37,123 @@
   - ✅ Add visual status indicators and user instructions
   - _Requirements: 3.1, 3.2, 3.3, 6.6_
 
-- [x] 5. Implement batch import service with password integration
-  - Create batch import service that processes multiple keystore files sequentially
-  - Integrate password file manager to automatically detect and use .pwd files
-  - Implement import job creation with keystore path, password path, and manual password fields
-  - Add progress reporting through channels for real-time UI updates
-  - Create error handling that continues processing remaining files after failures
+- [x] 5. Implement batch import service with password integration ✅ COMPLETED
+  - ✅ Create batch import service that processes multiple keystore files sequentially
+  - ✅ Integrate password file manager to automatically detect and use .pwd files
+  - ✅ Implement import job creation with keystore path, password path, and manual password fields
+  - ✅ Add progress reporting through channels for real-time UI updates
+  - ✅ Create error handling that continues processing remaining files after failures
   - _Requirements: 1.5, 4.1, 4.2, 4.3, 4.4_
 
-- [x] 6. Integrate password popup with batch import flow
-  - Modify batch import service to pause when manual password input is required
-  - Implement communication channels between import service and password popup
-  - Add logic to handle password popup results (password provided, cancelled, or skipped)
-  - Create retry mechanism for incorrect passwords with popup redisplay
-  - Implement file skipping logic that tracks skipped files separately from failures
+- [x] 6. Integrate password popup with batch import flow ✅ COMPLETED
+  - ✅ Modify batch import service to pause when manual password input is required
+  - ✅ Implement communication channels between import service and password popup
+  - ✅ Add logic to handle password popup results (password provided, cancelled, or skipped)
+  - ✅ Create retry mechanism for incorrect passwords with popup redisplay
+  - ✅ Implement file skipping logic that tracks skipped files separately from failures
   - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 6.6_
 
-- [x] 7. Create enhanced import state management
-  - Implement state machine for import phases (file selection, importing, password input, complete)
-  - Add state tracking for selected files, import jobs, results, and current progress
-  - Create password popup state management within import flow
-  - Implement phase transitions and state validation
-  - Add cleanup logic for cancelled or interrupted imports
+- [x] 7. Create enhanced import state management ✅ COMPLETED
+  - ✅ Implement state machine for import phases (file selection, importing, password input, complete)
+  - ✅ Add state tracking for selected files, import jobs, results, and current progress
+  - ✅ Create password popup state management within import flow
+  - ✅ Implement phase transitions and state validation
+  - ✅ Add cleanup logic for cancelled or interrupted imports
   - _Requirements: 5.4_
 
-- [x] 8. Implement directory scanning and keystore detection
-  - Create directory scanning functionality to find all JSON files recursively
-  - Add keystore file validation to identify valid KeyStoreV3 format files
-  - Implement automatic password file detection for each discovered keystore
-  - Create import job generation for directory-based imports
-  - Add error handling for directories with no valid keystore files
+- [x] 8. Implement directory scanning and keystore detection ✅ COMPLETED
+  - ✅ Create directory scanning functionality to find all JSON files recursively
+  - ✅ Add keystore file validation to identify valid KeyStoreV3 format files
+  - ✅ Implement automatic password file detection for each discovered keystore
+  - ✅ Create import job generation for directory-based imports
+  - ✅ Add error handling for directories with no valid keystore files
   - _Requirements: 4.1, 4.2, 4.5_
 
-- [x] 9. Add comprehensive error handling and localization
-  - Extend existing KeystoreImportError types to include password file errors
-  - Implement localized error messages for all new error conditions
-  - Add error recovery strategies for different failure types
-  - Create user-friendly error messages that don't expose sensitive information
-  - Implement error aggregation and reporting for batch operations
+- [x] 9. Add comprehensive error handling and localization ✅ COMPLETED
+  - ✅ Extend existing KeystoreImportError types to include password file errors
+  - ✅ Implement localized error messages for all new error conditions
+  - ✅ Add error recovery strategies for different failure types
+  - ✅ Create user-friendly error messages that don't expose sensitive information
+  - ✅ Implement error aggregation and reporting for batch operations
   - _Requirements: 5.1, 5.2, 5.3, 5.5_
 
-- [ ] 10. Create import completion and summary display
-  - Implement completion phase UI showing success/failure/skipped counts
-  - Add detailed error information display for failed imports
-  - Create list of skipped files with reasons for skipping
-  - Implement retry functionality for failed or skipped imports
-  - Add navigation options to return to main menu or wallet list
+- [x] 10. Create import completion and summary display ✅ COMPLETED
+  - ✅ Implement completion phase UI showing success/failure/skipped counts
+  - ✅ Add detailed error information display for failed imports
+  - ✅ Create list of skipped files with reasons for skipping
+  - ✅ Implement retry functionality for failed or skipped imports
+  - ✅ Add navigation options to return to main menu or wallet list
   - _Requirements: 3.4, 3.5_
 
-- [ ] 11. Integrate enhanced import with existing TUI
-  - Modify existing import keystore view to use enhanced file picker
-  - Replace current import flow with new batch import service
-  - Integrate progress bar display into existing TUI layout
-  - Add password popup overlay to existing view system
-  - Update menu navigation to support new import workflow
+- [x] 11. Integrate enhanced import with existing TUI ✅ COMPLETED
+  - ✅ Create new enhanced import view in TUI that uses EnhancedImportState
+  - ✅ Add new view constant for enhanced import in constants.go
+  - ✅ Implement enhanced import initialization and update methods in tui.go
+  - ✅ Replace existing ImportKeystoreView with enhanced import workflow
+  - ✅ Add view rendering method in views.go for enhanced import state
+  - ✅ Update menu navigation to transition to enhanced import view
   - _Requirements: 2.1, 3.1_
 
-- [ ] 12. Add comprehensive unit tests for password file manager
-  - Test password file detection with various filename patterns
-  - Test password reading with different file encodings and formats
-  - Test validation logic for empty, oversized, and corrupted password files
-  - Test error handling for permission issues and missing files
-  - Create test data with various password file scenarios
+- [x] 12. Add comprehensive unit tests for password file manager ✅ COMPLETED
+  - ✅ Test password file detection with various filename patterns
+  - ✅ Test password reading with different file encodings and formats
+  - ✅ Test validation logic for empty, oversized, and corrupted password files
+  - ✅ Test error handling for permission issues and missing files
+  - ✅ Create test data with various password file scenarios
   - _Requirements: 1.1, 1.2, 1.3, 5.1_
 
-- [ ] 13. Add unit tests for enhanced file picker component
-  - Test multi-file selection functionality with keyboard and mouse interactions
-  - Test directory selection and navigation
-  - Test file filtering for JSON keystore files
-  - Test visual state updates for selected files
-  - Test keyboard navigation and selection confirmation
+- [x] 13. Add unit tests for enhanced file picker component ✅ COMPLETED
+  - ✅ Test multi-file selection functionality with keyboard and mouse interactions
+  - ✅ Test directory selection and navigation
+  - ✅ Test file filtering for JSON keystore files
+  - ✅ Test visual state updates for selected files
+  - ✅ Test keyboard navigation and selection confirmation
   - _Requirements: 2.2, 2.3, 2.4, 2.5, 2.6_
 
-- [ ] 14. Add unit tests for batch import service
-  - Test batch processing with mixed success/failure scenarios
-  - Test progress reporting accuracy and timing
-  - Test password file integration and fallback to manual input
-  - Test error aggregation and continued processing after failures
-  - Test import job creation and result tracking
+- [x] 14. Add unit tests for batch import service ✅ COMPLETED
+  - ✅ Test batch processing with mixed success/failure scenarios
+  - ✅ Test progress reporting accuracy and timing
+  - ✅ Test password file integration and fallback to manual input
+  - ✅ Test error aggregation and continued processing after failures
+  - ✅ Test import job creation and result tracking
   - _Requirements: 4.3, 4.4, 1.5_
 
-- [ ] 15. Add integration tests for complete import workflow
-  - Test end-to-end import flow with password files present
-  - Test import flow with manual password input for files without .pwd
-  - Test mixed scenarios with some files having password files and others requiring manual input
-  - Test error scenarios and recovery mechanisms
-  - Test import cancellation and cleanup
+- [x] 15. Add integration tests for complete import workflow ✅ COMPLETED
+  - ✅ Test end-to-end import flow with password files present
+  - ✅ Test import flow with manual password input for files without .pwd
+  - ✅ Test mixed scenarios with some files having password files and others requiring manual input
+  - ✅ Test error scenarios and recovery mechanisms
+  - ✅ Test import cancellation and cleanup
   - _Requirements: 1.4, 6.3, 6.4, 6.5, 5.4_
 
-- [ ] 16. Create test data for enhanced import functionality
-  - Generate test keystore files with corresponding .pwd files
-  - Create test keystores without password files for manual input testing
-  - Generate invalid keystore files for error handling tests
-  - Create test directories with mixed keystore and non-keystore files
-  - Add test password files with various formats and edge cases
+- [x] 16. Create test data for enhanced import functionality ✅ COMPLETED
+  - ✅ Generate test keystore files with corresponding .pwd files
+  - ✅ Create test keystores without password files for manual input testing
+  - ✅ Generate invalid keystore files for error handling tests
+  - ✅ Create test directories with mixed keystore and non-keystore files
+  - ✅ Add test password files with various formats and edge cases
   - _Requirements: 4.1, 4.2, 5.2_
+
+- [ ] 17. Add enhanced import view rendering and state management
+  - Implement viewEnhancedImport method in views.go to render current import state
+  - Add updateEnhancedImport method in tui.go to handle enhanced import messages
+  - Integrate EnhancedImportState with CLIModel for proper state management
+  - Handle phase transitions and component updates within TUI framework
+  - Add proper cleanup when exiting enhanced import view
+  - _Requirements: 2.1, 3.1, 5.4_
+
+- [ ] 18. Wire enhanced import components with wallet service
+  - Initialize BatchImportService with existing WalletService in TUI
+  - Connect enhanced import state with actual wallet import operations
+  - Ensure proper error handling and result processing
+  - Test integration with existing wallet storage and validation
+  - Verify compatibility with existing localization system
+  - _Requirements: 1.5, 4.1, 4.2, 4.3, 4.4_
+
+- [ ] 19. Add end-to-end integration tests for TUI enhanced import
+  - Test complete enhanced import workflow through TUI interface
+  - Verify file selection, progress display, and completion phases work correctly
+  - Test password popup integration within TUI framework
+  - Validate proper cleanup and state transitions
+  - Test error scenarios and recovery within TUI context
+  - _Requirements: 1.4, 2.1, 3.1, 5.4, 6.1, 6.2, 6.3, 6.4, 6.5, 6.6_

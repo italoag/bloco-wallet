@@ -20,15 +20,18 @@ type ImportError struct {
 // ImportProgressModel represents the progress bar component for import operations
 type ImportProgressModel struct {
 	progress.Model
-	currentFile    string
-	totalFiles     int
-	processedFiles int
-	errors         []ImportError
-	completed      bool
-	paused         bool
-	pauseReason    string
-	startTime      time.Time
-	styles         Styles
+	currentFile       string
+	totalFiles        int
+	processedFiles    int
+	errors            []ImportError
+	completed         bool
+	paused            bool
+	pauseReason       string
+	startTime         time.Time
+	styles            Styles
+	lastUpdateTime    time.Time
+	fallbackEnabled   bool
+	estimatedProgress float64
 }
 
 // ImportProgressMsg represents progress updates
@@ -51,20 +54,35 @@ func NewImportProgressModel(totalFiles int, styles Styles) ImportProgressModel {
 	)
 
 	return ImportProgressModel{
-		Model:          p,
-		totalFiles:     totalFiles,
-		processedFiles: 0,
-		errors:         make([]ImportError, 0),
-		completed:      false,
-		paused:         false,
-		startTime:      time.Now(),
-		styles:         styles,
+		Model:             p,
+		totalFiles:        totalFiles,
+		processedFiles:    0,
+		errors:            make([]ImportError, 0),
+		completed:         false,
+		paused:            false,
+		startTime:         time.Now(),
+		styles:            styles,
+		lastUpdateTime:    time.Now(),
+		fallbackEnabled:   true,
+		estimatedProgress: 0.0,
 	}
 }
 
 // Init initializes the progress model
 func (m ImportProgressModel) Init() tea.Cmd {
-	return nil
+	return m.tickCmd()
+}
+
+// tickCmd returns a command that sends a tick message for fallback progress updates
+func (m ImportProgressModel) tickCmd() tea.Cmd {
+	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
+		return TickMsg{Time: t}
+	})
+}
+
+// TickMsg represents a timer tick for fallback progress estimation
+type TickMsg struct {
+	Time time.Time
 }
 
 // Update handles progress updates
@@ -77,6 +95,7 @@ func (m ImportProgressModel) Update(msg tea.Msg) (ImportProgressModel, tea.Cmd) 
 		m.completed = msg.Completed
 		m.paused = msg.Paused
 		m.pauseReason = msg.PauseReason
+		m.lastUpdateTime = time.Now()
 
 		if msg.Error != nil {
 			m.errors = append(m.errors, *msg.Error)
@@ -85,9 +104,37 @@ func (m ImportProgressModel) Update(msg tea.Msg) (ImportProgressModel, tea.Cmd) 
 		// Update progress percentage
 		if m.totalFiles > 0 {
 			percentage := float64(m.processedFiles) / float64(m.totalFiles)
+			m.estimatedProgress = percentage
 			cmd := m.Model.SetPercent(percentage)
-			return m, cmd
+			return m, tea.Batch(cmd, m.tickCmd())
 		}
+
+		return m, m.tickCmd()
+
+	case TickMsg:
+		// Fallback progress estimation if no updates received recently
+		if !m.completed && !m.paused && m.fallbackEnabled {
+			timeSinceLastUpdate := time.Since(m.lastUpdateTime)
+
+			// If no updates for more than 3 seconds, use fallback estimation
+			if timeSinceLastUpdate > 3*time.Second {
+				// Estimate progress based on elapsed time (assuming 30 seconds per file)
+				elapsed := time.Since(m.startTime)
+				estimatedTimePerFile := 30 * time.Second
+				estimatedFilesProcessed := float64(elapsed) / float64(estimatedTimePerFile)
+
+				if m.totalFiles > 0 {
+					fallbackPercentage := estimatedFilesProcessed / float64(m.totalFiles)
+					if fallbackPercentage > m.estimatedProgress && fallbackPercentage < 1.0 {
+						m.estimatedProgress = fallbackPercentage
+						cmd := m.Model.SetPercent(fallbackPercentage)
+						return m, tea.Batch(cmd, m.tickCmd())
+					}
+				}
+			}
+		}
+
+		return m, m.tickCmd()
 
 	case progress.FrameMsg:
 		progressModel, cmd := m.Model.Update(msg)
@@ -275,6 +322,9 @@ func (m *ImportProgressModel) Reset(totalFiles int) {
 	m.paused = false
 	m.pauseReason = ""
 	m.startTime = time.Now()
+	m.lastUpdateTime = time.Now()
+	m.fallbackEnabled = true
+	m.estimatedProgress = 0.0
 	m.Model.SetPercent(0)
 }
 

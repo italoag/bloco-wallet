@@ -262,8 +262,8 @@ func TestImportWalletFromKeystoreV3_Success(t *testing.T) {
 	assert.Equal(t, "Test Wallet", walletDetails.Wallet.Name)
 	assert.Equal(t, address.Hex(), walletDetails.Wallet.Address)
 	assert.NotEmpty(t, walletDetails.Wallet.KeyStorePath)
-	assert.NotEmpty(t, walletDetails.Wallet.Mnemonic)
-	assert.NotEmpty(t, walletDetails.Mnemonic)
+	assert.Nil(t, walletDetails.Wallet.Mnemonic) // Keystore imports don't have mnemonics
+	assert.Nil(t, walletDetails.Mnemonic)        // Keystore imports don't have mnemonics
 	assert.NotNil(t, walletDetails.PrivateKey)
 	assert.NotNil(t, walletDetails.PublicKey)
 

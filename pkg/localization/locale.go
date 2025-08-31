@@ -256,7 +256,7 @@ func getEnglishMessages() map[string]string {
 		"wallet_type":                "Type",
 		"imported_private_key":       "Private Key",
 		"imported_mnemonic":          "Mnemonic",
-		"imported_keystore":          "Keystore",
+		"imported_keystore":          "Keystore (Private Key)",
 		"version":                    "0.2.0",
 		"current":                    "Current",
 	}
@@ -333,7 +333,7 @@ func getPortugueseMessages() map[string]string {
 		"wallet_type":                "Tipo",
 		"imported_private_key":       "Chave Privada",
 		"imported_mnemonic":          "Frase Mnemônica",
-		"imported_keystore":          "Keystore",
+		"imported_keystore":          "Keystore (Chave Privada)",
 		"version":                    "0.2.0",
 		"current":                    "Atual",
 	}
@@ -410,7 +410,7 @@ func getSpanishMessages() map[string]string {
 		"wallet_type":                "Tipo",
 		"imported_private_key":       "Clave Privada",
 		"imported_mnemonic":          "Frase Mnemónica",
-		"imported_keystore":          "Keystore",
+		"imported_keystore":          "Keystore (Clave Privada)",
 		"version":                    "0.2.0",
 		"current":                    "Actual",
 	}

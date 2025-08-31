@@ -2,6 +2,7 @@ package wallet
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -481,8 +482,8 @@ func (bis *BatchImportService) processImportJob(
 		}
 	}
 
-	// Attempt the import
-	walletDetails, err := bis.walletService.ImportWalletFromKeystoreV3(job.WalletName, job.KeystorePath, password)
+	// Attempt the import with progress tracking
+	walletDetails, err := bis.walletService.ImportWalletFromKeystoreV3WithProgress(job.WalletName, job.KeystorePath, password, progressChan)
 	if err != nil {
 		return ImportResult{
 			Job:     job,
@@ -672,11 +673,19 @@ func (bis *BatchImportService) sendPasswordRequest(request PasswordRequest, pass
 
 // sendProgressUpdate safely sends a progress update through the channel
 func (bis *BatchImportService) sendProgressUpdate(progress ImportProgress, progressChan chan<- ImportProgress) {
+	if progressChan == nil {
+		return // No progress channel provided, skip update
+	}
+
+	// Use buffered send with longer timeout to ensure progress updates are delivered
 	select {
 	case progressChan <- progress:
-	default:
-		// Channel might be full or closed, continue anyway
-		// This is not an error condition as progress updates are best-effort
+		// Successfully sent progress update
+	case <-time.After(500 * time.Millisecond):
+		// Timeout after 500ms - this allows more time for UI to process
+		// Log the dropped update for debugging
+		log.Printf("Progress update dropped - channel may be blocked (file: %s, progress: %.1f%%)", 
+			progress.CurrentFile, progress.Percentage)
 	}
 }
 

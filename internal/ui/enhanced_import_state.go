@@ -2,6 +2,8 @@ package ui
 
 import (
 	"fmt"
+	"log"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -93,6 +95,7 @@ type EnhancedImportState struct {
 	completed    bool
 	cancelled    bool
 	errorMessage string
+	pendingCommand tea.Cmd
 
 	// Cleanup tracking
 	cleanupFuncs []func()
@@ -106,7 +109,7 @@ func NewEnhancedImportState(batchService BatchImportServiceInterface, styles Sty
 		ImportJobs:           []wallet.ImportJob{},
 		Results:              []wallet.ImportResult{},
 		BatchService:         batchService,
-		progressChan:         make(chan wallet.ImportProgress, 10),
+		progressChan:         make(chan wallet.ImportProgress, 500), // Increased buffer for better throughput
 		passwordRequestChan:  make(chan wallet.PasswordRequest, 1),
 		passwordResponseChan: make(chan wallet.PasswordResponse, 1),
 		cleanupFuncs:         []func(){},
@@ -114,6 +117,10 @@ func NewEnhancedImportState(batchService BatchImportServiceInterface, styles Sty
 
 	// Initialize file picker
 	filePicker := NewEnhancedFilePicker()
+	// Set the current directory to the keystores directory if it exists
+	if keystoreDir := "keystores"; fileExists(keystoreDir) {
+		filePicker.CurrentDirectory = keystoreDir
+	}
 	state.FilePicker = &filePicker
 
 	// Initialize progress bar (will be configured when import starts)
@@ -140,7 +147,6 @@ func (s *EnhancedImportState) TransitionToPhase(newPhase ImportPhase) error {
 		return fmt.Errorf("invalid phase transition from %s to %s", s.Phase, newPhase)
 	}
 
-	oldPhase := s.Phase
 	s.Phase = newPhase
 
 	// Perform phase-specific setup
@@ -156,9 +162,6 @@ func (s *EnhancedImportState) TransitionToPhase(newPhase ImportPhase) error {
 	case PhaseCancelled:
 		s.setupCancelledPhase()
 	}
-
-	// Log phase transition for debugging
-	fmt.Printf("Phase transition: %s -> %s\n", oldPhase, newPhase)
 
 	return nil
 }
@@ -320,7 +323,6 @@ func (s *EnhancedImportState) transitionToPhaseInternal(newPhase ImportPhase) er
 		return fmt.Errorf("invalid phase transition from %s to %s", s.Phase, newPhase)
 	}
 
-	oldPhase := s.Phase
 	s.Phase = newPhase
 
 	// Perform phase-specific setup
@@ -336,9 +338,6 @@ func (s *EnhancedImportState) transitionToPhaseInternal(newPhase ImportPhase) er
 	case PhaseCancelled:
 		s.setupCancelledPhase()
 	}
-
-	// Log phase transition for debugging
-	fmt.Printf("Phase transition: %s -> %s\n", oldPhase, newPhase)
 
 	return nil
 }
@@ -470,10 +469,16 @@ func (s *EnhancedImportState) CancelImport() error {
 	return s.transitionToPhaseInternal(PhaseCancelled)
 }
 
-// UpdateProgress updates the current import progress
+// UpdateProgress updates the current import progress with validation
 func (s *EnhancedImportState) UpdateProgress(progress wallet.ImportProgress) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	// Validate progress update
+	if err := s.validateProgressUpdate(progress); err != nil {
+		log.Printf("Invalid progress update received: %v", err)
+		return
+	}
 
 	s.CurrentProgress = progress
 
@@ -483,21 +488,25 @@ func (s *EnhancedImportState) UpdateProgress(progress wallet.ImportProgress) {
 			CurrentFile:    progress.CurrentFile,
 			ProcessedFiles: progress.ProcessedFiles,
 			TotalFiles:     progress.TotalFiles,
-			Completed:      false,
+			Completed:      progress.ProcessedFiles >= progress.TotalFiles,
 			Paused:         progress.PendingPassword,
 			PauseReason:    "Waiting for password input",
 		}
 
-		// Add any new errors
-		for _, err := range progress.Errors {
+		// Add the most recent error if any
+		if len(progress.Errors) > 0 {
+			lastError := progress.Errors[len(progress.Errors)-1]
 			progressMsg.Error = &ImportError{
-				File:    err.File,
-				Error:   err.Error,
-				Skipped: err.Skipped,
+				File:    lastError.File,
+				Error:   lastError.Error,
+				Skipped: lastError.Skipped,
 			}
 		}
 
-		s.ProgressBar.Update(progressMsg)
+		// Update the progress bar and store any returned command
+		updatedProgressBar, cmd := s.ProgressBar.Update(progressMsg)
+		s.ProgressBar = &updatedProgressBar
+		s.pendingCommand = cmd
 	}
 }
 
@@ -509,6 +518,72 @@ func (s *EnhancedImportState) GetProgressChan() <-chan wallet.ImportProgress {
 // GetPasswordRequestChan returns the password request channel
 func (s *EnhancedImportState) GetPasswordRequestChan() <-chan wallet.PasswordRequest {
 	return s.passwordRequestChan
+}
+
+// GetPendingCommand returns and clears any pending command
+func (s *EnhancedImportState) GetPendingCommand() tea.Cmd {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cmd := s.pendingCommand
+	s.pendingCommand = nil
+	return cmd
+}
+
+// validateProgressUpdate validates a progress update for consistency
+func (s *EnhancedImportState) validateProgressUpdate(progress wallet.ImportProgress) error {
+	if progress.TotalFiles <= 0 {
+		return fmt.Errorf("total files must be positive: %d", progress.TotalFiles)
+	}
+
+	if progress.ProcessedFiles < 0 {
+		return fmt.Errorf("processed files cannot be negative: %d", progress.ProcessedFiles)
+	}
+
+	if progress.ProcessedFiles > progress.TotalFiles {
+		return fmt.Errorf("processed files exceeds total: %d > %d", 
+			progress.ProcessedFiles, progress.TotalFiles)
+	}
+
+	// Validate percentage consistency
+	expectedPercentage := float64(progress.ProcessedFiles) / float64(progress.TotalFiles) * 100
+	if progress.ProcessedFiles == progress.TotalFiles {
+		expectedPercentage = 100.0
+	}
+
+	tolerance := 1.0 // Allow 1% tolerance for floating point precision
+	if progress.Percentage < 0 || progress.Percentage > 100 {
+		return fmt.Errorf("percentage out of range: %.2f", progress.Percentage)
+	}
+
+	if abs(progress.Percentage-expectedPercentage) > tolerance {
+		return fmt.Errorf("percentage inconsistent: %.2f vs expected %.2f", 
+			progress.Percentage, expectedPercentage)
+	}
+
+	// Validate against previous progress (if any)
+	if s.CurrentProgress.TotalFiles > 0 {
+		// Total files should remain consistent within the same batch
+		if progress.TotalFiles != s.CurrentProgress.TotalFiles {
+			return fmt.Errorf("total files changed during import: %d -> %d", 
+				s.CurrentProgress.TotalFiles, progress.TotalFiles)
+		}
+
+		// Processed files should not decrease (unless it's a reset to 0)
+		if progress.ProcessedFiles < s.CurrentProgress.ProcessedFiles && progress.ProcessedFiles != 0 {
+			return fmt.Errorf("processed files decreased: %d -> %d", 
+				s.CurrentProgress.ProcessedFiles, progress.ProcessedFiles)
+		}
+	}
+
+	return nil
+}
+
+// abs returns the absolute value of a float64
+func abs(x float64) float64 {
+	if x < 0 {
+		return -x
+	}
+	return x
 }
 
 // IsCompleted returns whether the import process is completed
@@ -595,9 +670,9 @@ func (s *EnhancedImportState) Cleanup() {
 }
 
 // HandleCompletionUpdate handles updates from the completion component
-func (s *EnhancedImportState) HandleCompletionUpdate(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (s *EnhancedImportState) HandleCompletionUpdate(msg tea.Msg) tea.Cmd {
 	if s.Phase != PhaseComplete || s.Completion == nil {
-		return s, nil
+		return nil
 	}
 
 	var cmd tea.Cmd
@@ -606,16 +681,16 @@ func (s *EnhancedImportState) HandleCompletionUpdate(msg tea.Msg) (tea.Model, te
 	// Handle completion-specific messages
 	switch msg := msg.(type) {
 	case RetryImportMsg:
-		return s, s.handleRetryRequest(msg.Strategy)
+		return s.handleRetryRequest(msg.Strategy)
 	case RetrySpecificFileMsg:
-		return s, s.handleRetrySpecificFile(msg.File)
+		return s.handleRetrySpecificFile(msg.File)
 	case ReturnToMenuMsg:
-		return s, s.handleReturnToMenu()
+		return s.handleReturnToMenu()
 	case SelectDifferentFilesMsg:
-		return s, s.handleSelectDifferentFiles()
+		return s.handleSelectDifferentFiles()
 	}
 
-	return s, cmd
+	return cmd
 }
 
 // handleRetryRequest handles retry requests from the completion phase
@@ -773,6 +848,9 @@ type PasswordRequestMsg struct {
 	Request wallet.PasswordRequest
 }
 
+// ContinueListeningMsg indicates that listening should continue
+type ContinueListeningMsg struct{}
+
 // Completion phase messages
 type CompletionUpdateMsg struct {
 	Action CompletionAction
@@ -787,6 +865,61 @@ type ReturnToFileSelectionMsg struct{}
 
 type ViewErrorDetailsMsg struct {
 	ErrorIndex int
+}
+
+// Init implements the tea.Model interface
+func (s *EnhancedImportState) Init() tea.Cmd {
+	// Initialize file picker if we're in file selection phase
+	if s.Phase == PhaseFileSelection && s.FilePicker != nil {
+		return s.FilePicker.Init()
+	}
+	return nil
+}
+
+// Update implements the tea.Model interface
+func (s *EnhancedImportState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch s.Phase {
+	case PhaseFileSelection:
+		if s.FilePicker != nil {
+			var cmd tea.Cmd
+			*s.FilePicker, cmd = s.FilePicker.Update(msg)
+
+			// Sync selected files from file picker
+			s.syncSelectedFiles()
+
+			return s, cmd
+		}
+
+	case PhaseImporting:
+		if s.ProgressBar != nil {
+			var cmd tea.Cmd
+			*s.ProgressBar, cmd = s.ProgressBar.Update(msg)
+			return s, cmd
+		}
+
+	case PhasePasswordInput:
+		if s.ShowingPopup && s.PasswordPopup != nil {
+			var cmd tea.Cmd
+			*s.PasswordPopup, cmd = s.PasswordPopup.Update(msg)
+			return s, cmd
+		}
+
+	case PhaseComplete:
+		return s, s.HandleCompletionUpdate(msg)
+
+	case PhaseCancelled:
+		// Handle basic navigation in cancelled state
+		switch msg := msg.(type) {
+		case tea.KeyMsg:
+			if msg.String() == "enter" || msg.String() == "esc" {
+				return s, func() tea.Msg {
+					return ReturnToMenuMsg{}
+				}
+			}
+		}
+	}
+
+	return s, nil
 }
 
 // View renders the current state based on the active phase
@@ -893,4 +1026,22 @@ func (s *EnhancedImportState) renderCancellationView() string {
 	sections = append(sections, "Press ENTER to return to menu")
 
 	return lipgloss.JoinVertical(lipgloss.Left, sections...)
+}
+
+// fileExists checks if a file or directory exists
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+// syncSelectedFiles synchronizes selected files from the file picker
+func (s *EnhancedImportState) syncSelectedFiles() {
+	if s.FilePicker == nil {
+		return
+	}
+
+	// Get selected files from file picker
+	result := s.FilePicker.GetResult()
+	s.SelectedFiles = result.Files
+	s.SelectedDir = result.Directory
 }

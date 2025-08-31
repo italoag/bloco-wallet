@@ -2,12 +2,13 @@ package wallet
 
 import (
 	"crypto/ecdsa"
-	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/common"
@@ -249,7 +250,37 @@ func (ws *WalletService) ImportWalletFromPrivateKey(name, privateKeyHex, passwor
 
 // ImportWalletFromKeystoreV3 imports a wallet from a keystore v3 file with Universal KDF support
 func (ws *WalletService) ImportWalletFromKeystoreV3(name, keystorePath, password string) (*WalletDetails, error) {
+	return ws.ImportWalletFromKeystoreV3WithProgress(name, keystorePath, password, nil)
+}
+
+// ImportWalletFromKeystoreV3WithProgress imports a wallet from a keystore v3 file with progress tracking
+func (ws *WalletService) ImportWalletFromKeystoreV3WithProgress(name, keystorePath, password string, progressChan chan<- ImportProgress) (*WalletDetails, error) {
+	// Send initial progress update
+	ws.sendProgressUpdate(progressChan, ImportProgress{
+		CurrentFile:     keystorePath,
+		TotalFiles:      1,
+		ProcessedFiles:  0,
+		Percentage:      0.0,
+		Errors:          []ImportError{},
+		PendingPassword: false,
+		PendingFile:     "",
+		StartTime:       time.Now(),
+		ElapsedTime:     0,
+	})
+
 	// Step 1: Validate file existence
+	ws.sendProgressUpdate(progressChan, ImportProgress{
+		CurrentFile:     keystorePath,
+		TotalFiles:      1,
+		ProcessedFiles:  0,
+		Percentage:      10.0,
+		Errors:          []ImportError{},
+		PendingPassword: false,
+		PendingFile:     "",
+		StartTime:       time.Now(),
+		ElapsedTime:     0,
+	})
+
 	if _, err := os.Stat(keystorePath); os.IsNotExist(err) {
 		return nil, NewKeystoreImportError(
 			ErrorFileNotFound,
@@ -259,6 +290,18 @@ func (ws *WalletService) ImportWalletFromKeystoreV3(name, keystorePath, password
 	}
 
 	// Step 2: Read the keystore file
+	ws.sendProgressUpdate(progressChan, ImportProgress{
+		CurrentFile:     keystorePath,
+		TotalFiles:      1,
+		ProcessedFiles:  0,
+		Percentage:      20.0,
+		Errors:          []ImportError{},
+		PendingPassword: false,
+		PendingFile:     "",
+		StartTime:       time.Now(),
+		ElapsedTime:     0,
+	})
+
 	keyJSON, err := os.ReadFile(keystorePath)
 	if err != nil {
 		return nil, NewKeystoreImportError(
@@ -291,6 +334,18 @@ func (ws *WalletService) ImportWalletFromKeystoreV3(name, keystorePath, password
 	compatAnalyzer := NewKDFCompatibilityAnalyzer()
 
 	// Step 6: Parse keystore JSON for compatibility analysis
+	ws.sendProgressUpdate(progressChan, ImportProgress{
+		CurrentFile:     keystorePath,
+		TotalFiles:      1,
+		ProcessedFiles:  0,
+		Percentage:      30.0,
+		Errors:          []ImportError{},
+		PendingPassword: false,
+		PendingFile:     "",
+		StartTime:       time.Now(),
+		ElapsedTime:     0,
+	})
+
 	var keystoreMap map[string]interface{}
 	if err := json.Unmarshal(keyJSON, &keystoreMap); err != nil {
 		return nil, NewKeystoreImportError(
@@ -315,6 +370,18 @@ func (ws *WalletService) ImportWalletFromKeystoreV3(name, keystorePath, password
 	// The security level is still available in walletDetails.KDFInfo for programmatic use
 
 	// Step 8: Validate keystore structure using existing validator
+	ws.sendProgressUpdate(progressChan, ImportProgress{
+		CurrentFile:     keystorePath,
+		TotalFiles:      1,
+		ProcessedFiles:  0,
+		Percentage:      40.0,
+		Errors:          []ImportError{},
+		PendingPassword: false,
+		PendingFile:     "",
+		StartTime:       time.Now(),
+		ElapsedTime:     0,
+	})
+
 	validator := &KeystoreValidator{}
 	keystoreData, err := validator.ValidateKeystoreV3(keyJSON)
 	if err != nil {
@@ -350,6 +417,18 @@ func (ws *WalletService) ImportWalletFromKeystoreV3(name, keystorePath, password
 	}
 
 	// Step 10: Derive key using Universal KDF Service
+	ws.sendProgressUpdate(progressChan, ImportProgress{
+		CurrentFile:     keystorePath,
+		TotalFiles:      1,
+		ProcessedFiles:  0,
+		Percentage:      50.0,
+		Errors:          []ImportError{},
+		PendingPassword: false,
+		PendingFile:     "",
+		StartTime:       time.Now(),
+		ElapsedTime:     0,
+	})
+
 	derivedKey, err := kdfService.DeriveKey(password, cryptoParams)
 	if err != nil {
 		// Provide KDF-specific error context
@@ -375,6 +454,18 @@ func (ws *WalletService) ImportWalletFromKeystoreV3(name, keystorePath, password
 	}
 
 	// Step 12: Decrypt private key
+	ws.sendProgressUpdate(progressChan, ImportProgress{
+		CurrentFile:     keystorePath,
+		TotalFiles:      1,
+		ProcessedFiles:  0,
+		Percentage:      70.0,
+		Errors:          []ImportError{},
+		PendingPassword: false,
+		PendingFile:     "",
+		StartTime:       time.Now(),
+		ElapsedTime:     0,
+	})
+
 	privateKeyBytes, err := enhancedService.decryptPrivateKey(derivedKey, cryptoParams)
 	if err != nil {
 		return nil, NewKeystoreImportError(
@@ -408,17 +499,10 @@ func (ws *WalletService) ImportWalletFromKeystoreV3(name, keystorePath, password
 		)
 	}
 
-	// Step 15: Generate synthetic mnemonic from private key (legacy compatibility for keystore imports)
-	// Note: This is not the original mnemonic; it's derived deterministically from the private key bytes
-	// to preserve previous UI/workflow expectations for keystore imports only.
-	mnemonic, err := generateSyntheticMnemonicFromPrivateKey(privateKey)
-	if err != nil {
-		return nil, NewKeystoreImportError(
-			ErrorCorruptedFile,
-			"Error generating synthetic mnemonic",
-			err,
-		)
-	}
+	// Step 15: No mnemonic generation for keystore imports
+	// Keystore files contain only private keys, not original mnemonic phrases.
+	// It's technically impossible to recover the original mnemonic from a private key.
+	var nilMnemonic *string = nil
 
 	// Step 16: Create destination path
 	address := normalizedDerivedAddress
@@ -451,6 +535,18 @@ func (ws *WalletService) ImportWalletFromKeystoreV3(name, keystorePath, password
 	destPath := filepath.Join(keystoreDir, destFilename)
 
 	// Step 17: Copy keystore file to destination
+	ws.sendProgressUpdate(progressChan, ImportProgress{
+		CurrentFile:     keystorePath,
+		TotalFiles:      1,
+		ProcessedFiles:  0,
+		Percentage:      80.0,
+		Errors:          []ImportError{},
+		PendingPassword: false,
+		PendingFile:     "",
+		StartTime:       time.Now(),
+		ElapsedTime:     0,
+	})
+
 	destFile, err := os.Create(destPath)
 	if err != nil {
 		return nil, NewKeystoreImportError(
@@ -469,27 +565,29 @@ func (ws *WalletService) ImportWalletFromKeystoreV3(name, keystorePath, password
 		)
 	}
 
-	// Step 18: Encrypt mnemonic before storing
-	encryptedMnemonic, err := EncryptMnemonic(mnemonic, password)
-	if err != nil {
-		return nil, NewKeystoreImportError(
-			ErrorCorruptedFile,
-			"Failed to encrypt mnemonic",
-			err,
-		)
-	}
-
-	// Step 19: Create wallet entry with import method and source hash
+	// Step 18: Create wallet entry with import method and source hash (no mnemonic)
 	wallet := &Wallet{
 		Name:         name,
 		Address:      address,
 		KeyStorePath: destPath,
-		Mnemonic:     &encryptedMnemonic,
+		Mnemonic:     nilMnemonic, // No mnemonic for keystore imports
 		ImportMethod: string(ImportMethodKeystore),
 		SourceHash:   sourceHash,
 	}
 
-	// Step 20: Add wallet to repository
+	// Step 19: Add wallet to repository
+	ws.sendProgressUpdate(progressChan, ImportProgress{
+		CurrentFile:     keystorePath,
+		TotalFiles:      1,
+		ProcessedFiles:  0,
+		Percentage:      90.0,
+		Errors:          []ImportError{},
+		PendingPassword: false,
+		PendingFile:     "",
+		StartTime:       time.Now(),
+		ElapsedTime:     0,
+	})
+
 	if err = ws.Repo.AddWallet(wallet); err != nil {
 		return nil, NewKeystoreImportError(
 			ErrorCorruptedFile,
@@ -498,7 +596,7 @@ func (ws *WalletService) ImportWalletFromKeystoreV3(name, keystorePath, password
 		)
 	}
 
-	// Step 21: Create KDF information for wallet details
+	// Step 20: Create KDF information for wallet details
 	kdfInfo := &KDFInfo{
 		Type:           compatReport.KDFType,
 		NormalizedType: compatReport.NormalizedKDF,
@@ -506,18 +604,48 @@ func (ws *WalletService) ImportWalletFromKeystoreV3(name, keystorePath, password
 		Parameters:     compatReport.Parameters,
 	}
 
-	// Step 22: Return enhanced wallet details with KDF information
+	// Step 21: Send completion progress and return enhanced wallet details
+	ws.sendProgressUpdate(progressChan, ImportProgress{
+		CurrentFile:     keystorePath,
+		TotalFiles:      1,
+		ProcessedFiles:  1,
+		Percentage:      100.0,
+		Errors:          []ImportError{},
+		PendingPassword: false,
+		PendingFile:     "",
+		StartTime:       time.Now(),
+		ElapsedTime:     0,
+	})
+
 	walletDetails := &WalletDetails{
 		Wallet:       wallet,
-		Mnemonic:     &mnemonic,
+		Mnemonic:     nil, // No mnemonic available for keystore imports
 		PrivateKey:   privateKey,
 		PublicKey:    &privateKey.PublicKey,
 		ImportMethod: ImportMethodKeystore,
-		HasMnemonic:  true, // Keystore imports preserve mnemonic generation
+		HasMnemonic:  false, // Keystore imports don't have mnemonics
 		KDFInfo:      kdfInfo,
 	}
 
 	return walletDetails, nil
+}
+
+// sendProgressUpdate sends a progress update through the channel with timeout handling
+func (ws *WalletService) sendProgressUpdate(progressChan chan<- ImportProgress, progress ImportProgress) {
+	if progressChan == nil {
+		return // No progress channel provided, skip update
+	}
+
+	// Use buffered send with longer timeout to ensure progress updates are delivered
+	select {
+	case progressChan <- progress:
+		// Successfully sent progress update
+	case <-time.After(500 * time.Millisecond):
+		// Timeout after 500ms - this allows more time for UI to process
+		// Log the dropped update for debugging
+		log.Printf("WalletService: Progress update dropped - channel may be blocked (file: %s, progress: %.1f%%)", 
+			progress.CurrentFile, progress.Percentage)
+	}
 }
 
 // ImportWalletFromKeystore is kept for backward compatibility
@@ -572,24 +700,6 @@ func (ws *WalletService) DeleteWallet(wallet *Wallet) error {
 }
 
 // Helper functions
-
-// generateSyntheticMnemonicFromPrivateKey creates a deterministic mnemonic from a private key for
-// legacy compatibility in keystore imports. It does NOT recover the original mnemonic; it derives
-// a 12-word BIP39 mnemonic by hashing the private key bytes with SHA-256 and using the first 16
-// bytes (128 bits) as entropy for bip39.NewMnemonic.
-func generateSyntheticMnemonicFromPrivateKey(privateKey *ecdsa.PrivateKey) (string, error) {
-	if privateKey == nil {
-		return "", fmt.Errorf("private key cannot be nil")
-	}
-	pkBytes := crypto.FromECDSA(privateKey)
-	hash := sha256.Sum256(pkBytes)
-	entropy := hash[:16]
-	mnemonic, err := bip39.NewMnemonic(entropy)
-	if err != nil {
-		return "", fmt.Errorf("failed to generate mnemonic: %w", err)
-	}
-	return mnemonic, nil
-}
 
 func GenerateMnemonic() (string, error) {
 	entropy, err := bip39.NewEntropy(128)

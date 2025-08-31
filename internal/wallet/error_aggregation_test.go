@@ -245,7 +245,8 @@ func TestErrorReport_GetFormattedSummary(t *testing.T) {
 	aggregator.AddError(passwordErr, "test1.json", UserActionRetry)
 	aggregator.AddError(passwordErr, "test2.json", UserActionSkip)
 
-	fileErr := NewKeystoreImportError(ErrorFileNotFound, "file not found", nil)
+	// Use a non-recoverable error type
+	fileErr := NewKeystoreImportError(ErrorCorruptedFile, "file corrupted", nil)
 	aggregator.AddError(fileErr, "test3.json", UserActionNone)
 
 	// Wait a bit to get meaningful elapsed time
