@@ -20,7 +20,11 @@ func TestIntegration_MnemonicImportWithDuplicateDetection(t *testing.T) {
 	// temp dirs
 	tempDir, err := os.MkdirTemp("", "mnemonic-import-integration")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to clean up temp directory: %v", err)
+		}
+	}()
 
 	keystoreDir := filepath.Join(tempDir, "keystore")
 	require.NoError(t, os.MkdirAll(keystoreDir, 0o700))
@@ -32,14 +36,18 @@ func TestIntegration_MnemonicImportWithDuplicateDetection(t *testing.T) {
 		WalletsDir:   keystoreDir,
 		DatabasePath: dbPath,
 		Database:     config.DatabaseConfig{Type: "sqlite", DSN: dbPath},
-		Security: config.SecurityConfig{Argon2Time: 1, Argon2Memory: 64 * 1024, Argon2Threads: 4, Argon2KeyLen: 32, SaltLength: 16},
+		Security:     config.SecurityConfig{Argon2Time: 1, Argon2Memory: 64 * 1024, Argon2Threads: 4, Argon2KeyLen: 32, SaltLength: 16},
 	}
 
 	wallet.InitCryptoService(cfg)
 
 	repo, err := storage.NewWalletRepository(cfg)
 	require.NoError(t, err)
-	defer repo.Close()
+	defer func() {
+		if err := repo.Close(); err != nil {
+			t.Logf("Failed to close repository: %v", err)
+		}
+	}()
 
 	ks := keystore.NewKeyStore(keystoreDir, keystore.LightScryptN, keystore.LightScryptP)
 	ws := wallet.NewWalletService(repo, ks)
@@ -53,10 +61,16 @@ func TestIntegration_MnemonicImportWithDuplicateDetection(t *testing.T) {
 	assert.Equal(t, wallet.ImportMethodMnemonic, first.ImportMethod)
 
 	// Reopen repo to ensure persistence
-	repo.Close()
+	if err := repo.Close(); err != nil {
+		t.Logf("Warning: error closing repo: %v", err)
+	}
 	newRepo, err := storage.NewWalletRepository(cfg)
 	require.NoError(t, err)
-	defer newRepo.Close()
+	defer func() {
+		if err := newRepo.Close(); err != nil {
+			t.Logf("Warning: error closing newRepo: %v", err)
+		}
+	}()
 	newWS := wallet.NewWalletService(newRepo, ks)
 
 	// Second import with same mnemonic should fail with DuplicateWalletError
@@ -70,7 +84,11 @@ func TestIntegration_MnemonicImportWithDuplicateDetection(t *testing.T) {
 func TestIntegration_PrivateKeyImport_NoMnemonic(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "pk-import-integration")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	keystoreDir := filepath.Join(tempDir, "keystore")
 	require.NoError(t, os.MkdirAll(keystoreDir, 0o700))
@@ -87,7 +105,11 @@ func TestIntegration_PrivateKeyImport_NoMnemonic(t *testing.T) {
 
 	repo, err := storage.NewWalletRepository(cfg)
 	require.NoError(t, err)
-	defer repo.Close()
+	defer func() {
+		if err := repo.Close(); err != nil {
+			t.Logf("Warning: error closing repo: %v", err)
+		}
+	}()
 
 	ks := keystore.NewKeyStore(keystoreDir, keystore.LightScryptN, keystore.LightScryptP)
 	ws := wallet.NewWalletService(repo, ks)
@@ -107,10 +129,16 @@ func TestIntegration_PrivateKeyImport_NoMnemonic(t *testing.T) {
 	}
 
 	// Reopen and check persisted record
-	repo.Close()
+	if err := repo.Close(); err != nil {
+		t.Logf("Warning: error closing repo: %v", err)
+	}
 	newRepo, err := storage.NewWalletRepository(cfg)
 	require.NoError(t, err)
-	defer newRepo.Close()
+	defer func() {
+		if err := newRepo.Close(); err != nil {
+			t.Logf("Warning: error closing newRepo: %v", err)
+		}
+	}()
 	saved, err := newRepo.GetAllWallets()
 	require.NoError(t, err)
 	require.Len(t, saved, 1)
@@ -122,7 +150,11 @@ func TestIntegration_PrivateKeyImport_NoMnemonic(t *testing.T) {
 func TestIntegration_CoexistSameAddressDifferentMethods(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "coexist-integration")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	keystoreDir := filepath.Join(tempDir, "keystore")
 	// separate source dir to generate external keystore file
@@ -142,7 +174,11 @@ func TestIntegration_CoexistSameAddressDifferentMethods(t *testing.T) {
 
 	repo, err := storage.NewWalletRepository(cfg)
 	require.NoError(t, err)
-	defer repo.Close()
+	defer func() {
+		if err := repo.Close(); err != nil {
+			t.Logf("Warning: error closing repo: %v", err)
+		}
+	}()
 
 	ks := keystore.NewKeyStore(keystoreDir, keystore.LightScryptN, keystore.LightScryptP)
 	ws := wallet.NewWalletService(repo, ks)
@@ -175,10 +211,16 @@ func TestIntegration_CoexistSameAddressDifferentMethods(t *testing.T) {
 	assert.Equal(t, wallet.ImportMethodPrivateKey, pd.ImportMethod)
 
 	// Verify both persisted
-	repo.Close()
+	if err := repo.Close(); err != nil {
+		t.Logf("Warning: error closing repo: %v", err)
+	}
 	newRepo, err := storage.NewWalletRepository(cfg)
 	require.NoError(t, err)
-	defer newRepo.Close()
+	defer func() {
+		if err := newRepo.Close(); err != nil {
+			t.Logf("Warning: error closing newRepo: %v", err)
+		}
+	}()
 	wallets, err := newRepo.GetAllWallets()
 	require.NoError(t, err)
 	assert.Len(t, wallets, 2)

@@ -78,7 +78,7 @@ func (m *CLIModel) viewNetworkList() string {
 	// Update the component size
 	// Only call SetSize if the component is initialized and has rows
 	rows := m.networkListComponent.table.Rows()
-	if rows != nil && len(rows) > 0 {
+	if len(rows) > 0 {
 		m.networkListComponent.SetSize(m.width, m.height)
 	}
 

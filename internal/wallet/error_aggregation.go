@@ -278,7 +278,7 @@ func (es *ErrorSummary) GetSkipRate() float64 {
 // GetMostCommonErrorCategory returns the most common error category
 func (es *ErrorSummary) GetMostCommonErrorCategory() ErrorCategory {
 	maxCount := 0
-	var mostCommon ErrorCategory = CategoryUnknown
+	var mostCommon = CategoryUnknown
 
 	for category, count := range es.CategoryBreakdown {
 		if count > maxCount {

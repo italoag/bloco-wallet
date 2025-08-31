@@ -27,12 +27,12 @@ type NetworkClassification struct {
 }
 
 // ChainListServiceInterface defines the interface for ChainList operations
- type ChainListServiceInterface interface {
+type ChainListServiceInterface interface {
 	GetChainInfo(chainID int) (*ChainInfo, error)
 	GetChainInfoWithRetry(chainID int) (*ChainInfo, string, error)
 	ValidateRPCEndpoint(rpcURL string) error
 	GetChainIDFromRPC(rpcURL string) (int, error)
- }
+}
 
 // NetworkClassificationService handles network classification and validation
 type NetworkClassificationService struct {
@@ -90,7 +90,7 @@ func (ncs *NetworkClassificationService) ValidateNetworkAgainstChainList(chainID
 	var (
 		chainInfo  *ChainInfo
 		workingRPC string
-		err       error
+		err        error
 	)
 
 	if rpcEndpoint != "" {

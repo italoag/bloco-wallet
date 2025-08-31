@@ -684,7 +684,7 @@ func (bis *BatchImportService) sendProgressUpdate(progress ImportProgress, progr
 	case <-time.After(500 * time.Millisecond):
 		// Timeout after 500ms - this allows more time for UI to process
 		// Log the dropped update for debugging
-		log.Printf("Progress update dropped - channel may be blocked (file: %s, progress: %.1f%%)", 
+		log.Printf("Progress update dropped - channel may be blocked (file: %s, progress: %.1f%%)",
 			progress.CurrentFile, progress.Percentage)
 	}
 }

@@ -23,7 +23,7 @@ var TestKeystores = map[string]string{
 		"id": "3198bc9c-6672-5ab3-d995-4942343ae5b6",
 		"version": 3
 	}`,
-	
+
 	"metamask_variant": `{
 		"address": "b5d85cbf7cb3ee0d56b3bb207d5fc4b82f43f511",
 		"crypto": {
@@ -45,7 +45,7 @@ var TestKeystores = map[string]string{
 		"id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
 		"version": 3
 	}`,
-	
+
 	"trust_wallet_mobile": `{
 		"address": "d8da6bf26964af9d7eed9e03e53415d37aa96045",
 		"crypto": {
@@ -67,7 +67,7 @@ var TestKeystores = map[string]string{
 		"id": "12345678-90ab-cdef-1234-567890abcdef",
 		"version": 3
 	}`,
-	
+
 	"pbkdf2_ledger": `{
 		"address": "f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
 		"crypto": {
@@ -88,7 +88,7 @@ var TestKeystores = map[string]string{
 		"id": "fedcba98-7654-3210-fedc-ba9876543210",
 		"version": 3
 	}`,
-	
+
 	"pbkdf2_sha512": `{
 		"address": "70997970c51812dc3a010c7d01b50e0d17dc79c8",
 		"crypto": {
@@ -109,7 +109,7 @@ var TestKeystores = map[string]string{
 		"id": "0987654321-fedc-ba09-8765-4321fedcba09",
 		"version": 3
 	}`,
-	
+
 	"mixed_types_json": `{
 		"address": "3c44cdddb6a900fa2b585dd299e03d12fa4293bc",
 		"crypto": {
@@ -135,10 +135,10 @@ var TestKeystores = map[string]string{
 
 // TestPasswords contains the passwords for the test keystores
 var TestPasswords = map[string]string{
-	"geth_standard":     "testpassword123",
-	"metamask_variant":  "testpassword123", 
+	"geth_standard":       "testpassword123",
+	"metamask_variant":    "testpassword123",
 	"trust_wallet_mobile": "testpassword123",
-	"pbkdf2_ledger":     "testpassword123",
-	"pbkdf2_sha512":     "testpassword123",
-	"mixed_types_json":  "testpassword123",
+	"pbkdf2_ledger":       "testpassword123",
+	"pbkdf2_sha512":       "testpassword123",
+	"mixed_types_json":    "testpassword123",
 }

@@ -90,11 +90,11 @@ type EnhancedImportState struct {
 	passwordResponseChan chan wallet.PasswordResponse
 
 	// State management
-	mu           sync.RWMutex
-	startTime    time.Time
-	completed    bool
-	cancelled    bool
-	errorMessage string
+	mu             sync.RWMutex
+	startTime      time.Time
+	completed      bool
+	cancelled      bool
+	errorMessage   string
 	pendingCommand tea.Cmd
 
 	// Cleanup tracking
@@ -540,7 +540,7 @@ func (s *EnhancedImportState) validateProgressUpdate(progress wallet.ImportProgr
 	}
 
 	if progress.ProcessedFiles > progress.TotalFiles {
-		return fmt.Errorf("processed files exceeds total: %d > %d", 
+		return fmt.Errorf("processed files exceeds total: %d > %d",
 			progress.ProcessedFiles, progress.TotalFiles)
 	}
 
@@ -556,7 +556,7 @@ func (s *EnhancedImportState) validateProgressUpdate(progress wallet.ImportProgr
 	}
 
 	if abs(progress.Percentage-expectedPercentage) > tolerance {
-		return fmt.Errorf("percentage inconsistent: %.2f vs expected %.2f", 
+		return fmt.Errorf("percentage inconsistent: %.2f vs expected %.2f",
 			progress.Percentage, expectedPercentage)
 	}
 
@@ -564,13 +564,13 @@ func (s *EnhancedImportState) validateProgressUpdate(progress wallet.ImportProgr
 	if s.CurrentProgress.TotalFiles > 0 {
 		// Total files should remain consistent within the same batch
 		if progress.TotalFiles != s.CurrentProgress.TotalFiles {
-			return fmt.Errorf("total files changed during import: %d -> %d", 
+			return fmt.Errorf("total files changed during import: %d -> %d",
 				s.CurrentProgress.TotalFiles, progress.TotalFiles)
 		}
 
 		// Processed files should not decrease (unless it's a reset to 0)
 		if progress.ProcessedFiles < s.CurrentProgress.ProcessedFiles && progress.ProcessedFiles != 0 {
-			return fmt.Errorf("processed files decreased: %d -> %d", 
+			return fmt.Errorf("processed files decreased: %d -> %d",
 				s.CurrentProgress.ProcessedFiles, progress.ProcessedFiles)
 		}
 	}

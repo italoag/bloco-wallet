@@ -82,7 +82,7 @@ func (c *NetworkListComponent) SetSize(width, height int) {
 	// Only set the table height and width if there are rows to display
 	// This prevents "index out of range" errors when the table is empty
 	rows := c.table.Rows()
-	if rows != nil && len(rows) > 0 {
+	if len(rows) > 0 {
 		c.table.SetHeight(height / 3)
 		c.table.SetWidth(width - 10)
 	}
@@ -159,12 +159,12 @@ func (c *NetworkListComponent) UpdateNetworks(cfg *config.Config) {
 // GetSelectedNetworkKey returns the key of the selected network
 func (c *NetworkListComponent) GetSelectedNetworkKey() string {
 	rows := c.table.Rows()
-	if rows == nil || len(rows) == 0 {
+	if len(rows) == 0 {
 		return ""
 	}
 
 	selectedRow := c.table.SelectedRow()
-	if selectedRow == nil || len(selectedRow) < 7 {
+	if len(selectedRow) < 7 {
 		return ""
 	}
 
@@ -216,7 +216,7 @@ func (c *NetworkListComponent) View() string {
 
 	// Table
 	rows := c.table.Rows()
-	if rows != nil && len(rows) > 0 {
+	if len(rows) > 0 {
 		content += c.table.View()
 	} else {
 		content += "No networks found. Add a network to get started."
@@ -233,7 +233,7 @@ func (c *NetworkListComponent) View() string {
 	}
 
 	// Selected network details
-	if rows != nil && len(rows) > 0 {
+	if len(rows) > 0 {
 		selectedNetworkInfo, err := c.GetSelectedNetworkInfo()
 		if err == nil && selectedNetworkInfo != nil {
 			detailStyle := lipgloss.NewStyle().
@@ -296,12 +296,6 @@ func (c *NetworkListComponent) View() string {
 
 // networkAddedMsg is sent when a network is added
 type networkAddedMsg struct{}
-
-// networkUpdatedMsg is sent when a network is updated
-type networkUpdatedMsg struct{}
-
-// networkDeletedMsg is sent when a network is deleted
-type networkDeletedMsg struct{}
 
 // BackToNetworkListMsg is sent to return to the network list
 type BackToNetworkListMsg struct{}

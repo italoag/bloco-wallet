@@ -19,18 +19,28 @@ func TestConfigurationManager_LoadConfiguration(t *testing.T) {
 	// Create a temporary directory for testing
 	tempDir, err := os.MkdirTemp("", "bloco_config_test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Warning: could not remove temp dir: %v", err)
+		}
+	}()
 
 	// Set environment variable to use temp directory
 	originalEnv := os.Getenv("BLOCO_WALLET_APP_APP_DIR")
 	defer func() {
 		if originalEnv != "" {
-			os.Setenv("BLOCO_WALLET_APP_APP_DIR", originalEnv)
+			if err := os.Setenv("BLOCO_WALLET_APP_APP_DIR", originalEnv); err != nil {
+				t.Logf("Warning: could not restore env var: %v", err)
+			}
 		} else {
-			os.Unsetenv("BLOCO_WALLET_APP_APP_DIR")
+			if err := os.Unsetenv("BLOCO_WALLET_APP_APP_DIR"); err != nil {
+				t.Logf("Warning: could not unset env var: %v", err)
+			}
 		}
 	}()
-	os.Setenv("BLOCO_WALLET_APP_APP_DIR", tempDir)
+	if err := os.Setenv("BLOCO_WALLET_APP_APP_DIR", tempDir); err != nil {
+		t.Fatalf("Failed to set environment variable: %v", err)
+	}
 
 	cm := NewConfigurationManager()
 	cfg, err := cm.LoadConfiguration()
@@ -53,18 +63,28 @@ func TestConfigurationManager_SaveConfiguration(t *testing.T) {
 	// Create a temporary directory for testing
 	tempDir, err := os.MkdirTemp("", "bloco_config_test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Warning: could not remove temp dir: %v", err)
+		}
+	}()
 
 	// Set environment variable to use temp directory
 	originalEnv := os.Getenv("BLOCO_WALLET_APP_APP_DIR")
 	defer func() {
 		if originalEnv != "" {
-			os.Setenv("BLOCO_WALLET_APP_APP_DIR", originalEnv)
+			if err := os.Setenv("BLOCO_WALLET_APP_APP_DIR", originalEnv); err != nil {
+				t.Logf("Warning: could not restore env var: %v", err)
+			}
 		} else {
-			os.Unsetenv("BLOCO_WALLET_APP_APP_DIR")
+			if err := os.Unsetenv("BLOCO_WALLET_APP_APP_DIR"); err != nil {
+				t.Logf("Warning: could not unset env var: %v", err)
+			}
 		}
 	}()
-	os.Setenv("BLOCO_WALLET_APP_APP_DIR", tempDir)
+	if err := os.Setenv("BLOCO_WALLET_APP_APP_DIR", tempDir); err != nil {
+		t.Fatalf("Failed to set environment variable: %v", err)
+	}
 
 	cm := NewConfigurationManager()
 
@@ -105,18 +125,28 @@ func TestConfigurationManager_GetConfigPath(t *testing.T) {
 	// Create a temporary directory for testing
 	tempDir, err := os.MkdirTemp("", "bloco_config_test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Warning: could not remove temp dir: %v", err)
+		}
+	}()
 
 	// Set environment variable to use temp directory
 	originalEnv := os.Getenv("BLOCO_WALLET_APP_APP_DIR")
 	defer func() {
 		if originalEnv != "" {
-			os.Setenv("BLOCO_WALLET_APP_APP_DIR", originalEnv)
+			if err := os.Setenv("BLOCO_WALLET_APP_APP_DIR", originalEnv); err != nil {
+				t.Logf("Warning: could not restore env var: %v", err)
+			}
 		} else {
-			os.Unsetenv("BLOCO_WALLET_APP_APP_DIR")
+			if err := os.Unsetenv("BLOCO_WALLET_APP_APP_DIR"); err != nil {
+				t.Logf("Warning: could not unset env var: %v", err)
+			}
 		}
 	}()
-	os.Setenv("BLOCO_WALLET_APP_APP_DIR", tempDir)
+	if err := os.Setenv("BLOCO_WALLET_APP_APP_DIR", tempDir); err != nil {
+		t.Fatalf("Failed to set environment variable: %v", err)
+	}
 
 	cm := NewConfigurationManager()
 
@@ -135,18 +165,28 @@ func TestConfigurationManager_GetAppDirectory(t *testing.T) {
 	// Create a temporary directory for testing
 	tempDir, err := os.MkdirTemp("", "bloco_config_test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Warning: could not remove temp dir: %v", err)
+		}
+	}()
 
 	// Set environment variable to use temp directory
 	originalEnv := os.Getenv("BLOCO_WALLET_APP_APP_DIR")
 	defer func() {
 		if originalEnv != "" {
-			os.Setenv("BLOCO_WALLET_APP_APP_DIR", originalEnv)
+			if err := os.Setenv("BLOCO_WALLET_APP_APP_DIR", originalEnv); err != nil {
+				t.Logf("Warning: could not restore env var: %v", err)
+			}
 		} else {
-			os.Unsetenv("BLOCO_WALLET_APP_APP_DIR")
+			if err := os.Unsetenv("BLOCO_WALLET_APP_APP_DIR"); err != nil {
+				t.Logf("Warning: could not unset env var: %v", err)
+			}
 		}
 	}()
-	os.Setenv("BLOCO_WALLET_APP_APP_DIR", tempDir)
+	if err := os.Setenv("BLOCO_WALLET_APP_APP_DIR", tempDir); err != nil {
+		t.Fatalf("Failed to set environment variable: %v", err)
+	}
 
 	cm := NewConfigurationManager()
 
@@ -164,18 +204,28 @@ func TestConfigurationManager_ReloadConfiguration(t *testing.T) {
 	// Create a temporary directory for testing
 	tempDir, err := os.MkdirTemp("", "bloco_config_test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Warning: could not remove temp dir: %v", err)
+		}
+	}()
 
 	// Set environment variable to use temp directory
 	originalEnv := os.Getenv("BLOCO_WALLET_APP_APP_DIR")
 	defer func() {
 		if originalEnv != "" {
-			os.Setenv("BLOCO_WALLET_APP_APP_DIR", originalEnv)
+			if err := os.Setenv("BLOCO_WALLET_APP_APP_DIR", originalEnv); err != nil {
+				t.Logf("Warning: could not restore env var: %v", err)
+			}
 		} else {
-			os.Unsetenv("BLOCO_WALLET_APP_APP_DIR")
+			if err := os.Unsetenv("BLOCO_WALLET_APP_APP_DIR"); err != nil {
+				t.Logf("Warning: could not unset env var: %v", err)
+			}
 		}
 	}()
-	os.Setenv("BLOCO_WALLET_APP_APP_DIR", tempDir)
+	if err := os.Setenv("BLOCO_WALLET_APP_APP_DIR", tempDir); err != nil {
+		t.Fatalf("Failed to set environment variable: %v", err)
+	}
 
 	cm := NewConfigurationManager()
 
@@ -206,7 +256,11 @@ func TestConfigurationManager_EnvironmentVariables(t *testing.T) {
 	// Create a temporary directory for testing
 	tempDir, err := os.MkdirTemp("", "bloco_config_test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Warning: could not remove temp dir: %v", err)
+		}
+	}()
 
 	// Set environment variables
 	originalEnvs := map[string]string{
@@ -217,16 +271,26 @@ func TestConfigurationManager_EnvironmentVariables(t *testing.T) {
 	defer func() {
 		for key, value := range originalEnvs {
 			if value != "" {
-				os.Setenv(key, value)
+				if err := os.Setenv(key, value); err != nil {
+					t.Logf("Warning: could not restore env var %s: %v", key, err)
+				}
 			} else {
-				os.Unsetenv(key)
+				if err := os.Unsetenv(key); err != nil {
+					t.Logf("Warning: could not unset env var %s: %v", key, err)
+				}
 			}
 		}
 	}()
 
-	os.Setenv("BLOCO_WALLET_APP_APP_DIR", tempDir)
-	os.Setenv("BLOCO_WALLET_APP_LANGUAGE", "pt")
-	os.Setenv("BLOCO_WALLET_DATABASE_TYPE", "sqlite")
+	if err := os.Setenv("BLOCO_WALLET_APP_APP_DIR", tempDir); err != nil {
+		t.Fatalf("Failed to set environment variable: %v", err)
+	}
+	if err := os.Setenv("BLOCO_WALLET_APP_LANGUAGE", "pt"); err != nil {
+		t.Logf("Warning: could not set env var: %v", err)
+	}
+	if err := os.Setenv("BLOCO_WALLET_DATABASE_TYPE", "sqlite"); err != nil {
+		t.Logf("Warning: could not set env var: %v", err)
+	}
 
 	cm := NewConfigurationManager()
 	cfg, err := cm.LoadConfiguration()
@@ -241,7 +305,11 @@ func TestConfigurationManager_LegacyEnvironmentVariables(t *testing.T) {
 	// Create a temporary directory for testing
 	tempDir, err := os.MkdirTemp("", "bloco_config_test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Warning: could not remove temp dir: %v", err)
+		}
+	}()
 
 	walletsDir := filepath.Join(tempDir, "legacy_wallets")
 	dbPath := filepath.Join(tempDir, "legacy.db")
@@ -255,16 +323,26 @@ func TestConfigurationManager_LegacyEnvironmentVariables(t *testing.T) {
 	defer func() {
 		for key, value := range originalEnvs {
 			if value != "" {
-				os.Setenv(key, value)
+				if err := os.Setenv(key, value); err != nil {
+					t.Logf("Warning: could not restore env var %s: %v", key, err)
+				}
 			} else {
-				os.Unsetenv(key)
+				if err := os.Unsetenv(key); err != nil {
+					t.Logf("Warning: could not unset env var %s: %v", key, err)
+				}
 			}
 		}
 	}()
 
-	os.Setenv("BLOCO_WALLET_APP_APP_DIR", tempDir)
-	os.Setenv("BLOCO_WALLET_APP_KEYSTORE_DIR", walletsDir)
-	os.Setenv("BLOCO_WALLET_APP_DATABASE_PATH", dbPath)
+	if err := os.Setenv("BLOCO_WALLET_APP_APP_DIR", tempDir); err != nil {
+		t.Fatalf("Failed to set environment variable: %v", err)
+	}
+	if err := os.Setenv("BLOCO_WALLET_APP_KEYSTORE_DIR", walletsDir); err != nil {
+		t.Logf("Warning: could not set env var: %v", err)
+	}
+	if err := os.Setenv("BLOCO_WALLET_APP_DATABASE_PATH", dbPath); err != nil {
+		t.Logf("Warning: could not set env var: %v", err)
+	}
 
 	cm := NewConfigurationManager()
 	cfg, err := cm.LoadConfiguration()

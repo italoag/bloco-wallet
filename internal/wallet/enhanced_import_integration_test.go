@@ -20,7 +20,11 @@ func TestEnhancedImportIntegration(t *testing.T) {
 	// Create temporary directory for test files
 	tempDir, err := os.MkdirTemp("", "enhanced_import_test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	// Test scenario: Batch import with various error conditions
 	t.Run("Batch import with comprehensive error handling", func(t *testing.T) {
@@ -211,7 +215,11 @@ func TestPasswordFileManagerWithEnhancedErrors(t *testing.T) {
 	// Create temporary directory for test files
 	tempDir, err := os.MkdirTemp("", "password_file_test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	pfm := NewPasswordFileManager()
 
@@ -316,7 +324,11 @@ func TestBatchImportServiceWithErrorAggregation(t *testing.T) {
 	// Create temporary directory for test files
 	tempDir, err := os.MkdirTemp("", "batch_import_test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	// Create a mock wallet service (we'll just test the validation part)
 	bis := NewBatchImportService(nil) // nil is OK for validation tests

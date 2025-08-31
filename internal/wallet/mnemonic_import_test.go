@@ -28,7 +28,11 @@ func TestImportWallet_MnemonicDuplicateDetection(t *testing.T) {
 	// Temporary keystore directory
 	tempDir, err := os.MkdirTemp("", "mnemonic-import-test")
 	assert.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to remove temp directory: %v", err)
+		}
+	}()
 	ks := keystore.NewKeyStore(tempDir, keystore.StandardScryptN, keystore.StandardScryptP)
 
 	ws := NewWalletService(mockRepo, ks)
@@ -65,7 +69,11 @@ func TestImportWallet_MnemonicSuccess(t *testing.T) {
 	// Temporary keystore directory
 	tempDir, err := os.MkdirTemp("", "mnemonic-import-test")
 	assert.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to remove temp directory: %v", err)
+		}
+	}()
 	ks := keystore.NewKeyStore(tempDir, keystore.StandardScryptN, keystore.StandardScryptP)
 
 	ws := NewWalletService(mockRepo, ks)
@@ -94,7 +102,11 @@ func TestImportWallet_InvalidMnemonic(t *testing.T) {
 	// Temporary keystore directory
 	tempDir, err := os.MkdirTemp("", "mnemonic-import-test")
 	assert.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to remove temp directory: %v", err)
+		}
+	}()
 	ks := keystore.NewKeyStore(tempDir, keystore.StandardScryptN, keystore.StandardScryptP)
 
 	ws := NewWalletService(mockRepo, ks)

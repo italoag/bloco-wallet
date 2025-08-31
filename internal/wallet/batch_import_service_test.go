@@ -26,7 +26,11 @@ func TestCreateImportJobsFromFiles(t *testing.T) {
 	// Create temporary directory for test files
 	tempDir, err := os.MkdirTemp("", "batch_import_test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Warning: could not remove temp dir: %v", err)
+		}
+	}()
 
 	// Create test keystore files
 	keystore1 := filepath.Join(tempDir, "wallet1.json")
@@ -82,7 +86,11 @@ func TestCreateImportJobsFromDirectory(t *testing.T) {
 	// Create temporary directory structure
 	tempDir, err := os.MkdirTemp("", "batch_import_dir_test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Warning: could not remove temp dir: %v", err)
+		}
+	}()
 
 	// Create subdirectory
 	subDir := filepath.Join(tempDir, "subdir")
@@ -183,7 +191,11 @@ func TestIsValidKeystoreFile(t *testing.T) {
 	// Create temporary directory for test files
 	tempDir, err := os.MkdirTemp("", "keystore_detection_test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Warning: could not remove temp dir: %v", err)
+		}
+	}()
 
 	service := NewBatchImportService(nil)
 
@@ -274,7 +286,11 @@ func TestValidateImportJobs(t *testing.T) {
 	// Create temporary directory for test files
 	tempDir, err := os.MkdirTemp("", "validate_jobs_test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Warning: could not remove temp dir: %v", err)
+		}
+	}()
 
 	// Create test files
 	validKeystore := filepath.Join(tempDir, "valid.json")
@@ -460,19 +476,20 @@ func TestImportBatchChannelCommunication(t *testing.T) {
 	var finalProgress ImportProgress
 	progressReceived := false
 
+	outerLoop:
 	for {
 		select {
 		case progress, ok := <-progressChan:
 			if !ok {
 				// Channel closed, we're done
-				break
+				break outerLoop
 			}
 			finalProgress = progress
 			if progress.ProcessedFiles == 1 {
 				progressReceived = true
 			}
 		case <-time.After(2 * time.Second):
-			break
+			break outerLoop
 		}
 
 		if !progressReceived {
@@ -651,7 +668,11 @@ func TestPasswordRetryMechanism(t *testing.T) {
 	// Create a temporary keystore file for testing
 	tempDir, err := os.MkdirTemp("", "password_retry_test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Warning: could not remove temp dir: %v", err)
+		}
+	}()
 
 	keystoreFile := filepath.Join(tempDir, "test.json")
 	// Create a simple keystore structure that will fail password validation

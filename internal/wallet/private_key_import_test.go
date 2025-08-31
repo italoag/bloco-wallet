@@ -21,7 +21,11 @@ func TestImportWalletFromPrivateKey_InvalidFormat(t *testing.T) {
 
 	tempDir, err := os.MkdirTemp("", "pk-import-test")
 	assert.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to remove temp directory: %v", err)
+		}
+	}()
 	ks := keystore.NewKeyStore(tempDir, keystore.StandardScryptN, keystore.StandardScryptP)
 
 	ws := NewWalletService(mockRepo, ks)
@@ -53,7 +57,11 @@ func TestImportWalletFromPrivateKey_Duplicate(t *testing.T) {
 
 	tempDir, err := os.MkdirTemp("", "pk-import-test")
 	assert.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to remove temp directory: %v", err)
+		}
+	}()
 	ks := keystore.NewKeyStore(tempDir, keystore.StandardScryptN, keystore.StandardScryptP)
 
 	ws := NewWalletService(mockRepo, ks)
@@ -88,7 +96,11 @@ func TestImportWalletFromPrivateKey_Success(t *testing.T) {
 
 	tempDir, err := os.MkdirTemp("", "pk-import-test")
 	assert.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to remove temp directory: %v", err)
+		}
+	}()
 	ks := keystore.NewKeyStore(tempDir, keystore.StandardScryptN, keystore.StandardScryptP)
 
 	ws := NewWalletService(mockRepo, ks)

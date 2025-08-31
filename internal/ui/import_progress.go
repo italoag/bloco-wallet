@@ -105,7 +105,7 @@ func (m ImportProgressModel) Update(msg tea.Msg) (ImportProgressModel, tea.Cmd) 
 		if m.totalFiles > 0 {
 			percentage := float64(m.processedFiles) / float64(m.totalFiles)
 			m.estimatedProgress = percentage
-			cmd := m.Model.SetPercent(percentage)
+			cmd := m.SetPercent(percentage)
 			return m, tea.Batch(cmd, m.tickCmd())
 		}
 
@@ -127,7 +127,7 @@ func (m ImportProgressModel) Update(msg tea.Msg) (ImportProgressModel, tea.Cmd) 
 					fallbackPercentage := estimatedFilesProcessed / float64(m.totalFiles)
 					if fallbackPercentage > m.estimatedProgress && fallbackPercentage < 1.0 {
 						m.estimatedProgress = fallbackPercentage
-						cmd := m.Model.SetPercent(fallbackPercentage)
+						cmd := m.SetPercent(fallbackPercentage)
 						return m, tea.Batch(cmd, m.tickCmd())
 					}
 				}
@@ -325,7 +325,7 @@ func (m *ImportProgressModel) Reset(totalFiles int) {
 	m.lastUpdateTime = time.Now()
 	m.fallbackEnabled = true
 	m.estimatedProgress = 0.0
-	m.Model.SetPercent(0)
+	m.SetPercent(0)
 }
 
 // Pause pauses the progress display

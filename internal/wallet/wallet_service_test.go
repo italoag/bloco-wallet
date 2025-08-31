@@ -239,7 +239,11 @@ func TestImportWalletFromKeystoreV3_Success(t *testing.T) {
 	// Create a test keystore file
 	password := "testpassword"
 	keystorePath, address := createTestKeystoreFile(t, password)
-	defer os.RemoveAll(filepath.Dir(keystorePath))
+	defer func() {
+		if err := os.RemoveAll(filepath.Dir(keystorePath)); err != nil {
+			t.Logf("Failed to remove keystore directory: %v", err)
+		}
+	}()
 
 	// Create a mock repository
 	mockRepo := new(MockWalletRepository)
@@ -249,7 +253,11 @@ func TestImportWalletFromKeystoreV3_Success(t *testing.T) {
 	// Create a keystore in a temporary directory
 	tempDir, err := os.MkdirTemp("", "keystore-service-test")
 	assert.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	// Use test-optimized parameters for faster testing
 	n, p := GetTestKeystoreParams()
@@ -273,7 +281,9 @@ func TestImportWalletFromKeystoreV3_Success(t *testing.T) {
 	assert.NotNil(t, walletDetails.PublicKey)
 
 	// Close the repository
-	mockRepo.Close()
+	if err := mockRepo.Close(); err != nil {
+		t.Logf("Failed to close mock repository: %v", err)
+	}
 
 	// Verify that the repository was called
 	mockRepo.AssertExpectations(t)
@@ -286,7 +296,11 @@ func TestImportWalletFromKeystoreV3_FileNotFound(t *testing.T) {
 	// Create a keystore in a temporary directory
 	tempDir, err := os.MkdirTemp("", "keystore-service-test")
 	assert.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	// Use test-optimized parameters for faster testing
 	n, p := GetTestKeystoreParams()
@@ -308,7 +322,9 @@ func TestImportWalletFromKeystoreV3_FileNotFound(t *testing.T) {
 	assert.Equal(t, ErrorFileNotFound, keystoreErr.Type)
 
 	// Close the repository
-	mockRepo.Close()
+	if err := mockRepo.Close(); err != nil {
+		t.Logf("Failed to close mock repository: %v", err)
+	}
 
 	// Verify that the repository was called
 	mockRepo.AssertExpectations(t)
@@ -317,7 +333,11 @@ func TestImportWalletFromKeystoreV3_FileNotFound(t *testing.T) {
 func TestImportWalletFromKeystoreV3_InvalidJSON(t *testing.T) {
 	// Create a corrupted keystore file
 	corruptedKeystorePath := createCorruptedKeystoreFile(t)
-	defer os.RemoveAll(filepath.Dir(corruptedKeystorePath))
+	defer func() {
+		if err := os.RemoveAll(filepath.Dir(corruptedKeystorePath)); err != nil {
+			t.Logf("Failed to remove corrupted keystore directory: %v", err)
+		}
+	}()
 
 	// Create a mock repository
 	mockRepo := new(MockWalletRepository)
@@ -326,7 +346,11 @@ func TestImportWalletFromKeystoreV3_InvalidJSON(t *testing.T) {
 	// Create a keystore in a temporary directory
 	tempDir, err := os.MkdirTemp("", "keystore-service-test")
 	assert.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	// Use test-optimized parameters for faster testing
 	n, p := GetTestKeystoreParams()
@@ -348,7 +372,9 @@ func TestImportWalletFromKeystoreV3_InvalidJSON(t *testing.T) {
 	assert.Equal(t, ErrorInvalidJSON, keystoreErr.Type)
 
 	// Close the repository
-	mockRepo.Close()
+	if err := mockRepo.Close(); err != nil {
+		t.Logf("Failed to close mock repository: %v", err)
+	}
 
 	// Verify that the repository was called
 	mockRepo.AssertExpectations(t)
@@ -357,7 +383,11 @@ func TestImportWalletFromKeystoreV3_InvalidJSON(t *testing.T) {
 func TestImportWalletFromKeystoreV3_InvalidVersion(t *testing.T) {
 	// Create an invalid keystore file
 	invalidKeystorePath := createInvalidKeystoreFile(t)
-	defer os.RemoveAll(filepath.Dir(invalidKeystorePath))
+	defer func() {
+		if err := os.RemoveAll(filepath.Dir(invalidKeystorePath)); err != nil {
+			t.Logf("Failed to remove invalid keystore directory: %v", err)
+		}
+	}()
 
 	// Create a mock repository
 	mockRepo := new(MockWalletRepository)
@@ -366,7 +396,11 @@ func TestImportWalletFromKeystoreV3_InvalidVersion(t *testing.T) {
 	// Create a keystore in a temporary directory
 	tempDir, err := os.MkdirTemp("", "keystore-service-test")
 	assert.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	// Use test-optimized parameters for faster testing
 	n, p := GetTestKeystoreParams()
@@ -395,7 +429,9 @@ func TestImportWalletFromKeystoreV3_InvalidVersion(t *testing.T) {
 	}
 
 	// Close the repository
-	mockRepo.Close()
+	if err := mockRepo.Close(); err != nil {
+		t.Logf("Failed to close mock repository: %v", err)
+	}
 
 	// Verify that the repository was called
 	mockRepo.AssertExpectations(t)
@@ -403,7 +439,11 @@ func TestImportWalletFromKeystoreV3_InvalidVersion(t *testing.T) {
 func TestImportWalletFromKeystoreV3_MissingFields(t *testing.T) {
 	// Create a keystore file with missing fields
 	missingFieldsKeystorePath := createMissingFieldsKeystoreFile(t)
-	defer os.RemoveAll(filepath.Dir(missingFieldsKeystorePath))
+	defer func() {
+		if err := os.RemoveAll(filepath.Dir(missingFieldsKeystorePath)); err != nil {
+			t.Logf("Failed to remove missing fields keystore directory: %v", err)
+		}
+	}()
 
 	// Create a mock repository
 	mockRepo := new(MockWalletRepository)
@@ -412,7 +452,11 @@ func TestImportWalletFromKeystoreV3_MissingFields(t *testing.T) {
 	// Create a keystore in a temporary directory
 	tempDir, err := os.MkdirTemp("", "keystore-service-test")
 	assert.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	// Use test-optimized parameters for faster testing
 	n, p := GetTestKeystoreParams()
@@ -433,7 +477,9 @@ func TestImportWalletFromKeystoreV3_MissingFields(t *testing.T) {
 	assert.True(t, ok, "Expected KeystoreImportError")
 
 	// Close the repository
-	mockRepo.Close()
+	if err := mockRepo.Close(); err != nil {
+		t.Logf("Failed to close mock repository: %v", err)
+	}
 
 	// Verify that the repository was called
 	mockRepo.AssertExpectations(t)
@@ -443,7 +489,11 @@ func TestImportWalletFromKeystoreV3_InvalidAddress(t *testing.T) {
 	// Create a keystore file with invalid address
 	password := "testpassword"
 	invalidAddressKeystorePath := createInvalidAddressKeystoreFile(t, password)
-	defer os.RemoveAll(filepath.Dir(invalidAddressKeystorePath))
+	defer func() {
+		if err := os.RemoveAll(filepath.Dir(invalidAddressKeystorePath)); err != nil {
+			t.Logf("Failed to remove invalid address keystore directory: %v", err)
+		}
+	}()
 
 	// Create a mock repository
 	mockRepo := new(MockWalletRepository)
@@ -452,7 +502,11 @@ func TestImportWalletFromKeystoreV3_InvalidAddress(t *testing.T) {
 	// Create a keystore in a temporary directory
 	tempDir, err := os.MkdirTemp("", "keystore-service-test")
 	assert.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	// Use test-optimized parameters for faster testing
 	n, p := GetTestKeystoreParams()
@@ -474,7 +528,9 @@ func TestImportWalletFromKeystoreV3_InvalidAddress(t *testing.T) {
 	assert.Equal(t, ErrorInvalidAddress, keystoreErr.Type)
 
 	// Close the repository
-	mockRepo.Close()
+	if err := mockRepo.Close(); err != nil {
+		t.Logf("Failed to close mock repository: %v", err)
+	}
 
 	// Verify that the repository was called
 	mockRepo.AssertExpectations(t)
@@ -484,7 +540,11 @@ func TestImportWalletFromKeystoreV3_IncorrectPassword(t *testing.T) {
 	// Create a test keystore file
 	password := "testpassword"
 	keystorePath, _ := createTestKeystoreFile(t, password)
-	defer os.RemoveAll(filepath.Dir(keystorePath))
+	defer func() {
+		if err := os.RemoveAll(filepath.Dir(keystorePath)); err != nil {
+			t.Logf("Failed to remove keystore directory: %v", err)
+		}
+	}()
 
 	// Create a mock repository
 	mockRepo := new(MockWalletRepository)
@@ -493,7 +553,11 @@ func TestImportWalletFromKeystoreV3_IncorrectPassword(t *testing.T) {
 	// Create a keystore in a temporary directory
 	tempDir, err := os.MkdirTemp("", "keystore-service-test")
 	assert.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	// Use test-optimized parameters for faster testing
 	n, p := GetTestKeystoreParams()
@@ -515,7 +579,9 @@ func TestImportWalletFromKeystoreV3_IncorrectPassword(t *testing.T) {
 	assert.Equal(t, ErrorIncorrectPassword, keystoreErr.Type)
 
 	// Close the repository
-	mockRepo.Close()
+	if err := mockRepo.Close(); err != nil {
+		t.Logf("Failed to close mock repository: %v", err)
+	}
 
 	// Verify that the repository was called
 	mockRepo.AssertExpectations(t)
@@ -524,7 +590,11 @@ func TestImportWalletFromKeystoreV3_AddressMismatch(t *testing.T) {
 	// Create a keystore file with address mismatch
 	password := "testpassword"
 	addressMismatchKeystorePath := createAddressMismatchKeystoreFile(t, password)
-	defer os.RemoveAll(filepath.Dir(addressMismatchKeystorePath))
+	defer func() {
+		if err := os.RemoveAll(filepath.Dir(addressMismatchKeystorePath)); err != nil {
+			t.Logf("Failed to remove address mismatch keystore directory: %v", err)
+		}
+	}()
 
 	// Create a mock repository
 	mockRepo := new(MockWalletRepository)
@@ -533,7 +603,11 @@ func TestImportWalletFromKeystoreV3_AddressMismatch(t *testing.T) {
 	// Create a keystore in a temporary directory
 	tempDir, err := os.MkdirTemp("", "keystore-service-test")
 	assert.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	// Use test-optimized parameters for faster testing
 	n, p := GetTestKeystoreParams()
@@ -555,7 +629,9 @@ func TestImportWalletFromKeystoreV3_AddressMismatch(t *testing.T) {
 	assert.Equal(t, ErrorAddressMismatch, keystoreErr.Type)
 
 	// Close the repository
-	mockRepo.Close()
+	if err := mockRepo.Close(); err != nil {
+		t.Logf("Failed to close mock repository: %v", err)
+	}
 
 	// Verify that the repository was called
 	mockRepo.AssertExpectations(t)
@@ -569,7 +645,11 @@ func TestImportWalletFromKeystoreV3_RepositoryError(t *testing.T) {
 	// Create a test keystore file
 	password := "testpassword"
 	keystorePath, _ := createTestKeystoreFile(t, password)
-	defer os.RemoveAll(filepath.Dir(keystorePath))
+	defer func() {
+		if err := os.RemoveAll(filepath.Dir(keystorePath)); err != nil {
+			t.Logf("Failed to remove keystore directory: %v", err)
+		}
+	}()
 
 	// Create a mock repository that returns an error
 	mockRepo := new(MockWalletRepository)
@@ -579,7 +659,11 @@ func TestImportWalletFromKeystoreV3_RepositoryError(t *testing.T) {
 	// Create a keystore in a temporary directory
 	tempDir, err := os.MkdirTemp("", "keystore-service-test")
 	assert.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	// Use test-optimized parameters for faster testing
 	n, p := GetTestKeystoreParams()
@@ -601,7 +685,9 @@ func TestImportWalletFromKeystoreV3_RepositoryError(t *testing.T) {
 	assert.Equal(t, ErrorCorruptedFile, keystoreErr.Type)
 
 	// Close the repository
-	mockRepo.Close()
+	if err := mockRepo.Close(); err != nil {
+		t.Logf("Failed to close mock repository: %v", err)
+	}
 
 	// Verify that the repository was called
 	mockRepo.AssertExpectations(t)
@@ -615,7 +701,11 @@ func TestImportWalletFromKeystore_BackwardCompatibility(t *testing.T) {
 	// Create a test keystore file
 	password := "testpassword"
 	keystorePath, address := createTestKeystoreFile(t, password)
-	defer os.RemoveAll(filepath.Dir(keystorePath))
+	defer func() {
+		if err := os.RemoveAll(filepath.Dir(keystorePath)); err != nil {
+			t.Logf("Failed to remove keystore directory: %v", err)
+		}
+	}()
 
 	// Create a mock repository
 	mockRepo := new(MockWalletRepository)
@@ -625,7 +715,11 @@ func TestImportWalletFromKeystore_BackwardCompatibility(t *testing.T) {
 	// Create a keystore in a temporary directory
 	tempDir, err := os.MkdirTemp("", "keystore-service-test")
 	assert.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	// Use test-optimized parameters for faster testing
 	n, p := GetTestKeystoreParams()
@@ -644,7 +738,9 @@ func TestImportWalletFromKeystore_BackwardCompatibility(t *testing.T) {
 	assert.Equal(t, address.Hex(), walletDetails.Wallet.Address)
 
 	// Close the repository
-	mockRepo.Close()
+	if err := mockRepo.Close(); err != nil {
+		t.Logf("Failed to close mock repository: %v", err)
+	}
 
 	// Verify that the repository was called
 	mockRepo.AssertExpectations(t)
@@ -659,7 +755,11 @@ func TestAddressVerificationInImport(t *testing.T) {
 	// Create a test keystore file
 	password := "testpassword"
 	keystorePath, address := createTestKeystoreFile(t, password)
-	defer os.RemoveAll(filepath.Dir(keystorePath))
+	defer func() {
+		if err := os.RemoveAll(filepath.Dir(keystorePath)); err != nil {
+			t.Logf("Failed to remove keystore directory: %v", err)
+		}
+	}()
 
 	// Create a mock repository
 	mockRepo := new(MockWalletRepository)
@@ -669,7 +769,11 @@ func TestAddressVerificationInImport(t *testing.T) {
 	// Create a keystore in a temporary directory
 	tempDir, err := os.MkdirTemp("", "keystore-service-test")
 	assert.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	// Use test-optimized parameters for faster testing
 	n, p := GetTestKeystoreParams()
@@ -693,7 +797,9 @@ func TestAddressVerificationInImport(t *testing.T) {
 	assert.Equal(t, address.Hex(), derivedAddress)
 
 	// Close the repository
-	mockRepo.Close()
+	if err := mockRepo.Close(); err != nil {
+		t.Logf("Failed to close mock repository: %v", err)
+	}
 
 	// Verify that the repository was called
 	mockRepo.AssertExpectations(t)
@@ -708,7 +814,11 @@ func TestDeterministicMnemonicInImport(t *testing.T) {
 	// Create a test keystore file
 	password := "testpassword"
 	keystorePath, _ := createTestKeystoreFile(t, password)
-	defer os.RemoveAll(filepath.Dir(keystorePath))
+	defer func() {
+		if err := os.RemoveAll(filepath.Dir(keystorePath)); err != nil {
+			t.Logf("Failed to remove keystore directory: %v", err)
+		}
+	}()
 
 	// Create a mock repository
 	mockRepo := new(MockWalletRepository)
@@ -718,7 +828,11 @@ func TestDeterministicMnemonicInImport(t *testing.T) {
 	// Create a keystore in a temporary directory
 	tempDir, err := os.MkdirTemp("", "keystore-service-test")
 	assert.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	// Use test-optimized parameters for faster testing
 	n, p := GetTestKeystoreParams()
@@ -740,7 +854,9 @@ func TestDeterministicMnemonicInImport(t *testing.T) {
 	assert.Equal(t, walletDetails1.Mnemonic, walletDetails2.Mnemonic)
 
 	// Close the repository
-	mockRepo.Close()
+	if err := mockRepo.Close(); err != nil {
+		t.Logf("Failed to close mock repository: %v", err)
+	}
 
 	// Verify that the repository was called
 	mockRepo.AssertExpectations(t)
