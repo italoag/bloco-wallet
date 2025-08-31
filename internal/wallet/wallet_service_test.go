@@ -96,8 +96,9 @@ func createTestKeystoreFile(t *testing.T, password string) (string, common.Addre
 	key, err := crypto.GenerateKey()
 	assert.NoError(t, err)
 
-	// Create a keystore and encrypt the key
-	ks := keystore.NewKeyStore(tempDir, keystore.StandardScryptN, keystore.StandardScryptP)
+	// Create a keystore and encrypt the key with test-optimized parameters
+	n, p := GetTestKeystoreParams()
+	ks := keystore.NewKeyStore(tempDir, n, p)
 	account, err := ks.ImportECDSA(key, password)
 	assert.NoError(t, err)
 
@@ -162,8 +163,9 @@ func createInvalidAddressKeystoreFile(t *testing.T, password string) string {
 	key, err := crypto.GenerateKey()
 	assert.NoError(t, err)
 
-	// Create a keystore and encrypt the key
-	ks := keystore.NewKeyStore(tempDir, keystore.StandardScryptN, keystore.StandardScryptP)
+	// Create a keystore and encrypt the key with test-optimized parameters
+	n, p := GetTestKeystoreParams()
+	ks := keystore.NewKeyStore(tempDir, n, p)
 	account, err := ks.ImportECDSA(key, password)
 	assert.NoError(t, err)
 
@@ -200,8 +202,9 @@ func createAddressMismatchKeystoreFile(t *testing.T, password string) string {
 	key, err := crypto.GenerateKey()
 	assert.NoError(t, err)
 
-	// Create a keystore and encrypt the key
-	ks := keystore.NewKeyStore(tempDir, keystore.StandardScryptN, keystore.StandardScryptP)
+	// Create a keystore and encrypt the key with test-optimized parameters
+	n, p := GetTestKeystoreParams()
+	ks := keystore.NewKeyStore(tempDir, n, p)
 	account, err := ks.ImportECDSA(key, password)
 	assert.NoError(t, err)
 
@@ -248,7 +251,9 @@ func TestImportWalletFromKeystoreV3_Success(t *testing.T) {
 	assert.NoError(t, err)
 	defer os.RemoveAll(tempDir)
 
-	ks := keystore.NewKeyStore(tempDir, keystore.StandardScryptN, keystore.StandardScryptP)
+	// Use test-optimized parameters for faster testing
+	n, p := GetTestKeystoreParams()
+	ks := keystore.NewKeyStore(tempDir, n, p)
 
 	// Create the wallet service
 	walletService := NewWalletService(mockRepo, ks)
@@ -262,8 +267,8 @@ func TestImportWalletFromKeystoreV3_Success(t *testing.T) {
 	assert.Equal(t, "Test Wallet", walletDetails.Wallet.Name)
 	assert.Equal(t, address.Hex(), walletDetails.Wallet.Address)
 	assert.NotEmpty(t, walletDetails.Wallet.KeyStorePath)
-	assert.NotEmpty(t, walletDetails.Wallet.Mnemonic)
-	assert.NotEmpty(t, walletDetails.Mnemonic)
+	assert.Nil(t, walletDetails.Wallet.Mnemonic) // Keystore imports don't have mnemonics
+	assert.Nil(t, walletDetails.Mnemonic)        // Keystore imports don't have mnemonics
 	assert.NotNil(t, walletDetails.PrivateKey)
 	assert.NotNil(t, walletDetails.PublicKey)
 
@@ -283,7 +288,9 @@ func TestImportWalletFromKeystoreV3_FileNotFound(t *testing.T) {
 	assert.NoError(t, err)
 	defer os.RemoveAll(tempDir)
 
-	ks := keystore.NewKeyStore(tempDir, keystore.StandardScryptN, keystore.StandardScryptP)
+	// Use test-optimized parameters for faster testing
+	n, p := GetTestKeystoreParams()
+	ks := keystore.NewKeyStore(tempDir, n, p)
 
 	// Create the wallet service
 	walletService := NewWalletService(mockRepo, ks)
@@ -321,7 +328,9 @@ func TestImportWalletFromKeystoreV3_InvalidJSON(t *testing.T) {
 	assert.NoError(t, err)
 	defer os.RemoveAll(tempDir)
 
-	ks := keystore.NewKeyStore(tempDir, keystore.StandardScryptN, keystore.StandardScryptP)
+	// Use test-optimized parameters for faster testing
+	n, p := GetTestKeystoreParams()
+	ks := keystore.NewKeyStore(tempDir, n, p)
 
 	// Create the wallet service
 	walletService := NewWalletService(mockRepo, ks)
@@ -359,7 +368,9 @@ func TestImportWalletFromKeystoreV3_InvalidVersion(t *testing.T) {
 	assert.NoError(t, err)
 	defer os.RemoveAll(tempDir)
 
-	ks := keystore.NewKeyStore(tempDir, keystore.StandardScryptN, keystore.StandardScryptP)
+	// Use test-optimized parameters for faster testing
+	n, p := GetTestKeystoreParams()
+	ks := keystore.NewKeyStore(tempDir, n, p)
 
 	// Create the wallet service
 	walletService := NewWalletService(mockRepo, ks)
@@ -403,7 +414,9 @@ func TestImportWalletFromKeystoreV3_MissingFields(t *testing.T) {
 	assert.NoError(t, err)
 	defer os.RemoveAll(tempDir)
 
-	ks := keystore.NewKeyStore(tempDir, keystore.StandardScryptN, keystore.StandardScryptP)
+	// Use test-optimized parameters for faster testing
+	n, p := GetTestKeystoreParams()
+	ks := keystore.NewKeyStore(tempDir, n, p)
 
 	// Create the wallet service
 	walletService := NewWalletService(mockRepo, ks)
@@ -441,7 +454,9 @@ func TestImportWalletFromKeystoreV3_InvalidAddress(t *testing.T) {
 	assert.NoError(t, err)
 	defer os.RemoveAll(tempDir)
 
-	ks := keystore.NewKeyStore(tempDir, keystore.StandardScryptN, keystore.StandardScryptP)
+	// Use test-optimized parameters for faster testing
+	n, p := GetTestKeystoreParams()
+	ks := keystore.NewKeyStore(tempDir, n, p)
 
 	// Create the wallet service
 	walletService := NewWalletService(mockRepo, ks)
@@ -480,7 +495,9 @@ func TestImportWalletFromKeystoreV3_IncorrectPassword(t *testing.T) {
 	assert.NoError(t, err)
 	defer os.RemoveAll(tempDir)
 
-	ks := keystore.NewKeyStore(tempDir, keystore.StandardScryptN, keystore.StandardScryptP)
+	// Use test-optimized parameters for faster testing
+	n, p := GetTestKeystoreParams()
+	ks := keystore.NewKeyStore(tempDir, n, p)
 
 	// Create the wallet service
 	walletService := NewWalletService(mockRepo, ks)
@@ -518,7 +535,9 @@ func TestImportWalletFromKeystoreV3_AddressMismatch(t *testing.T) {
 	assert.NoError(t, err)
 	defer os.RemoveAll(tempDir)
 
-	ks := keystore.NewKeyStore(tempDir, keystore.StandardScryptN, keystore.StandardScryptP)
+	// Use test-optimized parameters for faster testing
+	n, p := GetTestKeystoreParams()
+	ks := keystore.NewKeyStore(tempDir, n, p)
 
 	// Create the wallet service
 	walletService := NewWalletService(mockRepo, ks)
@@ -562,7 +581,9 @@ func TestImportWalletFromKeystoreV3_RepositoryError(t *testing.T) {
 	assert.NoError(t, err)
 	defer os.RemoveAll(tempDir)
 
-	ks := keystore.NewKeyStore(tempDir, keystore.StandardScryptN, keystore.StandardScryptP)
+	// Use test-optimized parameters for faster testing
+	n, p := GetTestKeystoreParams()
+	ks := keystore.NewKeyStore(tempDir, n, p)
 
 	// Create the wallet service
 	walletService := NewWalletService(mockRepo, ks)
@@ -606,7 +627,9 @@ func TestImportWalletFromKeystore_BackwardCompatibility(t *testing.T) {
 	assert.NoError(t, err)
 	defer os.RemoveAll(tempDir)
 
-	ks := keystore.NewKeyStore(tempDir, keystore.StandardScryptN, keystore.StandardScryptP)
+	// Use test-optimized parameters for faster testing
+	n, p := GetTestKeystoreParams()
+	ks := keystore.NewKeyStore(tempDir, n, p)
 
 	// Create the wallet service
 	walletService := NewWalletService(mockRepo, ks)
@@ -648,7 +671,9 @@ func TestAddressVerificationInImport(t *testing.T) {
 	assert.NoError(t, err)
 	defer os.RemoveAll(tempDir)
 
-	ks := keystore.NewKeyStore(tempDir, keystore.StandardScryptN, keystore.StandardScryptP)
+	// Use test-optimized parameters for faster testing
+	n, p := GetTestKeystoreParams()
+	ks := keystore.NewKeyStore(tempDir, n, p)
 
 	// Create the wallet service
 	walletService := NewWalletService(mockRepo, ks)
@@ -695,7 +720,9 @@ func TestDeterministicMnemonicInImport(t *testing.T) {
 	assert.NoError(t, err)
 	defer os.RemoveAll(tempDir)
 
-	ks := keystore.NewKeyStore(tempDir, keystore.StandardScryptN, keystore.StandardScryptP)
+	// Use test-optimized parameters for faster testing
+	n, p := GetTestKeystoreParams()
+	ks := keystore.NewKeyStore(tempDir, n, p)
 
 	// Create the wallet service
 	walletService := NewWalletService(mockRepo, ks)

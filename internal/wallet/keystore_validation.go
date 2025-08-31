@@ -20,14 +20,37 @@ const (
 	ErrorAddressMismatch
 	ErrorMissingRequiredFields
 	ErrorInvalidAddress
+	// Password file related errors
+	ErrorPasswordFileNotFound
+	ErrorPasswordFileUnreadable
+	ErrorPasswordFileEmpty
+	ErrorPasswordFileInvalid
+	ErrorPasswordFileOversized
+	ErrorPasswordFileCorrupted
+	// Batch import related errors
+	ErrorBatchImportFailed
+	ErrorImportJobValidation
+	ErrorDirectoryScanFailed
+	ErrorPasswordInputTimeout
+	ErrorPasswordInputCancelled
+	ErrorPasswordInputSkipped
+	ErrorMaxAttemptsExceeded
+	// Recovery and aggregation errors
+	ErrorPartialImportFailure
+	ErrorImportInterrupted
+	ErrorCleanupFailed
 )
 
 // KeystoreImportError represents a specific error that occurred during keystore import
 type KeystoreImportError struct {
-	Type    KeystoreErrorType
-	Message string
-	Cause   error
-	Field   string // Optional field name that caused the error
+	Type         KeystoreErrorType
+	Message      string
+	Cause        error
+	Field        string                 // Optional field name that caused the error
+	File         string                 // File path that caused the error
+	Recoverable  bool                   // Whether this error can be recovered from
+	RecoveryHint string                 // Hint for how to recover from this error
+	Context      map[string]interface{} // Additional context information
 }
 
 // Error implements the error interface
@@ -309,19 +332,68 @@ func (kv *KeystoreValidator) validatePBKDF2Params(params any) error {
 // NewKeystoreImportError creates a new KeystoreImportError
 func NewKeystoreImportError(errorType KeystoreErrorType, message string, cause error) *KeystoreImportError {
 	return &KeystoreImportError{
-		Type:    errorType,
-		Message: message,
-		Cause:   cause,
+		Type:        errorType,
+		Message:     message,
+		Cause:       cause,
+		Recoverable: isRecoverableErrorType(errorType),
+		Context:     make(map[string]interface{}),
 	}
 }
 
 // NewKeystoreImportErrorWithField creates a new KeystoreImportError with a specific field
 func NewKeystoreImportErrorWithField(errorType KeystoreErrorType, message string, field string, cause error) *KeystoreImportError {
 	return &KeystoreImportError{
-		Type:    errorType,
-		Message: message,
-		Field:   field,
-		Cause:   cause,
+		Type:        errorType,
+		Message:     message,
+		Field:       field,
+		Cause:       cause,
+		Recoverable: isRecoverableErrorType(errorType),
+		Context:     make(map[string]interface{}),
+	}
+}
+
+// NewKeystoreImportErrorWithFile creates a new KeystoreImportError with file information
+func NewKeystoreImportErrorWithFile(errorType KeystoreErrorType, message string, file string, cause error) *KeystoreImportError {
+	return &KeystoreImportError{
+		Type:        errorType,
+		Message:     message,
+		File:        file,
+		Cause:       cause,
+		Recoverable: isRecoverableErrorType(errorType),
+		Context:     make(map[string]interface{}),
+	}
+}
+
+// NewKeystoreImportErrorWithRecovery creates a new KeystoreImportError with recovery information
+func NewKeystoreImportErrorWithRecovery(errorType KeystoreErrorType, message string, file string, recoverable bool, recoveryHint string, cause error) *KeystoreImportError {
+	return &KeystoreImportError{
+		Type:         errorType,
+		Message:      message,
+		File:         file,
+		Cause:        cause,
+		Recoverable:  recoverable,
+		RecoveryHint: recoveryHint,
+		Context:      make(map[string]interface{}),
+	}
+}
+
+// isRecoverableErrorType determines if an error type is generally recoverable
+func isRecoverableErrorType(errorType KeystoreErrorType) bool {
+	switch errorType {
+	case ErrorIncorrectPassword, ErrorPasswordFileNotFound, ErrorPasswordFileUnreadable,
+		ErrorPasswordFileEmpty, ErrorPasswordInputTimeout, ErrorPasswordInputCancelled,
+		ErrorPasswordInputSkipped:
+		return true // These can be recovered by providing correct password or retrying
+	case ErrorFileNotFound, ErrorDirectoryScanFailed:
+		return true // These can be recovered by selecting different files/directories
+	case ErrorImportJobValidation, ErrorBatchImportFailed:
+		return true // These can be recovered by fixing the input
+	case ErrorInvalidJSON, ErrorInvalidKeystore, ErrorInvalidVersion,
+		ErrorCorruptedFile, ErrorAddressMismatch, ErrorMissingRequiredFields,
+		ErrorInvalidAddress, ErrorPasswordFileCorrupted, ErrorPasswordFileInvalid:
+		return false // These indicate fundamental issues with the files
+	default:
+		return false // Conservative approach for unknown errors
 	}
 }
 
@@ -346,6 +418,41 @@ func (e KeystoreErrorType) String() string {
 		return "MISSING_REQUIRED_FIELDS"
 	case ErrorInvalidAddress:
 		return "INVALID_ADDRESS"
+	// Password file errors
+	case ErrorPasswordFileNotFound:
+		return "PASSWORD_FILE_NOT_FOUND"
+	case ErrorPasswordFileUnreadable:
+		return "PASSWORD_FILE_UNREADABLE"
+	case ErrorPasswordFileEmpty:
+		return "PASSWORD_FILE_EMPTY"
+	case ErrorPasswordFileInvalid:
+		return "PASSWORD_FILE_INVALID"
+	case ErrorPasswordFileOversized:
+		return "PASSWORD_FILE_OVERSIZED"
+	case ErrorPasswordFileCorrupted:
+		return "PASSWORD_FILE_CORRUPTED"
+	// Batch import errors
+	case ErrorBatchImportFailed:
+		return "BATCH_IMPORT_FAILED"
+	case ErrorImportJobValidation:
+		return "IMPORT_JOB_VALIDATION_FAILED"
+	case ErrorDirectoryScanFailed:
+		return "DIRECTORY_SCAN_FAILED"
+	case ErrorPasswordInputTimeout:
+		return "PASSWORD_INPUT_TIMEOUT"
+	case ErrorPasswordInputCancelled:
+		return "PASSWORD_INPUT_CANCELLED"
+	case ErrorPasswordInputSkipped:
+		return "PASSWORD_INPUT_SKIPPED"
+	case ErrorMaxAttemptsExceeded:
+		return "MAX_PASSWORD_ATTEMPTS_EXCEEDED"
+	// Recovery and aggregation errors
+	case ErrorPartialImportFailure:
+		return "PARTIAL_IMPORT_FAILURE"
+	case ErrorImportInterrupted:
+		return "IMPORT_INTERRUPTED"
+	case ErrorCleanupFailed:
+		return "CLEANUP_FAILED"
 	default:
 		return "UNKNOWN_ERROR"
 	}
@@ -372,6 +479,41 @@ func (e KeystoreErrorType) GetLocalizationKey() string {
 		return "keystore_missing_fields"
 	case ErrorInvalidAddress:
 		return "keystore_invalid_address"
+	// Password file errors
+	case ErrorPasswordFileNotFound:
+		return "password_file_not_found"
+	case ErrorPasswordFileUnreadable:
+		return "password_file_unreadable"
+	case ErrorPasswordFileEmpty:
+		return "password_file_empty"
+	case ErrorPasswordFileInvalid:
+		return "password_file_invalid"
+	case ErrorPasswordFileOversized:
+		return "password_file_oversized"
+	case ErrorPasswordFileCorrupted:
+		return "password_file_corrupted"
+	// Batch import errors
+	case ErrorBatchImportFailed:
+		return "batch_import_failed"
+	case ErrorImportJobValidation:
+		return "import_job_validation_failed"
+	case ErrorDirectoryScanFailed:
+		return "directory_scan_failed"
+	case ErrorPasswordInputTimeout:
+		return "password_input_timeout"
+	case ErrorPasswordInputCancelled:
+		return "password_input_cancelled"
+	case ErrorPasswordInputSkipped:
+		return "password_input_skipped"
+	case ErrorMaxAttemptsExceeded:
+		return "max_password_attempts_exceeded"
+	// Recovery and aggregation errors
+	case ErrorPartialImportFailure:
+		return "partial_import_failure"
+	case ErrorImportInterrupted:
+		return "import_interrupted"
+	case ErrorCleanupFailed:
+		return "cleanup_failed"
 	default:
 		return "unknown_error"
 	}
@@ -397,4 +539,120 @@ func (e *KeystoreImportError) GetLocalizedMessageWithField() string {
 		return key + ":" + e.Field
 	}
 	return key
+}
+
+// IsRecoverable returns whether this error can be recovered from
+func (e *KeystoreImportError) IsRecoverable() bool {
+	return e.Recoverable
+}
+
+// GetRecoveryHint returns a hint for how to recover from this error
+func (e *KeystoreImportError) GetRecoveryHint() string {
+	if e.RecoveryHint != "" {
+		return e.RecoveryHint
+	}
+
+	// Provide default recovery hints based on error type
+	return e.Type.GetDefaultRecoveryHint()
+}
+
+// GetUserFriendlyMessage returns a user-friendly error message without sensitive information
+func (e *KeystoreImportError) GetUserFriendlyMessage() string {
+	// Return localization key for UI layer to handle
+	// This ensures no sensitive information is exposed
+	return e.Type.GetLocalizationKey()
+}
+
+// GetContext returns additional context information
+func (e *KeystoreImportError) GetContext() map[string]interface{} {
+	if e.Context == nil {
+		return make(map[string]interface{})
+	}
+	return e.Context
+}
+
+// SetContext sets additional context information
+func (e *KeystoreImportError) SetContext(key string, value interface{}) {
+	if e.Context == nil {
+		e.Context = make(map[string]interface{})
+	}
+	e.Context[key] = value
+}
+
+// GetDefaultRecoveryHint returns a default recovery hint for the error type
+func (e KeystoreErrorType) GetDefaultRecoveryHint() string {
+	switch e {
+	case ErrorFileNotFound:
+		return "keystore_recovery_file_not_found"
+	case ErrorInvalidJSON:
+		return "keystore_recovery_invalid_json"
+	case ErrorInvalidKeystore:
+		return "keystore_recovery_invalid_structure"
+	case ErrorIncorrectPassword:
+		return "keystore_recovery_incorrect_password"
+	case ErrorPasswordFileNotFound:
+		return "password_file_recovery_not_found"
+	case ErrorPasswordFileUnreadable:
+		return "password_file_recovery_unreadable"
+	case ErrorPasswordFileEmpty:
+		return "password_file_recovery_empty"
+	case ErrorPasswordFileInvalid:
+		return "password_file_recovery_invalid"
+	case ErrorBatchImportFailed:
+		return "batch_import_recovery_failed"
+	case ErrorDirectoryScanFailed:
+		return "directory_scan_recovery_failed"
+	case ErrorPasswordInputTimeout:
+		return "password_input_recovery_timeout"
+	case ErrorMaxAttemptsExceeded:
+		return "password_attempts_recovery_exceeded"
+	default:
+		return "keystore_recovery_general"
+	}
+}
+
+// IsPasswordRelated returns whether this error is related to password operations
+func (e KeystoreErrorType) IsPasswordRelated() bool {
+	switch e {
+	case ErrorIncorrectPassword, ErrorPasswordFileNotFound, ErrorPasswordFileUnreadable,
+		ErrorPasswordFileEmpty, ErrorPasswordFileInvalid, ErrorPasswordFileOversized,
+		ErrorPasswordFileCorrupted, ErrorPasswordInputTimeout, ErrorPasswordInputCancelled,
+		ErrorPasswordInputSkipped, ErrorMaxAttemptsExceeded:
+		return true
+	default:
+		return false
+	}
+}
+
+// IsFileSystemRelated returns whether this error is related to file system operations
+func (e KeystoreErrorType) IsFileSystemRelated() bool {
+	switch e {
+	case ErrorFileNotFound, ErrorCorruptedFile, ErrorPasswordFileNotFound,
+		ErrorPasswordFileUnreadable, ErrorPasswordFileOversized, ErrorDirectoryScanFailed:
+		return true
+	default:
+		return false
+	}
+}
+
+// IsValidationRelated returns whether this error is related to validation
+func (e KeystoreErrorType) IsValidationRelated() bool {
+	switch e {
+	case ErrorInvalidJSON, ErrorInvalidKeystore, ErrorInvalidVersion,
+		ErrorAddressMismatch, ErrorMissingRequiredFields, ErrorInvalidAddress,
+		ErrorPasswordFileInvalid, ErrorImportJobValidation:
+		return true
+	default:
+		return false
+	}
+}
+
+// IsUserActionRelated returns whether this error is related to user actions
+func (e KeystoreErrorType) IsUserActionRelated() bool {
+	switch e {
+	case ErrorPasswordInputCancelled, ErrorPasswordInputSkipped, ErrorImportInterrupted:
+		return true
+	default:
+		return false
+	}
 }

@@ -1,0 +1,400 @@
+# Portuguese translations
+
+[chain_id_tip]
+other = "ID da cadeia deve ser único (consulte chainlist.org para referência)"
+
+[mnemonic_phrase_label]
+other = "Frase Mnemônica:"
+
+[create_new_wallet]
+other = "Criar Nova"
+
+[private_key_title]
+other = "Importar Carteira via Chave Privada"
+
+[keystore_invalid_version]
+other = "Versão de keystore inválida, esperada versão 3"
+
+[rpc_endpoint_required]
+other = "Endpoint RPC é obrigatório"
+
+[wallet_details_title]
+other = "Detalhes da Carteira"
+
+[create_new_wallet_desc]
+other = "Gerar uma nova carteira Ethereum"
+
+[configuration]
+other = "Configuração"
+
+[invalid_keystore]
+other = "Arquivo keystore inválido. Verifique o caminho e tente novamente."
+
+[confirm_title]
+other = "Confirmar"
+
+[password_no_lowercase]
+other = "A senha deve conter pelo menos uma letra minúscula"
+
+[failed_to_get_network_details]
+other = "Falha ao obter detalhes da rede"
+
+[back_to_menu_desc]
+other = "Retornar ao menu principal"
+
+[chain_id]
+other = "ID da Cadeia"
+
+[enter_wallet_password]
+other = "Digite a senha da carteira:"
+
+[quit_app_desc]
+other = "Encerrar o programa"
+
+[enter_password]
+other = "Digite uma senha para criptografar a carteira:"
+
+[ethereum_address]
+other = "Endereço Ethereum:"
+
+[delete_wallet_confirmation]
+other = "Tem certeza que deseja excluir esta carteira?"
+
+[keystore_incorrect_password]
+other = "Senha incorreta para o arquivo keystore"
+
+[inactive]
+other = "Inativo"
+
+[invalid_chain_id]
+other = "ID da cadeia inválido. Deve ser um número"
+
+[networks]
+other = "Redes"
+
+[language]
+other = "Idioma"
+
+[error]
+other = "Erro: {{.Error}}"
+
+[error_crypto_service_not_initialized]
+other = "Serviço de criptografia não inicializado"
+
+[network_name_placeholder]
+other = "Nome da rede será preenchido automaticamente"
+
+[search_networks_tip]
+other = "Busque redes pelo nome e selecione das sugestões"
+
+[delete_network]
+other = "Excluir Rede"
+
+[import_wallet_title]
+other = "Importar uma Carteira existente"
+
+[main_menu_title]
+other = "Menu Principal"
+
+[password_too_short]
+other = "A senha deve ter pelo menos 8 caracteres"
+
+[status]
+other = "Status"
+
+[wallet_list_status_bar]
+other = "Visualização: {{.View}} | Pressione 'd' para deletar | 'esc' para voltar | 'q' para sair"
+
+[list_wallets]
+other = "Minhas Carteiras"
+
+[imported_mnemonic]
+other = "Frase Mnemônica"
+
+[keystore_invalid_address]
+other = "Formato de endereço Ethereum inválido no keystore"
+
+[password_validation_failed]
+other = "Falha na validação da senha"
+
+[rpc_endpoint]
+other = "Endpoint RPC"
+
+[welcome_message]
+other = """Bem-vindo ao Gerenciador de Carteiras BLOCO!
+
+Selecione uma opção do menu."""
+
+[status_bar_instructions]
+other = "Visualização: {{.View}} | Pressione 'esc' para voltar | 'q' para sair"
+
+[select_wallet_prompt]
+other = "Selecione uma carteira e digite a senha para ver os detalhes."
+
+[private_key]
+other = "Chave Privada:"
+
+[keystore_title]
+other = "Importar Carteira via Arquivo KeyStore"
+
+[wallets]
+other = "Carteiras"
+
+[chain_id_required]
+other = "ID da cadeia é obrigatório"
+
+[imported_private_key]
+other = "Chave Privada"
+
+[keystore_missing_fields]
+other = "Arquivo keystore está faltando campos obrigatórios"
+
+[searching_networks]
+other = "Buscando redes"
+
+[edit_network]
+other = "Editar Rede"
+
+[search_networks]
+other = "Buscar Redes"
+
+[add_network_desc]
+other = "Adicionar uma nova rede blockchain"
+
+[import_keystore]
+other = "Arquivo KeyStore"
+
+[suggestions]
+other = "Sugestões"
+
+[wallet_created]
+other = "Carteira criada com sucesso!"
+
+[no]
+other = "Não"
+
+[network_list]
+other = "Lista de Redes"
+
+[import_method_title]
+other = "Selecione o Método de Importação"
+
+[imported_keystore]
+other = "Keystore (Chave Privada)"
+
+[no_network_selected]
+other = "Nenhuma rede selecionada"
+
+[enter_mnemonic]
+other = "Digite sua frase mnemônica de 12 palavras:"
+
+[add_network]
+other = "Adicionar Rede"
+
+[add_network_footer]
+other = "↑/↓: Navegar Sugestões • Tab: Próximo Campo • Enter: Selecionar/Enviar • Esc: Voltar"
+
+[symbol_placeholder]
+other = "Símbolo será preenchido automaticamente"
+
+[network_list_instructions]
+other = "Use as setas para navegar, 'a' para adicionar, 'e' para editar, 'd' para excluir, 'esc' para voltar."
+
+[rpc_endpoint_tip]
+other = "Use endpoints RPC confiáveis para melhor desempenho"
+
+[rpc_endpoint_placeholder]
+other = "URL RPC será preenchida automaticamente"
+
+[network_validation_failed]
+other = "Falha na validação da rede"
+
+[network_list_desc]
+other = "Visualizar e gerenciar redes blockchain"
+
+[error_empty_encrypted_mnemonic]
+other = "A frase mnemônica criptografada não pode estar vazia"
+
+[press_esc]
+other = "Pressione ESC para voltar à lista de carteiras."
+
+[language_desc]
+other = "Alterar idioma da aplicação"
+
+[invalid_keystore_password]
+other = "Senha inválida para o arquivo keystore. Tente novamente."
+
+[wallet_deleted]
+other = "Carteira excluída com sucesso."
+
+[enter_private_key]
+other = "Digite a chave privada (com ou sem prefixo 0x):"
+
+[password_no_uppercase]
+other = "A senha deve conter pelo menos uma letra maiúscula"
+
+[tips]
+other = "Dicas"
+
+[wallet_list_instructions]
+other = "Use as setas para navegar, Enter para ver detalhes, 'd' para deletar uma carteira, 'esc' para voltar ao menu."
+
+[import_private_key]
+other = "Chave Privada"
+
+[enter_keystore_path]
+other = "Digite o caminho para o arquivo KeyStore V3:"
+
+[version]
+other = "0.2.0"
+
+[active]
+other = "Ativo"
+
+[invalid_rpc_endpoint]
+other = "Endpoint RPC inválido. Deve começar com http:// ou https://"
+
+[mnemonic_phrase]
+other = "Frase Mnemônica (Mantenha-a Segura!):"
+
+[import_private_key_desc]
+other = "Importar usando uma chave privada"
+
+[cancel]
+other = "Cancelar"
+
+[list_wallets_desc]
+other = "Gerenciar as carteiras"
+
+[wallet_imported]
+other = "Carteira importada com sucesso!"
+
+[quit_app]
+other = "Sair da Aplicação"
+
+[password_no_digit_or_special]
+other = "A senha deve conter pelo menos um dígito ou caractere especial"
+
+[keystore_corrupted_file]
+other = "Arquivo keystore está corrompido ou danificado"
+
+[exit]
+other = "Sair"
+
+[error_empty_password]
+other = "A senha não pode estar vazia"
+
+[import_mnemonic]
+other = "Frase Mnemônica"
+
+[wallet_action_title]
+other = "Ações da Carteira"
+
+[view_wallet]
+other = "Ver Detalhes"
+
+[delete_wallet]
+other = "Excluir Carteira"
+
+[exit_desc]
+other = "Sair da aplicação"
+
+[current]
+other = "Atual"
+
+[back]
+other = "Voltar"
+
+[symbol]
+other = "Símbolo"
+
+[wallet_type]
+other = "Tipo"
+
+[import_keystore_desc]
+other = "Importar arquivo KeyStore V3"
+
+[error_invalid_mnemonic_format]
+other = "Formato de frase mnemônica criptografada inválido: muito curta"
+
+[chain_id_placeholder]
+other = "ID da cadeia será preenchido automaticamente"
+
+[chainlist_unavailable_warning]
+other = "O ChainList está indisponível. A rede será adicionada como personalizada."
+
+[import_wallet]
+other = "Importar Carteira"
+
+[configuration_desc]
+other = "Configurar ajustes da aplicação"
+
+[keystore_invalid_json]
+other = "O arquivo não contém um JSON válido"
+
+[symbol_required]
+other = "Símbolo é obrigatório"
+
+[import_wallet_desc]
+other = "Importar uma carteira existente"
+
+[networks_desc]
+other = "Configurar redes blockchain"
+
+[error_decode_mnemonic]
+other = "Falha ao decodificar a frase mnemônica criptografada"
+
+[network_name_required]
+other = "Nome da rede é obrigatório"
+
+[search_networks_placeholder]
+other = "Digite para buscar redes (ex: Ethereum, Polygon)"
+
+[press_enter]
+other = "Pressione Enter para continuar."
+
+[yes]
+other = "Sim"
+
+[loading]
+other = "Carregando..."
+
+[keystore_invalid_structure]
+other = "O arquivo não contém um keystore v3 válido"
+
+[adding_network]
+other = "Adicionando rede"
+
+[network_details]
+other = "Detalhes da Rede"
+
+[network_name]
+other = "Nome da Rede"
+
+[public_key]
+other = "Chave Pública:"
+
+[error_invalid_password]
+other = "Senha inválida: verificação de hash falhou"
+
+[import_mnemonic_desc]
+other = "Importar usando frase de 12 palavras"
+
+[back_to_menu]
+other = "Voltar"
+
+[invalid_mnemonic]
+other = "Frase mnemônica inválida. Deve ter 12 palavras separadas por espaços."
+
+[created_at]
+other = "Criado Em"
+
+[keystore_address_mismatch]
+other = "Endereço no keystore não corresponde à chave privada derivada"
+
+[error_generate_salt]
+other = "Falha ao gerar salt criptográfico"
+
+[keystore_file_not_found]
+other = "Arquivo keystore não encontrado no caminho especificado"
+

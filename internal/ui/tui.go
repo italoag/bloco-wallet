@@ -23,6 +23,25 @@ import (
 	"github.com/go-errors/errors"
 )
 
+// determineWalletType determines the wallet type display string based on ImportMethod as primary source
+func determineWalletType(w wallet.Wallet) string {
+	// Use ImportMethod as primary source of truth
+	switch wallet.ImportMethod(w.ImportMethod) {
+	case wallet.ImportMethodMnemonic:
+		return localization.Labels["imported_mnemonic"]
+	case wallet.ImportMethodPrivateKey:
+		return localization.Labels["imported_private_key"]
+	case wallet.ImportMethodKeystore:
+		return localization.Labels["imported_keystore"]
+	default:
+		// Fallback to old logic for backward compatibility with wallets missing ImportMethod
+		if w.Mnemonic == nil {
+			return localization.Labels["imported_private_key"]
+		}
+		return localization.Labels["imported_mnemonic"]
+	}
+}
+
 // Função para construir a lista de fontes disponíveis tanto do diretório customizado quanto das embutidas
 func buildFontsList(customFontDir string) []*tdf.FontInfo {
 	var fonts []*tdf.FontInfo
@@ -315,6 +334,8 @@ func (m *CLIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateImportPrivateKey(msg)
 	case constants.ImportKeystoreView:
 		return m.updateImportKeystore(msg)
+	case constants.EnhancedImportView:
+		return m.updateEnhancedImport(msg)
 	case constants.ImportWalletPasswordView:
 		return m.updateImportWalletPassword(msg)
 	case constants.ListWalletsView:
@@ -602,6 +623,8 @@ func (m *CLIModel) getContentView() string {
 		return m.viewImportPrivateKey()
 	case constants.ImportKeystoreView:
 		return m.viewImportKeystore()
+	case constants.EnhancedImportView:
+		return m.viewEnhancedImport()
 	case constants.ImportWalletPasswordView:
 		return m.viewImportWalletPassword()
 	case constants.ListWalletsView:
@@ -942,7 +965,8 @@ func (m *CLIModel) updateImportMethodSelection(msg tea.Msg) (tea.Model, tea.Cmd)
 				m.currentView = constants.ImportPrivateKeyView
 
 			case 2: // Terceira opção: Importar por arquivo keystore
-				m.initImportKeystore()
+				cmd := m.initEnhancedImport()
+				return m, cmd
 
 			case 3: // Quarta opção: Voltar ao menu principal
 				m.menuItems = NewMenu() // Recarregar o menu principal
@@ -1431,6 +1455,147 @@ func (m *CLIModel) updateWalletDetails(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// updateEnhancedImport handles user input in the enhanced import view
+func (m *CLIModel) updateEnhancedImport(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m.enhancedImportState == nil {
+		// Initialize if not already done
+		m.initEnhancedImport()
+		return m, nil
+	}
+
+	// Handle enhanced import specific messages
+	switch msg := msg.(type) {
+	case ImportBatchCompleteMsg:
+		// Import batch completed
+		err := m.enhancedImportState.CompleteImport(msg.Results)
+		if err != nil {
+			m.err = errors.Wrap(err, 0)
+			m.currentView = constants.DefaultView
+		}
+		return m, nil
+
+	case ImportProgressUpdateMsg:
+		// Update progress
+		m.enhancedImportState.UpdateProgress(msg.Progress)
+
+		// Collect commands to execute
+		var cmds []tea.Cmd
+
+		// Always continue listening for more progress updates if import is still in progress
+		if m.enhancedImportState != nil && m.enhancedImportState.GetCurrentPhase() == PhaseImporting {
+			cmds = append(cmds, m.listenForProgressUpdates())
+		}
+
+		// Handle any pending commands from progress update
+		if cmd := m.enhancedImportState.GetPendingCommand(); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+
+		return m, tea.Batch(cmds...)
+
+	case ContinueListeningMsg:
+		// Continue listening for progress updates if import is still in progress
+		if m.enhancedImportState != nil && m.enhancedImportState.GetCurrentPhase() == PhaseImporting {
+			return m, m.listenForProgressUpdates()
+		}
+		return m, nil
+
+	case PasswordRequestMsg:
+		// Handle password request
+		err := m.enhancedImportState.HandlePasswordRequest(msg.Request)
+		if err != nil {
+			m.err = errors.Wrap(err, 0)
+			m.currentView = constants.DefaultView
+		}
+
+		// Continue listening for more password requests if import is still in progress
+		if m.enhancedImportState != nil &&
+			(m.enhancedImportState.GetCurrentPhase() == PhaseImporting ||
+				m.enhancedImportState.GetCurrentPhase() == PhasePasswordInput) {
+			return m, m.listenForPasswordRequests()
+		}
+		return m, nil
+
+	case ReturnToFileSelectionMsg:
+		// Return to file selection phase
+		err := m.enhancedImportState.TransitionToPhase(PhaseFileSelection)
+		if err != nil {
+			m.err = errors.Wrap(err, 0)
+			m.currentView = constants.DefaultView
+		}
+		return m, nil
+
+	case ReturnToMenuMsg:
+		// Return to main menu
+		m.enhancedImportState = nil
+		m.currentView = constants.DefaultView
+		return m, nil
+
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "esc":
+			// Handle escape key based on current phase
+			phase := m.enhancedImportState.GetCurrentPhase()
+			switch phase {
+			case PhaseFileSelection:
+				// Return to main menu
+				m.enhancedImportState = nil
+				m.currentView = constants.DefaultView
+				return m, nil
+			case PhaseImporting:
+				// Cancel import
+				err := m.enhancedImportState.CancelImport()
+				if err != nil {
+					m.err = errors.Wrap(err, 0)
+				}
+				return m, nil
+			case PhasePasswordInput:
+				// Cancel password input
+				err := m.enhancedImportState.CancelPasswordInput()
+				if err != nil {
+					m.err = errors.Wrap(err, 0)
+				}
+				return m, nil
+			case PhaseComplete, PhaseCancelled:
+				// Return to main menu
+				m.enhancedImportState = nil
+				m.currentView = constants.DefaultView
+				return m, nil
+			}
+		case "enter":
+			// Handle enter key based on current phase
+			phase := m.enhancedImportState.GetCurrentPhase()
+			switch phase {
+			case PhaseFileSelection:
+				// Start import if files are selected
+				if len(m.enhancedImportState.SelectedFiles) > 0 || m.enhancedImportState.SelectedDir != "" {
+					err := m.enhancedImportState.StartImport()
+					if err != nil {
+						m.err = errors.Wrap(err, 0)
+						return m, nil
+					}
+					// Start the import batch processing and progress listening
+					return m, tea.Batch(
+						m.enhancedImportState.ProcessImportBatch(),
+						m.listenForProgressUpdates(),
+						m.listenForPasswordRequests(),
+					)
+				}
+			case PhaseComplete, PhaseCancelled:
+				// Return to main menu
+				m.enhancedImportState = nil
+				m.currentView = constants.DefaultView
+				return m, nil
+			}
+		}
+	}
+
+	// Delegate to enhanced import state
+	var cmd tea.Cmd
+	_, cmd = m.enhancedImportState.Update(msg)
+	return m, cmd
+}
+
 func (m *CLIModel) updateTableDimensions() {
 	if m.currentView != constants.ListWalletsView || len(m.wallets) == 0 {
 		return
@@ -1551,6 +1716,21 @@ func (m *CLIModel) initImportWallet() {
 	m.initImportMethodSelection()
 }
 
+// initEnhancedImport initializes the enhanced import view
+func (m *CLIModel) initEnhancedImport() tea.Cmd {
+	// Create batch import service
+	batchService := wallet.NewBatchImportService(m.Service)
+
+	// Initialize enhanced import state
+	m.enhancedImportState = NewEnhancedImportState(batchService, m.styles)
+
+	// Set current view
+	m.currentView = constants.EnhancedImportView
+
+	// Initialize the enhanced import state (which will initialize the file picker)
+	return m.enhancedImportState.Init()
+}
+
 func (m *CLIModel) initListWallets() {
 	wallets, err := m.Service.GetAllWallets()
 	if err != nil {
@@ -1582,11 +1762,8 @@ func (m *CLIModel) initListWallets() {
 
 	var rows []table.Row
 	for _, w := range m.wallets {
-		// Determine a wallet type based on mnemonic presence
-		walletType := localization.Labels["imported_mnemonic"]
-		if w.Mnemonic == nil {
-			walletType = localization.Labels["imported_private_key"]
-		}
+		// Determine wallet type using ImportMethod as primary source
+		walletType := determineWalletType(w)
 
 		// Format created at date
 		createdAt := w.CreatedAt.Format("2006-01-02 15:04")
@@ -1878,11 +2055,8 @@ func (m *CLIModel) rebuildWalletsTable() {
 
 	var rows []table.Row
 	for _, w := range m.wallets {
-		// Determine a wallet type based on mnemonic presence
-		walletType := localization.Labels["imported_mnemonic"]
-		if w.Mnemonic == nil {
-			walletType = localization.Labels["imported_private_key"]
-		}
+		// Determine wallet type using ImportMethod as primary source
+		walletType := determineWalletType(w)
 
 		// Format created at date
 		createdAt := w.CreatedAt.Format("2006-01-02 15:04")
@@ -1954,4 +2128,50 @@ func copyFile(src, dst string) error {
 
 	// Sincronizar para garantir que os dados sejam escritos no disco
 	return destFile.Sync()
+}
+
+// listenForProgressUpdates creates a command that listens for progress updates
+func (m *CLIModel) listenForProgressUpdates() tea.Cmd {
+	if m.enhancedImportState == nil {
+		return nil
+	}
+
+	return func() tea.Msg {
+		progressChan := m.enhancedImportState.GetProgressChan()
+
+		select {
+		case progress, ok := <-progressChan:
+			if !ok {
+				// Channel closed, no more progress updates
+				return nil
+			}
+			return ImportProgressUpdateMsg{Progress: progress}
+		case <-time.After(1 * time.Second): // Increased timeout to 1 second
+			// Timeout - continue listening by returning a special message
+			return ContinueListeningMsg{}
+		}
+	}
+}
+
+// listenForPasswordRequests creates a command that listens for password requests
+func (m *CLIModel) listenForPasswordRequests() tea.Cmd {
+	if m.enhancedImportState == nil {
+		return nil
+	}
+
+	return func() tea.Msg {
+		passwordRequestChan := m.enhancedImportState.GetPasswordRequestChan()
+
+		select {
+		case request, ok := <-passwordRequestChan:
+			if !ok {
+				// Channel closed, no more password requests
+				return nil
+			}
+			return PasswordRequestMsg{Request: request}
+		case <-time.After(100 * time.Millisecond):
+			// Timeout - return nil to avoid blocking
+			return nil
+		}
+	}
 }

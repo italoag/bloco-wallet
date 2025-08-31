@@ -15,6 +15,7 @@ const (
 	ImportMethodSelectionView = "import_method_selection"
 	ImportPrivateKeyView      = "import_private_key"
 	ImportKeystoreView        = "import_keystore"
+	EnhancedImportView        = "enhanced_import"
 	ListWalletsView           = "list_wallets"
 	WalletPasswordView        = "wallet_password"
 	WalletDetailsView         = "wallet_details"

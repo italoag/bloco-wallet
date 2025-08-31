@@ -28,8 +28,9 @@ func TestTUIFlowDebug(t *testing.T) {
 	cfg := CreateMockConfig()
 	InitCryptoService(cfg)
 
-	// Create keystore
-	ks := keystore.NewKeyStore(keystoreDir, keystore.StandardScryptN, keystore.StandardScryptP)
+	// Create keystore with test-optimized parameters
+	n, p := GetTestKeystoreParams()
+	ks := keystore.NewKeyStore(keystoreDir, n, p)
 
 	// Create repository
 	repo := &MockWalletRepository{}
@@ -135,8 +136,9 @@ func TestTUIFlowWithDifferentKeystores(t *testing.T) {
 	cfg := CreateMockConfig()
 	InitCryptoService(cfg)
 
-	// Create keystore
-	ks := keystore.NewKeyStore(keystoreDir, keystore.StandardScryptN, keystore.StandardScryptP)
+	// Create keystore with test-optimized parameters
+	n, p := GetTestKeystoreParams()
+	ks := keystore.NewKeyStore(keystoreDir, n, p)
 
 	// Create repository
 	repo := &MockWalletRepository{}

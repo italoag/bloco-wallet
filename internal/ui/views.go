@@ -615,17 +615,30 @@ func (m *CLIModel) viewWalletDetails() string {
 		case wallet.ImportMethodPrivateKey:
 			methodName = localization.Labels["method_private_key"]
 		case wallet.ImportMethodKeystore:
-			methodName = localization.Labels["method_keystore"]
+			// Show "Keystore File" for keystore imports
+			if localization.Labels["method_keystore"] != "" {
+				methodName = localization.Labels["method_keystore"]
+			} else {
+				methodName = "Keystore File" // Fallback
+			}
 		default:
 			methodName = string(m.walletDetails.ImportMethod)
 		}
 
-		// Determine mnemonic text
+		// Determine mnemonic text based on import method
 		mnemonicText := ""
 		if m.walletDetails.HasMnemonic && m.walletDetails.Mnemonic != nil && *m.walletDetails.Mnemonic != "" {
 			mnemonicText = *m.walletDetails.Mnemonic
 		} else {
-			mnemonicText = localization.GetWalletImportMessage("no_mnemonic_available")
+			// Use specific message based on import method
+			switch m.walletDetails.ImportMethod {
+			case wallet.ImportMethodKeystore:
+				mnemonicText = localization.GetWalletImportMessage("no_mnemonic_keystore")
+			case wallet.ImportMethodPrivateKey:
+				mnemonicText = localization.GetWalletImportMessage("no_mnemonic_available")
+			default:
+				mnemonicText = localization.GetWalletImportMessage("no_mnemonic_available")
+			}
 		}
 
 		view.WriteString(
@@ -656,7 +669,7 @@ func (m *CLIModel) renderWalletBalances() string {
 	balanceView.WriteString(lipgloss.NewStyle().Bold(true).Render("Balance Information:\n"))
 
 	// Create a simple provider for Ethereum mainnet
- ethProvider, err := blockchain.NewEthereum("https://eth.llamarpc.com", 5*time.Second, "ETH", 18, "Ethereum")
+	ethProvider, err := blockchain.NewEthereum("https://eth.llamarpc.com", 5*time.Second, "ETH", 18, "Ethereum")
 	if err != nil {
 		balanceView.WriteString("❌ Failed to connect to Ethereum network\n")
 		return balanceView.String()
@@ -733,4 +746,13 @@ func (m *CLIModel) viewNetworkMenu() string {
 	// Em vez de renderizar o menu de redes novamente, exibir apenas uma mensagem informativa
 	// já que o menu já é exibido na área padrão de menu
 	return localization.Labels["welcome_message"]
+}
+
+// viewEnhancedImport renderiza a visualização de importação aprimorada
+func (m *CLIModel) viewEnhancedImport() string {
+	if m.enhancedImportState == nil {
+		return "Enhanced import not initialized"
+	}
+
+	return m.enhancedImportState.View()
 }

@@ -26,7 +26,8 @@ func TestTUIDebugWithLogging(t *testing.T) {
 	err := os.MkdirAll(keystoreDir, 0755)
 	require.NoError(t, err)
 
-	ks := keystore.NewKeyStore(keystoreDir, keystore.StandardScryptN, keystore.StandardScryptP)
+	n, p := GetTestKeystoreParams()
+	ks := keystore.NewKeyStore(keystoreDir, n, p)
 
 	repo := &MockWalletRepository{}
 	repo.On("AddWallet", mock.AnythingOfType("*wallet.Wallet")).Return(nil)
@@ -150,7 +151,8 @@ func TestDebugSpecificError(t *testing.T) {
 	err := os.MkdirAll(keystoreDir, 0755)
 	require.NoError(t, err)
 
-	ks := keystore.NewKeyStore(keystoreDir, keystore.StandardScryptN, keystore.StandardScryptP)
+	n, p := GetTestKeystoreParams()
+	ks := keystore.NewKeyStore(keystoreDir, n, p)
 
 	repo := &MockWalletRepository{}
 	repo.On("AddWallet", mock.AnythingOfType("*wallet.Wallet")).Return(nil)

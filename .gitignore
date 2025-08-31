@@ -35,9 +35,7 @@ go.work.sum
 blocowallet.log
 bloco_wallet.log
 /wallets.db
-.kiro/
 .vscode/
 keystores/
 blocowallet
-.junie/
-
+references/

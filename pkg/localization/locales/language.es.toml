@@ -1,0 +1,394 @@
+# Spanish translations
+
+[imported_private_key]
+other = "Clave Privada"
+
+[failed_to_get_network_details]
+other = "Error al obtener detalles de la red"
+
+[quit_app]
+other = "Salir de la Aplicación"
+
+[password_validation_failed]
+other = "Falló la validación de la contraseña"
+
+[status]
+other = "Estado"
+
+[edit_network]
+other = "Editar Red"
+
+[rpc_endpoint_placeholder]
+other = "La URL RPC se completará automáticamente"
+
+[import_method_title]
+other = "Seleccione el Método de Importación"
+
+[list_wallets_desc]
+other = "Ver y administrar tus carteras"
+
+[keystore_address_mismatch]
+other = "La dirección en el keystore no corresponde a la clave privada derivada"
+
+[keystore_invalid_json]
+other = "El archivo no contiene un JSON válido"
+
+[delete_network]
+other = "Eliminar Red"
+
+[network_list_desc]
+other = "Ver y administrar redes blockchain"
+
+[import_wallet_title]
+other = "Importar una Cartera existente"
+
+[ethereum_address]
+other = "Dirección de Ethereum:"
+
+[language_desc]
+other = "Cambiar idioma de la aplicación"
+
+[network_list]
+other = "Lista de Redes"
+
+[back_to_menu]
+other = "Volver"
+
+[yes]
+other = "Sí"
+
+[view_wallet]
+other = "Ver Detalles"
+
+[error_generate_salt]
+other = "Error al generar salt criptográfico"
+
+[keystore_missing_fields]
+other = "Al archivo keystore le faltan campos obligatorios"
+
+[network_name_placeholder]
+other = "El nombre de la red se completará automáticamente"
+
+[status_bar_instructions]
+other = "Vista: {{.View}} | Presione 'esc' para volver | 'q' para salir"
+
+[select_wallet_prompt]
+other = "Seleccione una cartera e ingrese la contraseña para ver los detalles."
+
+[networks]
+other = "Redes"
+
+[import_mnemonic]
+other = "Frase Mnemotécnica"
+
+[wallets]
+other = "Carteras"
+
+[enter_password]
+other = "Ingrese una contraseña para cifrar la cartera:"
+
+[keystore_incorrect_password]
+other = "Contraseña incorrecta para el archivo keystore"
+
+[error_empty_password]
+other = "La contraseña no puede estar vacía"
+
+[import_private_key]
+other = "Clave Privada"
+
+[imported_mnemonic]
+other = "Frase Mnemónica"
+
+[network_list_instructions]
+other = "Use las flechas para navegar, 'a' para añadir, 'e' para editar, 'd' para eliminar, 'esc' para volver."
+
+[public_key]
+other = "Clave Pública:"
+
+[import_private_key_desc]
+other = "Importar usando una clave privada"
+
+[wallet_imported]
+other = "¡Cartera importada exitosamente!"
+
+[no_network_selected]
+other = "Ninguna red seleccionada"
+
+[wallet_details_title]
+other = "Detalles de la Cartera"
+
+[import_keystore]
+other = "Archivo Keystore"
+
+[quit_app_desc]
+other = "Cerrar el programa"
+
+[chain_id_tip]
+other = "El ID de cadena debe ser único (consulte chainlist.org para referencia)"
+
+[welcome_message]
+other = """¡Bienvenido al Administrador de Carteras BLOCO!
+
+Seleccione una opción del menú."""
+
+[wallet_deleted]
+other = "Cartera eliminada exitosamente."
+
+[password_no_uppercase]
+other = "La contraseña debe contener al menos una letra mayúscula"
+
+[keystore_invalid_structure]
+other = "El archivo no contiene un keystore v3 válido"
+
+[searching_networks]
+other = "Buscando redes"
+
+[wallet_list_instructions]
+other = "Use las flechas para navegar, Enter para ver detalles, 'd' para eliminar una cartera, 'esc' para volver al menú."
+
+[network_name]
+other = "Nombre de Red"
+
+[network_name_required]
+other = "El nombre de la red es obligatorio"
+
+[private_key]
+other = "Clave Privada:"
+
+[enter_keystore_path]
+other = "Ingrese la ruta al archivo KeyStoreV3:"
+
+[add_network_footer]
+other = "↑/↓: Navegar Sugerencias • Tab: Siguiente Campo • Enter: Seleccionar/Enviar • Esc: Volver"
+
+[exit]
+other = "Salir"
+
+[error_crypto_service_not_initialized]
+other = "Servicio de criptografía no inicializado"
+
+[back]
+other = "Volver"
+
+[list_wallets]
+other = "Mis Carteras"
+
+[error_invalid_mnemonic_format]
+other = "Formato de frase mnemónica cifrada inválido: demasiado corta"
+
+[keystore_invalid_address]
+other = "Formato de dirección Ethereum inválido en el keystore"
+
+[suggestions]
+other = "Sugerencias"
+
+[wallet_list_status_bar]
+other = "Vista: {{.View}} | Presione 'd' para eliminar | 'esc' para volver | 'q' para salir"
+
+[import_keystore_desc]
+other = "Importar usando un archivo KeyStoreV3"
+
+[active]
+other = "Activo"
+
+[chain_id]
+other = "ID de Cadena"
+
+[tips]
+other = "Consejos"
+
+[main_menu_title]
+other = "Menú Principal"
+
+[add_network_desc]
+other = "Añadir una nueva red blockchain"
+
+[symbol_placeholder]
+other = "El símbolo se completará automáticamente"
+
+[import_mnemonic_desc]
+other = "Importar usando frase de 12 palabras"
+
+[back_to_menu_desc]
+other = "Regresar al menú principal"
+
+[network_details]
+other = "Detalles de la Red"
+
+[adding_network]
+other = "Añadiendo red"
+
+[invalid_keystore]
+other = "Archivo keystore inválido. Verifique la ruta e intente nuevamente."
+
+[invalid_mnemonic]
+other = "Frase mnemotécnica inválida. Debe tener 12 palabras separadas por espacios."
+
+[delete_wallet_confirmation]
+other = "¿Está seguro de que desea eliminar esta cartera?"
+
+[search_networks_placeholder]
+other = "Escriba para buscar redes (ej: Ethereum, Polygon)"
+
+[inactive]
+other = "Inactivo"
+
+[configuration]
+other = "Configuración"
+
+[keystore_title]
+other = "Importar Cartera vía Archivo Keystore"
+
+[wallet_created]
+other = "¡Cartera creada exitosamente!"
+
+[cancel]
+other = "Cancelar"
+
+[password_no_digit_or_special]
+other = "La contraseña debe contener al menos un dígito o carácter especial"
+
+[enter_mnemonic]
+other = "Ingrese su frase mnemónica de 12 palabras:"
+
+[mnemonic_phrase]
+other = "Frase Mnemónica (¡Manténgala Segura!):"
+
+[press_esc]
+other = "Presione ESC para volver a la lista de carteras."
+
+[error]
+other = "Error: {{.Error}}"
+
+[wallet_action_title]
+other = "Acciones de la Cartera"
+
+[delete_wallet]
+other = "Eliminar Cartera"
+
+[error_empty_encrypted_mnemonic]
+other = "La frase mnemónica cifrada no puede estar vacía"
+
+[invalid_rpc_endpoint]
+other = "Endpoint RPC inválido. Debe comenzar con http:// o https://"
+
+[invalid_chain_id]
+other = "ID de cadena inválido. Debe ser un número"
+
+[language]
+other = "Idioma"
+
+[invalid_keystore_password]
+other = "Contraseña inválida para el archivo keystore. Intente nuevamente."
+
+[exit_desc]
+other = "Salir de la aplicación"
+
+[password_too_short]
+other = "La contraseña debe tener al menos 8 caracteres"
+
+[rpc_endpoint]
+other = "Endpoint RPC"
+
+[private_key_title]
+other = "Importar Cartera vía Clave Privada"
+
+[wallet_type]
+other = "Tipo"
+
+[search_networks_tip]
+other = "Busque redes por nombre y seleccione de las sugerencias"
+
+[mnemonic_phrase_label]
+other = "Frase Mnemónica:"
+
+[configuration_desc]
+other = "Configurar ajustes de la aplicación"
+
+[no]
+other = "No"
+
+[keystore_corrupted_file]
+other = "El archivo keystore está corrupto o dañado"
+
+[enter_wallet_password]
+other = "Ingrese la contraseña de la cartera:"
+
+[create_new_wallet_desc]
+other = "Generar una nueva cartera Ethereum"
+
+[keystore_file_not_found]
+other = "Archivo keystore no encontrado en la ruta especificada"
+
+[chain_id_placeholder]
+other = "El ID de cadena se completará automáticamente"
+
+[imported_keystore]
+other = "Keystore (Clave Privada)"
+
+[version]
+other = "0.2.0"
+
+[error_invalid_password]
+other = "Contraseña inválida: la verificación del hash falló"
+
+[symbol]
+other = "Símbolo"
+
+[add_network]
+other = "Añadir Red"
+
+[import_wallet_desc]
+other = "Importar una cartera existente"
+
+[keystore_invalid_version]
+other = "Versión de keystore inválida, se esperaba versión 3"
+
+[chain_id_required]
+other = "El ID de cadena es obligatorio"
+
+[password_no_lowercase]
+other = "La contraseña debe contener al menos una letra minúscula"
+
+[rpc_endpoint_tip]
+other = "Use endpoints RPC confiables para un mejor rendimiento"
+
+[rpc_endpoint_required]
+other = "El endpoint RPC es obligatorio"
+
+[create_new_wallet]
+other = "Crear Nueva"
+
+[loading]
+other = "Cargando..."
+
+[confirm_title]
+other = "Confirmar"
+
+[current]
+other = "Actual"
+
+[press_enter]
+other = "Presione Enter para continuar."
+
+[enter_private_key]
+other = "Ingrese la clave privada (con o sin prefijo 0x):"
+
+[error_decode_mnemonic]
+other = "Error al decodificar la frase mnemónica cifrada"
+
+[symbol_required]
+other = "El símbolo es obligatorio"
+
+[search_networks]
+other = "Buscar Redes"
+
+[import_wallet]
+other = "Importar Cartera"
+
+[networks_desc]
+other = "Configurar redes blockchain"
+
+[created_at]
+other = "Creado En"
+

@@ -31,8 +31,9 @@ func TestImportWalletFromKeystoreV3WithUniversalKDF(t *testing.T) {
 	mockRepo.On("FindBySourceHash", mock.AnythingOfType("string")).Return(nil, nil)
 	mockRepo.On("AddWallet", mock.AnythingOfType("*wallet.Wallet")).Return(nil)
 
-	// Create keystore
-	ks := keystore.NewKeyStore(tempDir, keystore.StandardScryptN, keystore.StandardScryptP)
+	// Create keystore with test-optimized parameters
+	n, p := GetTestKeystoreParams()
+	ks := keystore.NewKeyStore(tempDir, n, p)
 
 	// Create wallet service
 	ws := NewWalletService(mockRepo, ks)
@@ -97,11 +98,11 @@ func TestImportWalletFromKeystoreV3WithUniversalKDF(t *testing.T) {
 			assert.NotNil(t, walletDetails.Wallet)
 			assert.NotNil(t, walletDetails.PrivateKey)
 			assert.NotNil(t, walletDetails.PublicKey)
-			assert.NotEmpty(t, walletDetails.Mnemonic)
+			assert.Nil(t, walletDetails.Mnemonic) // Keystore imports don't have mnemonics
 
 			// Verify import method
 			assert.Equal(t, ImportMethodKeystore, walletDetails.ImportMethod)
-			assert.True(t, walletDetails.HasMnemonic)
+			assert.False(t, walletDetails.HasMnemonic) // Keystore imports don't have mnemonics
 
 			// Verify KDF information
 			require.NotNil(t, walletDetails.KDFInfo)
@@ -398,8 +399,9 @@ func TestKeystoreImportErrorMessages(t *testing.T) {
 	mockRepo := new(MockWalletRepository)
 	mockRepo.On("FindBySourceHash", mock.AnythingOfType("string")).Return(nil, nil)
 
-	// Create keystore
-	ks := keystore.NewKeyStore(tempDir, keystore.StandardScryptN, keystore.StandardScryptP)
+	// Create keystore with test-optimized parameters
+	n, p := GetTestKeystoreParams()
+	ks := keystore.NewKeyStore(tempDir, n, p)
 
 	// Create wallet service
 	ws := NewWalletService(mockRepo, ks)
