@@ -18,12 +18,24 @@ func TestSaveConfigToFile(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 
-	// Create a test config
-	cfg := &config.Config{
-		AppDir:     tempDir,
-		Language:   "en",
-		WalletsDir: filepath.Join(tempDir, "wallets"),
-		Networks:   make(map[string]config.Network),
+	// Set environment variable to use temp directory
+	originalEnv := os.Getenv("BLOCO_WALLET_APP_APP_DIR")
+	defer func() {
+		if originalEnv != "" {
+			os.Setenv("BLOCO_WALLET_APP_APP_DIR", originalEnv)
+		} else {
+			os.Unsetenv("BLOCO_WALLET_APP_APP_DIR")
+		}
+	}()
+	os.Setenv("BLOCO_WALLET_APP_APP_DIR", tempDir)
+
+	// Reset the global configuration manager to pick up the new environment variable
+	globalConfigManager = nil
+
+	// Load configuration using ConfigurationManager
+	cfg, err := loadOrCreateConfig()
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
 	}
 
 	// Add some test networks

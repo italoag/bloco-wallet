@@ -41,6 +41,8 @@ func DefaultNetworkMessagesEnglish() map[string]string {
 		"search_networks_tip":           "Search for networks by name and select from suggestions",
 		"chain_id_tip":                  "Chain ID must be unique (check chainlist.org for reference)",
 		"rpc_endpoint_tip":              "Use reliable RPC endpoints for better performance",
+		"chainlist_unavailable_warning": "ChainList is unavailable. The network will be added as a custom network.",
+		"network_validation_failed":     "Network validation failed",
 	}
 }
 
@@ -85,6 +87,8 @@ func DefaultNetworkMessagesPortuguese() map[string]string {
 		"search_networks_tip":           "Busque redes pelo nome e selecione das sugestões",
 		"chain_id_tip":                  "ID da cadeia deve ser único (consulte chainlist.org para referência)",
 		"rpc_endpoint_tip":              "Use endpoints RPC confiáveis para melhor desempenho",
+		"chainlist_unavailable_warning": "O ChainList está indisponível. A rede será adicionada como personalizada.",
+		"network_validation_failed":     "Falha na validação da rede",
 	}
 }
 

@@ -66,8 +66,8 @@ func LoadConfig(appDir string) (*Config, error) {
 	v.AddConfigPath(appDir)
 
 	// Set up environment variables support
-	// Prefix per guidelines: BLOCOWALLET_
-	v.SetEnvPrefix("BLOCOWALLET")
+	// Prefix per guidelines: BLOCO_WALLET_
+	v.SetEnvPrefix("BLOCO_WALLET")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 
@@ -154,7 +154,7 @@ func LoadConfig(appDir string) (*Config, error) {
 		cfg.WalletsDir = expandPath(rawWalletsDir, homeDir)
 	}
 	if rawDatabasePath == "" {
-		cfg.DatabasePath = filepath.Join(cfg.AppDir, "wallets.db")
+		cfg.DatabasePath = filepath.Join(cfg.AppDir, "bloco.db")
 	} else {
 		cfg.DatabasePath = expandPath(rawDatabasePath, homeDir)
 	}
@@ -177,7 +177,7 @@ func LoadConfig(appDir string) (*Config, error) {
 			cfg.WalletsDir = filepath.Join(cfg.AppDir, "keystore")
 		}
 		if dbWasDefault {
-			cfg.DatabasePath = filepath.Join(cfg.AppDir, "wallets.db")
+			cfg.DatabasePath = filepath.Join(cfg.AppDir, "bloco.db")
 		}
 		if localeWasDefault {
 			cfg.LocaleDir = filepath.Join(cfg.AppDir, "locale")

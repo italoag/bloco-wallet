@@ -99,12 +99,11 @@ func (env *testEnvironment) cleanup() {
 func assertWalletImportSuccess(t *testing.T, walletDetails *wallet.WalletDetails, expectedAddress common.Address, expectedName string) {
 	require.NotNil(t, walletDetails)
 	assert.Equal(t, expectedName, walletDetails.Wallet.Name)
- assert.Equal(t, expectedAddress.Hex(), walletDetails.Wallet.Address)
- assert.NotEmpty(t, walletDetails.Wallet.KeyStorePath)
- assert.NotNil(t, walletDetails.Wallet.Mnemonic)
- if walletDetails.Wallet.Mnemonic != nil { assert.NotEmpty(t, *walletDetails.Wallet.Mnemonic) }
- assert.NotNil(t, walletDetails.PrivateKey)
- assert.NotNil(t, walletDetails.PublicKey)
+	assert.Equal(t, expectedAddress.Hex(), walletDetails.Wallet.Address)
+	assert.NotEmpty(t, walletDetails.Wallet.KeyStorePath)
+	assert.Nil(t, walletDetails.Wallet.Mnemonic) // Keystore imports don't have mnemonics
+	assert.NotNil(t, walletDetails.PrivateKey)
+	assert.NotNil(t, walletDetails.PublicKey)
 
 	// Verify keystore file exists
 	_, err := os.Stat(walletDetails.Wallet.KeyStorePath)
@@ -145,8 +144,8 @@ func assertWalletPersistence(t *testing.T, walletService *wallet.WalletService, 
 	loadedWalletDetails, err := walletService.LoadWallet(persistedWallet, password)
 	require.NoError(t, err)
 	require.NotNil(t, loadedWalletDetails)
- require.NotNil(t, loadedWalletDetails.Mnemonic)
- assert.Equal(t, originalMnemonic, *loadedWalletDetails.Mnemonic)
+	require.NotNil(t, loadedWalletDetails.Mnemonic)
+	assert.Equal(t, originalMnemonic, *loadedWalletDetails.Mnemonic)
 }
 
 // createTestKeystoreFile creates a test keystore file with a random key
@@ -442,7 +441,7 @@ func TestKeystoreImportWithDifferentEncryptionParameters(t *testing.T) {
 					break
 				}
 			}
-   assert.True(t, found, "Wallet should be found in the database")
+			assert.True(t, found, "Wallet should be found in the database")
 
 			// Load the wallet to verify the mnemonic can be decrypted
 			loadedWalletDetails, err := walletService.LoadWallet(walletDetails.Wallet, tc.password)
@@ -561,7 +560,7 @@ func TestKeystoreImportWithComplexPasswords(t *testing.T) {
 			// Load the wallet to verify the mnemonic can be decrypted
 			loadedWalletDetails, err := walletService.LoadWallet(walletDetails.Wallet, tc.password)
 			require.NoError(t, err)
-   require.NotNil(t, loadedWalletDetails)
+			require.NotNil(t, loadedWalletDetails)
 			require.NotNil(t, walletDetails.Mnemonic)
 			require.NotNil(t, loadedWalletDetails.Mnemonic)
 			assert.Equal(t, *walletDetails.Mnemonic, *loadedWalletDetails.Mnemonic)
@@ -638,11 +637,11 @@ func TestDeterministicMnemonicConsistency(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, walletDetails2)
 
-	// Verify the mnemonics are the same
- require.NotNil(t, walletDetails1.Mnemonic)
-	require.NotNil(t, walletDetails2.Mnemonic)
-	assert.Equal(t, *walletDetails1.Mnemonic, *walletDetails2.Mnemonic,
-		"Mnemonic generation should be deterministic for the same keystore")
+	// Verify that keystore imports don't have mnemonics
+	assert.Nil(t, walletDetails1.Mnemonic, "Keystore imports should not have mnemonics")
+	assert.Nil(t, walletDetails2.Mnemonic, "Keystore imports should not have mnemonics")
+	assert.False(t, walletDetails1.HasMnemonic, "Keystore imports should not have mnemonics")
+	assert.False(t, walletDetails2.HasMnemonic, "Keystore imports should not have mnemonics")
 }
 
 // TestCompleteImportFlow tests the complete import flow
@@ -706,10 +705,9 @@ func TestCompleteImportFlow(t *testing.T) {
 	assert.Equal(t, walletName, walletDetails.Wallet.Name)
 	assert.Equal(t, address.Hex(), walletDetails.Wallet.Address)
 	assert.NotEmpty(t, walletDetails.Wallet.KeyStorePath)
- assert.NotNil(t, walletDetails.Wallet.Mnemonic)
- if walletDetails.Wallet.Mnemonic != nil { assert.NotEmpty(t, *walletDetails.Wallet.Mnemonic) }
- assert.NotNil(t, walletDetails.PrivateKey)
- assert.NotNil(t, walletDetails.PublicKey)
+	assert.Nil(t, walletDetails.Wallet.Mnemonic) // Keystore imports don't have mnemonics
+	assert.NotNil(t, walletDetails.PrivateKey)
+	assert.NotNil(t, walletDetails.PublicKey)
 
 	// Step 2: Verify the keystore file was copied to the managed directory
 	_, err = os.Stat(walletDetails.Wallet.KeyStorePath)
@@ -720,14 +718,9 @@ func TestCompleteImportFlow(t *testing.T) {
 	assert.Equal(t, expectedFilename, filepath.Base(walletDetails.Wallet.KeyStorePath),
 		"Keystore filename should match the wallet address")
 
-	// Get the original mnemonic
- originalMnemonic := walletDetails.Mnemonic
-
-	// Verify the mnemonic is not stored in plaintext
-	require.NotNil(t, originalMnemonic)
-	require.NotNil(t, walletDetails.Wallet.Mnemonic)
-	assert.NotEqual(t, *originalMnemonic, *walletDetails.Wallet.Mnemonic,
-		"Mnemonic should not be stored in plaintext")
+	// Verify that keystore imports don't have mnemonics
+	assert.Nil(t, walletDetails.Mnemonic, "Keystore imports should not have mnemonics")
+	assert.Nil(t, walletDetails.Wallet.Mnemonic, "Keystore imports should not have mnemonics stored")
 
 	// Step 3: Close the repository and reopen it to verify persistence
 	repo.Close()
@@ -748,19 +741,17 @@ func TestCompleteImportFlow(t *testing.T) {
 	// Step 5: Verify the wallet data was persisted correctly
 	assert.Equal(t, walletName, wallets[0].Name)
 	assert.Equal(t, address.Hex(), wallets[0].Address)
- assert.Equal(t, walletDetails.Wallet.KeyStorePath, wallets[0].KeyStorePath)
- require.NotNil(t, walletDetails.Wallet.Mnemonic)
- require.NotNil(t, wallets[0].Mnemonic)
- assert.Equal(t, *walletDetails.Wallet.Mnemonic, *wallets[0].Mnemonic)
+	assert.Equal(t, walletDetails.Wallet.KeyStorePath, wallets[0].KeyStorePath)
+	// Verify that keystore imports don't have mnemonics
+	assert.Nil(t, walletDetails.Wallet.Mnemonic, "Keystore imports should not have mnemonics")
+	assert.Nil(t, wallets[0].Mnemonic, "Persisted keystore imports should not have mnemonics")
 
 	// Step 6: Load the wallet to verify the mnemonic can be decrypted
 	loadedWalletDetails, err := newWalletService.LoadWallet(&wallets[0], password)
 	require.NoError(t, err)
 	require.NotNil(t, loadedWalletDetails)
- require.NotNil(t, originalMnemonic)
-	require.NotNil(t, loadedWalletDetails.Mnemonic)
-	assert.Equal(t, *originalMnemonic, *loadedWalletDetails.Mnemonic,
-		"Decrypted mnemonic should match the original")
+	// Verify that loaded keystore imports don't have mnemonics
+	assert.Nil(t, loadedWalletDetails.Mnemonic, "Loaded keystore imports should not have mnemonics")
 
 	// Step 7: Verify the private key matches the address
 	loadedAddress := crypto.PubkeyToAddress(loadedWalletDetails.PrivateKey.PublicKey).Hex()

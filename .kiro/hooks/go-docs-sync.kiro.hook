@@ -4,7 +4,7 @@
   "description": "Monitors all Go source files, modules, and configuration files for changes and automatically updates project documentation in README.md and docs folder",
   "version": "1",
   "when": {
-    "type": "fileEdited",
+    "type": "userTriggered",
     "patterns": [
       "*.go",
       "go.mod",

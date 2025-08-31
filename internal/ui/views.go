@@ -187,7 +187,7 @@ func (m *CLIModel) renderStatusBar() string {
 	// Center part: Current view and shortcut keys
 	var centerContent string
 	if m.currentView == constants.ListWalletsView {
-		// Special case for wallet list view to include delete instruction
+		// Special case for the wallet list view to include delete instruction
 		centerContent = fmt.Sprintf("View: %s | Press 'd' to delete | Press 'esc' to return | Press 'q' to quit", viewName)
 	} else {
 		centerContent = fmt.Sprintf("View: %s | Press 'esc' to return | Press 'q' to quit", viewName)
@@ -298,7 +298,13 @@ func (m *CLIModel) viewImportWallet() string {
 		MarginBottom(1).
 		Render(localization.Labels["import_wallet_title"])
 
-	view.WriteString(title + "\n\n")
+	view.WriteString(title + "\n")
+
+	// Pequena descrição do método de importação por mnemônica
+	desc := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#AAAAAA")).
+		Render(localization.Labels["import_mnemonic_desc"])
+	view.WriteString(desc + "\n\n")
 
 	// Estilo para o campo ativo
 	activeStyle := lipgloss.NewStyle().
@@ -382,6 +388,7 @@ func (m *CLIModel) viewConfigMenu() string {
 func (m *CLIModel) viewImportPrivateKey() string {
 	// Use MenuTitle style for the header instead of non-existent Title style
 	title := m.styles.MenuTitle.Render(localization.Labels["private_key_title"])
+	desc := m.styles.MenuDesc.Render(localization.Labels["import_private_key_desc"]) // brief help about method
 	input := m.privateKeyInput.View()
 	// Use MenuDesc instead of non-existent Instructions style
 	instructions := m.styles.MenuDesc.Render(localization.Labels["press_enter"])
@@ -389,6 +396,8 @@ func (m *CLIModel) viewImportPrivateKey() string {
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
 		title,
+		"",
+		desc,
 		"",
 		input,
 		"",
@@ -596,17 +605,49 @@ func (m *CLIModel) viewWalletDetails() string {
 
 	if m.walletDetails != nil {
 		var view strings.Builder
-		// Safely render mnemonic (it may be nil for non-mnemonic imports)
-		mnemonicStr := ""
-		if m.walletDetails.Mnemonic != nil {
-			mnemonicStr = *m.walletDetails.Mnemonic
+
+		// Resolve import method display name
+		methodLabel := localization.Labels["method_label"]
+		methodName := ""
+		switch m.walletDetails.ImportMethod {
+		case wallet.ImportMethodMnemonic:
+			methodName = localization.Labels["method_mnemonic"]
+		case wallet.ImportMethodPrivateKey:
+			methodName = localization.Labels["method_private_key"]
+		case wallet.ImportMethodKeystore:
+			// Show "Keystore File" for keystore imports
+			if localization.Labels["method_keystore"] != "" {
+				methodName = localization.Labels["method_keystore"]
+			} else {
+				methodName = "Keystore File" // Fallback
+			}
+		default:
+			methodName = string(m.walletDetails.ImportMethod)
 		}
+
+		// Determine mnemonic text based on import method
+		mnemonicText := ""
+		if m.walletDetails.HasMnemonic && m.walletDetails.Mnemonic != nil && *m.walletDetails.Mnemonic != "" {
+			mnemonicText = *m.walletDetails.Mnemonic
+		} else {
+			// Use specific message based on import method
+			switch m.walletDetails.ImportMethod {
+			case wallet.ImportMethodKeystore:
+				mnemonicText = localization.GetWalletImportMessage("no_mnemonic_keystore")
+			case wallet.ImportMethodPrivateKey:
+				mnemonicText = localization.GetWalletImportMessage("no_mnemonic_available")
+			default:
+				mnemonicText = localization.GetWalletImportMessage("no_mnemonic_available")
+			}
+		}
+
 		view.WriteString(
 			lipgloss.NewStyle().Bold(true).Render(localization.Labels["wallet_details_title"]+"\n\n") +
 				fmt.Sprintf("%-*s %s\n", 20, localization.Labels["ethereum_address"], m.walletDetails.Wallet.Address) +
 				fmt.Sprintf("%-*s 0x%x\n", 20, localization.Labels["private_key"], crypto.FromECDSA(m.walletDetails.PrivateKey)) +
 				fmt.Sprintf("%-*s %x\n", 20, localization.Labels["public_key"], crypto.FromECDSAPub(m.walletDetails.PublicKey)) +
-				fmt.Sprintf("%-*s %s\n\n", 20, localization.Labels["mnemonic_phrase_label"], mnemonicStr),
+				fmt.Sprintf("%-*s %s\n", 20, methodLabel+":", methodName) +
+				fmt.Sprintf("%-*s %s\n\n", 20, localization.Labels["mnemonic_phrase_label"], mnemonicText),
 		)
 
 		// Add balance information
@@ -628,7 +669,7 @@ func (m *CLIModel) renderWalletBalances() string {
 	balanceView.WriteString(lipgloss.NewStyle().Bold(true).Render("Balance Information:\n"))
 
 	// Create a simple provider for Ethereum mainnet
-	ethProvider, err := blockchain.NewEthereum("https://eth.llamarpc.com", 30*time.Second, "ETH", 18, "Ethereum")
+	ethProvider, err := blockchain.NewEthereum("https://eth.llamarpc.com", 5*time.Second, "ETH", 18, "Ethereum")
 	if err != nil {
 		balanceView.WriteString("❌ Failed to connect to Ethereum network\n")
 		return balanceView.String()
@@ -705,4 +746,13 @@ func (m *CLIModel) viewNetworkMenu() string {
 	// Em vez de renderizar o menu de redes novamente, exibir apenas uma mensagem informativa
 	// já que o menu já é exibido na área padrão de menu
 	return localization.Labels["welcome_message"]
+}
+
+// viewEnhancedImport renderiza a visualização de importação aprimorada
+func (m *CLIModel) viewEnhancedImport() string {
+	if m.enhancedImportState == nil {
+		return "Enhanced import not initialized"
+	}
+
+	return m.enhancedImportState.View()
 }

@@ -10,9 +10,9 @@ import (
 func DemonstrateUniversalKDF() {
 	fmt.Println("🔧 UNIVERSAL KDF COMPATIBILITY DEMONSTRATION")
 	fmt.Println("=" + strings.Repeat("=", 59))
-	
+
 	analyzer := NewKDFCompatibilityAnalyzer()
-	
+
 	// Test cases demonstrating different wallet provider formats
 	testCases := []struct {
 		name         string
@@ -108,25 +108,25 @@ func DemonstrateUniversalKDF() {
 			},
 		},
 	}
-	
+
 	for i, tc := range testCases {
 		fmt.Printf("\n%d. 🧪 Testing: %s (%s)\n", i+1, tc.name, tc.provider)
 		fmt.Println(strings.Repeat("-", 50))
-		
+
 		// Analyze compatibility
 		report := analyzer.AnalyzeKeyStoreCompatibility(tc.keystoreData)
-		
+
 		// Display results
 		fmt.Printf("✅ Compatible: %t\n", report.Compatible)
 		fmt.Printf("🔑 KDF: %s → %s\n", report.KDFType, report.NormalizedKDF)
 		fmt.Printf("🛡️  Security: %s\n", report.SecurityLevel)
-		
+
 		// Show highlights
 		fmt.Println("🎯 Key Features:")
 		for _, highlight := range tc.highlights {
 			fmt.Printf("   • %s\n", highlight)
 		}
-		
+
 		// Show analysis results
 		if len(report.Warnings) > 0 {
 			fmt.Println("⚠️ Analysis:")
@@ -134,14 +134,14 @@ func DemonstrateUniversalKDF() {
 				fmt.Printf("   • %s\n", warning)
 			}
 		}
-		
+
 		if len(report.Suggestions) > 0 {
 			fmt.Println("💡 Security Recommendations:")
 			for _, suggestion := range report.Suggestions {
 				fmt.Printf("   • %s\n", suggestion)
 			}
 		}
-		
+
 		if len(report.Issues) > 0 {
 			fmt.Println("❌ Issues:")
 			for _, issue := range report.Issues {
@@ -149,7 +149,7 @@ func DemonstrateUniversalKDF() {
 			}
 		}
 	}
-	
+
 	fmt.Println("\n" + strings.Repeat("=", 60))
 	fmt.Println("🎯 UNIVERSAL KDF ACHIEVEMENTS:")
 	fmt.Println("✅ Supports multiple KDF algorithms (scrypt, pbkdf2, variations)")
@@ -158,7 +158,7 @@ func DemonstrateUniversalKDF() {
 	fmt.Println("✅ Provides automatic security analysis and recommendations")
 	fmt.Println("✅ Maintains compatibility with 95%+ of KeyStore V3 files")
 	fmt.Println("✅ Extensible architecture for future KDF algorithms")
-	
+
 	fmt.Println("\n📊 COMPATIBILITY COMPARISON:")
 	fmt.Printf("%-20s | %-15s | %-15s\n", "Aspect", "Before", "After")
 	fmt.Println(strings.Repeat("-", 55))
@@ -174,9 +174,9 @@ func DemonstrateUniversalKDF() {
 func DemonstrateParameterConversion() {
 	fmt.Println("\n🔄 PARAMETER CONVERSION DEMONSTRATION")
 	fmt.Println(strings.Repeat("=", 45))
-	
+
 	handler := &ScryptHandler{}
-	
+
 	// Test different parameter formats
 	parameterTests := []struct {
 		name   string
@@ -205,20 +205,20 @@ func DemonstrateParameterConversion() {
 			desc: "Different wallet providers use different naming",
 		},
 	}
-	
+
 	for _, test := range parameterTests {
 		fmt.Printf("\n📋 %s\n", test.name)
 		fmt.Printf("   %s\n", test.desc)
-		
+
 		// Show original parameters
 		fmt.Printf("   Input: %v\n", test.params)
-		
+
 		// Extract using universal methods
 		n := handler.getIntParam(test.params, []string{"n", "N", "cost"}, 262144)
 		r := handler.getIntParam(test.params, []string{"r", "R", "blocksize"}, 8)
 		p := handler.getIntParam(test.params, []string{"p", "P", "parallel"}, 1)
 		dklen := handler.getIntParam(test.params, []string{"dklen", "dkLen", "keylen"}, 32)
-		
+
 		fmt.Printf("   Extracted: n=%d, r=%d, p=%d, dklen=%d\n", n, r, p, dklen)
 		fmt.Printf("   ✅ Successfully converted all parameters\n")
 	}

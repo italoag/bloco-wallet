@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
 )
@@ -22,8 +21,6 @@ var _ wallet.WalletRepository = &GORMRepository{}
 
 // NewWalletRepository cria uma nova instância de GORMRepository com base na configuração
 func NewWalletRepository(cfg *config.Config) (*GORMRepository, error) {
-	var dialector gorm.Dialector
-
 	// Usar apenas SQLite para testes e desenvolvimento
 	dbPath := cfg.DatabasePath
 	if cfg.Database.DSN != "" {
@@ -36,7 +33,8 @@ func NewWalletRepository(cfg *config.Config) (*GORMRepository, error) {
 		return nil, fmt.Errorf("falha ao criar diretório para o banco de dados: %w", err)
 	}
 
-	dialector = sqlite.Open(dbPath)
+	// Usar o driver SQLite apropriado para o ambiente
+	dialector := createSQLiteDialector(dbPath)
 
 	db, err := gorm.Open(dialector, &gorm.Config{
 		Logger: gormlogger.Default.LogMode(gormlogger.Silent),
@@ -53,6 +51,7 @@ func NewWalletRepository(cfg *config.Config) (*GORMRepository, error) {
 
 	return &GORMRepository{db: db}, nil
 }
+
 
 // ensureDir garante que o diretório existe
 func ensureDir(dir string) error {

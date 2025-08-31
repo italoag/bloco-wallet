@@ -1,0 +1,400 @@
+# English translations
+
+[edit_network]
+other = "Edit Network"
+
+[rpc_endpoint_tip]
+other = "Use reliable RPC endpoints for better performance"
+
+[import_keystore]
+other = "Keystore File"
+
+[error_crypto_service_not_initialized]
+other = "Crypto service not initialized"
+
+[keystore_invalid_json]
+other = "The file contains an invalid JSON"
+
+[failed_to_get_network_details]
+other = "Failed to get network details"
+
+[rpc_endpoint_required]
+other = "RPC endpoint is required"
+
+[add_network_desc]
+other = "Add a new blockchain network"
+
+[symbol_placeholder]
+other = "Symbol will be filled automatically"
+
+[network_name]
+other = "Network Name"
+
+[wallet_list_status_bar]
+other = "View: {{.View}} | Press 'd' to delete | 'esc' to return | 'q' to quit"
+
+[wallet_details_title]
+other = "Wallet Details"
+
+[keystore_title]
+other = "Import Wallet via Keystore File"
+
+[enter_mnemonic]
+other = "Enter your 12-word mnemonic phrase:"
+
+[invalid_chain_id]
+other = "Invalid chain ID. Must be a number"
+
+[view_wallet]
+other = "View Details"
+
+[import_private_key_desc]
+other = "Import using a private key"
+
+[import_keystore_desc]
+other = "Import using a KeyStoreV3 file"
+
+[invalid_keystore]
+other = "Invalid keystore file. Please check the path and try again."
+
+[invalid_mnemonic]
+other = "Invalid mnemonic phrase. It must be 12 words separated by spaces."
+
+[error]
+other = "Error: {{.Error}}"
+
+[list_wallets]
+other = "My Wallets"
+
+[active]
+other = "Active"
+
+[rpc_endpoint_placeholder]
+other = "RPC URL will be filled automatically"
+
+[back_to_menu_desc]
+other = "Return to the main menu"
+
+[status]
+other = "Status"
+
+[configuration]
+other = "Configuration"
+
+[import_mnemonic]
+other = "Mnemonic Phrase"
+
+[cancel]
+other = "Cancel"
+
+[list_wallets_desc]
+other = "View and manage your wallets"
+
+[imported_keystore]
+other = "Keystore (Private Key)"
+
+[main_menu_title]
+other = "Main Menu"
+
+[version]
+other = "0.2.0"
+
+[delete_network]
+other = "Delete Network"
+
+[network_details]
+other = "Network Details"
+
+[welcome_message]
+other = """Welcome to the BLOCO Wallet!
+
+Select an option from the menu."""
+
+[status_bar_instructions]
+other = "View: {{.View}} | Press 'esc' to return | 'q' to quit"
+
+[keystore_missing_fields]
+other = "Keystore file is missing required fields"
+
+[error_invalid_password]
+other = "Invalid password: hash verification failed"
+
+[import_wallet_title]
+other = "Import an existing Wallet"
+
+[password_no_lowercase]
+other = "Password must contain at least one lowercase letter"
+
+[network_list_instructions]
+other = "Use arrow keys to navigate, 'a' to add, 'e' to edit, 'd' to delete, 'esc' to go back."
+
+[symbol_required]
+other = "Symbol is required"
+
+[yes]
+other = "Yes"
+
+[wallet_type]
+other = "Type"
+
+[network_name_placeholder]
+other = "Network name will be filled automatically"
+
+[press_esc]
+other = "Press ESC to return to the wallet list."
+
+[networks_desc]
+other = "Configure blockchain networks"
+
+[error_empty_encrypted_mnemonic]
+other = "Encrypted mnemonic cannot be empty"
+
+[add_network]
+other = "Add Network"
+
+[keystore_invalid_structure]
+other = "The file isn't a valid KeyStoreV3 file"
+
+[network_list_desc]
+other = "Manage blockchain networks"
+
+[networks]
+other = "Networks"
+
+[enter_keystore_path]
+other = "Enter the path to the KeyStoreV3 file:"
+
+[delete_wallet_confirmation]
+other = "Are you sure you want to delete this wallet?"
+
+[current]
+other = "Current"
+
+[quit_app]
+other = "Quit Application"
+
+[error_generate_salt]
+other = "Failed to generate salt"
+
+[public_key]
+other = "Public Key:"
+
+[no_network_selected]
+other = "No network selected"
+
+[network_validation_failed]
+other = "Network validation failed"
+
+[language_desc]
+other = "Change application language"
+
+[wallets]
+other = "Wallets"
+
+[quit_app_desc]
+other = "Exit the program"
+
+[password_no_digit_or_special]
+other = "Password must contain at least one digit or special character"
+
+[chain_id_placeholder]
+other = "Chain ID will be filled automatically"
+
+[back]
+other = "Back"
+
+[enter_wallet_password]
+other = "Enter the wallet password:"
+
+[wallet_deleted]
+other = "Wallet deleted successfully."
+
+[exit]
+other = "Exit"
+
+[wallet_imported]
+other = "Wallet imported successfully!"
+
+[inactive]
+other = "Inactive"
+
+[select_wallet_prompt]
+other = "Select a wallet and enter the password to view the details."
+
+[import_wallet]
+other = "Import Wallet"
+
+[import_wallet_desc]
+other = "Import an existing wallet"
+
+[created_at]
+other = "Created"
+
+[network_list]
+other = "Blockchain Networks"
+
+[network_name_required]
+other = "Network name is required"
+
+[wallet_list_instructions]
+other = "Use the arrow keys to navigate, Enter to view details, 'd' to delete a wallet, 'esc' to return to the menu."
+
+[ethereum_address]
+other = "Ethereum Address:"
+
+[language]
+other = "Language"
+
+[password_too_short]
+other = "Password must have at least 8 characters"
+
+[chain_id_required]
+other = "Chain ID is required"
+
+[wallet_action_title]
+other = "Wallet Actions"
+
+[confirm_title]
+other = "Confirm"
+
+[keystore_invalid_address]
+other = "Invalid Ethereum address format in keystore"
+
+[press_enter]
+other = "Press Enter to continue."
+
+[import_method_title]
+other = "Select Import Method"
+
+[import_private_key]
+other = "Private Key"
+
+[delete_wallet]
+other = "Delete Wallet"
+
+[error_empty_password]
+other = "Password cannot be empty"
+
+[error_decode_mnemonic]
+other = "Failed to decode encrypted mnemonic"
+
+[password_no_uppercase]
+other = "Password must contain at least one uppercase letter"
+
+[search_networks]
+other = "Search Networks"
+
+[search_networks_tip]
+other = "Search for networks by name and select from suggestions"
+
+[adding_network]
+other = "Adding network"
+
+[create_new_wallet]
+other = "Create New"
+
+[private_key_title]
+other = "Import Wallet via Private Key"
+
+[enter_private_key]
+other = "Enter the private key (with or without 0x prefix):"
+
+[keystore_address_mismatch]
+other = "Address in keystore doesn't match the derived private key"
+
+[keystore_corrupted_file]
+other = "Keystore file is corrupted or damaged"
+
+[keystore_file_not_found]
+other = "Keystore file not found at the specified path"
+
+[suggestions]
+other = "Suggestions"
+
+[chainlist_unavailable_warning]
+other = "ChainList is unavailable. The network will be added as a custom network."
+
+[enter_password]
+other = "Enter a password to encrypt the wallet:"
+
+[invalid_keystore_password]
+other = "Invalid password for the keystore file. Please try again."
+
+[no]
+other = "No"
+
+[exit_desc]
+other = "Exit the application"
+
+[invalid_rpc_endpoint]
+other = "Invalid RPC endpoint. Must start with http:// or https://"
+
+[symbol]
+other = "Symbol"
+
+[configuration_desc]
+other = "Configure application settings"
+
+[keystore_invalid_version]
+other = "Invalid keystore version, expected version 3"
+
+[password_validation_failed]
+other = "Password validation failed"
+
+[rpc_endpoint]
+other = "RPC Endpoint"
+
+[chain_id]
+other = "Chain ID"
+
+[mnemonic_phrase_label]
+other = "Mnemonic Phrase:"
+
+[wallet_created]
+other = "Wallet created successfully!"
+
+[imported_mnemonic]
+other = "Mnemonic"
+
+[search_networks_placeholder]
+other = "Type to search networks (e.g., Ethereum, Polygon)"
+
+[chain_id_tip]
+other = "Chain ID must be unique (check chainlist.org for reference)"
+
+[mnemonic_phrase]
+other = "Mnemonic Phrase (Keep it Safe!):"
+
+[private_key]
+other = "Private Key:"
+
+[create_new_wallet_desc]
+other = "Generate a new Ethereum wallet"
+
+[import_mnemonic_desc]
+other = "Import using 12-word mnemonic phrase"
+
+[loading]
+other = "Loading..."
+
+[imported_private_key]
+other = "Private Key"
+
+[tips]
+other = "Tips"
+
+[back_to_menu]
+other = "Main Menu"
+
+[add_network_footer]
+other = "↑/↓: Navigate Suggestions • Tab: Next Field • Enter: Select/Submit • Esc: Back"
+
+[searching_networks]
+other = "Searching networks"
+
+[keystore_incorrect_password]
+other = "Incorrect password for the keystore file"
+
+[error_invalid_mnemonic_format]
+other = "Invalid encrypted mnemonic format: too short"
+

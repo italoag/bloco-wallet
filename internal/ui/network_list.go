@@ -20,6 +20,9 @@ type NetworkListComponent struct {
 	table  table.Model
 	err    error
 
+	// Cached classification info to avoid network calls during View rendering
+	networksInfo map[string]NetworkInfo
+
 	// Network service
 	chainListService *blockchain.ChainListService
 }
@@ -29,6 +32,7 @@ func NewNetworkListComponent() NetworkListComponent {
 	c := NetworkListComponent{
 		id:               "network-list",
 		chainListService: blockchain.NewChainListService(),
+		networksInfo:     make(map[string]NetworkInfo),
 	}
 	c.initTable()
 	return c
@@ -38,7 +42,8 @@ func NewNetworkListComponent() NetworkListComponent {
 func (c *NetworkListComponent) initTable() {
 	columns := []table.Column{
 		{Title: "#", Width: 4},
-		{Title: localization.Labels["network_name"], Width: 20},
+		{Title: localization.Labels["network_name"], Width: 18},
+		{Title: "Type", Width: 12},
 		{Title: localization.Labels["chain_id"], Width: 10},
 		{Title: localization.Labels["symbol"], Width: 8},
 		{Title: localization.Labels["status"], Width: 10},
@@ -95,6 +100,16 @@ func (c *NetworkListComponent) UpdateNetworks(cfg *config.Config) {
 		return
 	}
 
+	// Get network manager to retrieve classification information (once)
+	nm := getNetworkManager()
+	networksWithInfo, err := nm.ListNetworks()
+	if err != nil {
+		c.SetError(fmt.Errorf("failed to load network information: %v", err))
+		return
+	}
+	// Cache to avoid repeated network calls during table navigation/render
+	c.networksInfo = networksWithInfo
+
 	var rows []table.Row
 
 	i := 1
@@ -104,9 +119,27 @@ func (c *NetworkListComponent) UpdateNetworks(cfg *config.Config) {
 			status = localization.Labels["active"]
 		}
 
+		// Get network type and source information
+		networkType := "Custom"
+		typeIcon := "🔧"
+		if networkInfo, exists := networksWithInfo[key]; exists {
+			switch networkInfo.Type {
+			case blockchain.NetworkTypeStandard:
+				networkType = "Standard"
+				typeIcon = "✅"
+				if networkInfo.IsValidated {
+					networkType = "Standard ✓"
+				}
+			case blockchain.NetworkTypeCustom:
+				networkType = "Custom"
+				typeIcon = "🔧"
+			}
+		}
+
 		rows = append(rows, table.Row{
 			strconv.Itoa(i),
 			network.Name,
+			fmt.Sprintf("%s %s", typeIcon, networkType),
 			strconv.FormatInt(network.ChainID, 10),
 			network.Symbol,
 			status,
@@ -131,11 +164,28 @@ func (c *NetworkListComponent) GetSelectedNetworkKey() string {
 	}
 
 	selectedRow := c.table.SelectedRow()
-	if selectedRow == nil || len(selectedRow) < 6 {
+	if selectedRow == nil || len(selectedRow) < 7 {
 		return ""
 	}
 
-	return selectedRow[5] // Network key is stored in the hidden column
+	return selectedRow[6] // Network key is stored in the hidden column (now index 6)
+}
+
+// GetSelectedNetworkInfo returns detailed information about the selected network
+func (c *NetworkListComponent) GetSelectedNetworkInfo() (*NetworkInfo, error) {
+	key := c.GetSelectedNetworkKey()
+	if key == "" {
+		return nil, fmt.Errorf("no network selected")
+	}
+
+	// Use cached info to avoid network calls during navigation/render
+	if c.networksInfo != nil {
+		if networkInfo, exists := c.networksInfo[key]; exists {
+			return &networkInfo, nil
+		}
+	}
+
+	return nil, fmt.Errorf("network information not found")
 }
 
 // Init initializes the component
@@ -181,6 +231,45 @@ func (c *NetworkListComponent) View() string {
 		content += errorStyle.Render(fmt.Sprintf("❌ %s", c.err.Error()))
 		content += "\n\n"
 	}
+
+	// Selected network details
+	if rows != nil && len(rows) > 0 {
+		selectedNetworkInfo, err := c.GetSelectedNetworkInfo()
+		if err == nil && selectedNetworkInfo != nil {
+			detailStyle := lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#DDDDDD")).
+				Background(lipgloss.Color("#333333")).
+				Padding(0, 1).
+				MarginLeft(2).
+				MarginBottom(1)
+
+			var details string
+			switch selectedNetworkInfo.Type {
+			case blockchain.NetworkTypeStandard:
+				details = fmt.Sprintf("📋 Selected: Standard Network (Source: %s)", selectedNetworkInfo.Source)
+				if selectedNetworkInfo.ChainInfo != nil {
+					details += fmt.Sprintf(" • Verified on ChainList as '%s'", selectedNetworkInfo.ChainInfo.Name)
+				}
+			case blockchain.NetworkTypeCustom:
+				details = fmt.Sprintf("📋 Selected: Custom Network (Source: %s)", selectedNetworkInfo.Source)
+				if !selectedNetworkInfo.IsValidated {
+					details += " • Not verified on ChainList"
+				}
+			}
+			content += detailStyle.Render(details)
+			content += "\n"
+		}
+	}
+
+	// Network type legend
+	legendStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#888888")).
+		MarginLeft(2).
+		MarginBottom(1)
+
+	legend := "Network Types: ✅ Standard (ChainList verified) • 🔧 Custom (Manual configuration)"
+	content += legendStyle.Render(legend)
+	content += "\n"
 
 	// Instructions
 	infoStyle := lipgloss.NewStyle().

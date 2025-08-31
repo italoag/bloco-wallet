@@ -51,6 +51,12 @@
     - Create new wallets compatible with Ethereum.
     - Import wallets using Mnemonics.
     - Import KeyStoreV3 wallets with any file extension or no extension.
+    - **Enhanced keystore import** with multi-file selection and batch processing:
+        - Multi-file selection with checkbox interface
+        - Directory selection for batch import
+        - Automatic password file detection (.pwd files)
+        - Interactive file picker with keyboard navigation
+        - JSON file filtering for keystore files
     - Export wallets in KeyStoreV3 format.
     - Delete, block, and unblock wallet addresses.
     - List all managed wallets.
@@ -103,8 +109,48 @@ bloco-wallet
 Navigate through the TUI to manage your wallets. Available commands include:
 
 - **Create Wallet:** Initialize a new Ethereum-compatible wallet.
-- **Import Wallet:** Import existing wallets using Mnemonics.
+- **Import Wallet:** Import existing wallets using Mnemonics or KeyStore files.
+- **Enhanced Keystore Import:** 
+    - Select multiple keystore files or entire directories
+    - Automatic detection of password files (.pwd)
+    - Interactive file picker with keyboard navigation
+    - Batch processing with progress tracking
 - **List Wallets:** Display all managed wallets.
+
+#### Enhanced Import Workflow
+
+The enhanced keystore import feature provides an intuitive file selection interface:
+
+1. **File Selection**: Use the enhanced file picker to navigate directories and select keystore files
+2. **Multi-Selection**: Select multiple files using the space bar or entire directories
+3. **Password Detection**: Automatically detects corresponding .pwd files for seamless import
+4. **Password Input**: Secure modal popup for manual password entry when needed
+5. **Batch Processing**: Import multiple keystores in a single operation with progress tracking
+
+**Key Bindings for File Picker:**
+- `↑`/`↓` or `j`/`k`: Navigate files
+- `Space`: Toggle file selection
+- `Enter`: Open directory or confirm selection
+- `Tab`: Confirm final selection
+- `Ctrl+A`: Select all files
+- `Ctrl+C`: Clear selection
+- `Esc`: Go back or cancel
+
+**Password Input Features:**
+- **Secure Input**: Password masking with bullet characters for security
+- **Error Handling**: Clear error messages with retry mechanism
+- **Skip Option**: Ability to skip individual files during batch import
+- **Retry Limits**: Configurable maximum attempts to prevent brute force
+- **Key Bindings**: `Enter` to confirm, `Esc` to cancel, `Ctrl+S` to skip file
+
+**Import Progress Tracking:**
+- **Real-time Progress**: Animated progress bar with percentage completion
+- **Current File Display**: Shows which keystore is currently being processed
+- **Error Categorization**: Distinguishes between failed imports and skipped files
+- **Pause/Resume**: Progress pauses during password input and resumes automatically
+- **Completion Summary**: Detailed statistics including success/failure/skip counts and timing
+- **Error History**: Tracks and displays recent errors with context
+- **Visual Status**: Clear indicators for importing, paused, and completed states
 
 ### Roadmap
 **Upcoming Features:**

@@ -98,10 +98,10 @@ func (eks *EnhancedKeyStoreService) ReadKeyStore(filePath, password string) (*En
 
 	// NOVO: Adiciona informações de compatibilidade ao resultado
 	walletDetails.KDFInfo = &KDFInfo{
-		Type:          compatReport.KDFType,
+		Type:           compatReport.KDFType,
 		NormalizedType: compatReport.NormalizedKDF,
-		SecurityLevel: compatReport.SecurityLevel,
-		Parameters:    compatReport.Parameters,
+		SecurityLevel:  compatReport.SecurityLevel,
+		Parameters:     compatReport.Parameters,
 	}
 
 	return walletDetails, nil
@@ -117,7 +117,7 @@ func (eks *EnhancedKeyStoreService) analyzeCompatibility(keystoreData map[string
 func (eks *EnhancedKeyStoreService) verifyMAC(derivedKey []byte, cryptoParams *CryptoParams) error {
 	// Usa os últimos 16 bytes da chave derivada para MAC
 	macKey := derivedKey[16:32]
-	
+
 	cipherText, err := hex.DecodeString(cryptoParams.CipherText)
 	if err != nil {
 		return fmt.Errorf("erro ao decodificar ciphertext: %w", err)
@@ -151,12 +151,12 @@ func (eks *EnhancedKeyStoreService) decryptPrivateKey(derivedKey []byte, cryptoP
 func (eks *EnhancedKeyStoreService) decryptAESCTR(derivedKey []byte, cryptoParams *CryptoParams) ([]byte, error) {
 	// Usa os primeiros 16 bytes da chave derivada para descriptografia
 	key := derivedKey[:16]
-	
+
 	ivInterface, exists := cryptoParams.CipherParams["iv"]
 	if !exists {
 		return nil, fmt.Errorf("IV não encontrado nos parâmetros de cifra")
 	}
-	
+
 	ivStr, ok := ivInterface.(string)
 	if !ok {
 		return nil, fmt.Errorf("IV deve ser uma string")
@@ -179,7 +179,7 @@ func (eks *EnhancedKeyStoreService) decryptAESCTR(derivedKey []byte, cryptoParam
 	}
 
 	stream := cipher.NewCTR(block, iv)
-	
+
 	// Descriptografa
 	plaintext := make([]byte, len(cipherText))
 	stream.XORKeyStream(plaintext, cipherText)
@@ -191,12 +191,12 @@ func (eks *EnhancedKeyStoreService) decryptAESCTR(derivedKey []byte, cryptoParam
 func (eks *EnhancedKeyStoreService) decryptAESCBC(derivedKey []byte, cryptoParams *CryptoParams) ([]byte, error) {
 	// Implementação básica de AES-CBC
 	key := derivedKey[:16]
-	
+
 	ivInterface, exists := cryptoParams.CipherParams["iv"]
 	if !exists {
 		return nil, fmt.Errorf("IV não encontrado nos parâmetros de cifra")
 	}
-	
+
 	ivStr, ok := ivInterface.(string)
 	if !ok {
 		return nil, fmt.Errorf("IV deve ser uma string")
@@ -234,18 +234,18 @@ func removePKCS7Padding(data []byte) ([]byte, error) {
 	if len(data) == 0 {
 		return nil, errors.New("dados vazios")
 	}
-	
+
 	padding := int(data[len(data)-1])
 	if padding > len(data) || padding == 0 {
 		return nil, errors.New("padding inválido")
 	}
-	
+
 	for i := len(data) - padding; i < len(data); i++ {
 		if int(data[i]) != padding {
 			return nil, errors.New("padding PKCS7 inválido")
 		}
 	}
-	
+
 	return data[:len(data)-padding], nil
 }
 

@@ -58,15 +58,15 @@ func TestGORMRepository_AddWallet(t *testing.T) {
 		}
 	}(repo)
 
- // Criando uma carteira para teste
- mn := "test mnemonic"
- testWallet := &wallet.Wallet{
- 	Address:      "0x123456",
- 	KeyStorePath: "/path/to/keystore",
- 	Mnemonic:     &mn,
- 	ImportMethod: string(wallet.ImportMethodMnemonic),
- 	SourceHash:   (&wallet.SourceHashGenerator{}).GenerateFromMnemonic(mn),
- }
+	// Criando uma carteira para teste
+	mn := "test mnemonic"
+	testWallet := &wallet.Wallet{
+		Address:      "0x123456",
+		KeyStorePath: "/path/to/keystore",
+		Mnemonic:     &mn,
+		ImportMethod: string(wallet.ImportMethodMnemonic),
+		SourceHash:   (&wallet.SourceHashGenerator{}).GenerateFromMnemonic(mn),
+	}
 
 	// Adicionando a carteira
 	err = repo.AddWallet(testWallet)
@@ -221,7 +221,6 @@ func TestGORMRepository_SQLiteConfigurations(t *testing.T) {
 		})
 	}
 }
-
 
 func TestGORMRepository_FindBySourceHash_And_AddressQueries(t *testing.T) {
 	cfg := setupTestConfig(t)
