@@ -1,0 +1,63 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+docs/
+CHANGELOG.md
+CODE_OF_CONDUCT.md
+SECURITY.md
+
+# Build artifacts
+build/
+dist/
+*.tar.gz
+*.zip
+
+# Test files
+*_test.go
+testdata/
+coverage.out
+coverage.html
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Go specific
+vendor/
+
+# CI/CD
+.github/
+.circleci/
+.travis.yml
+
+# Local development
+run.sh
+demo/
+examples/
+
+# Container files
+Dockerfile.*
+.dockerignore
+
+# Logs
+*.log
+
+# Temporary files
+tmp/
+temp/
