@@ -13,7 +13,11 @@ func TestScanDirectoryForKeystores(t *testing.T) {
 	// Create temporary directory structure
 	tempDir, err := os.MkdirTemp("", "directory_scan_test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	// Create subdirectory
 	subDir := filepath.Join(tempDir, "subdir")
@@ -135,7 +139,11 @@ func TestGetKeystoreDiscoveryReport(t *testing.T) {
 	// Create temporary directory structure
 	tempDir, err := os.MkdirTemp("", "discovery_report_test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	service := NewBatchImportService(nil)
 

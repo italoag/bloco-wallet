@@ -537,7 +537,7 @@ func (m EnhancedFilePickerModel) View() string {
 			if isCursor && isSelected {
 				nameStyle = m.Styles.SelectedDir
 			} else if isCursor {
-				nameStyle = m.Styles.Directory.Copy().Background(lipgloss.Color("238"))
+				nameStyle = m.Styles.Directory.Background(lipgloss.Color("238"))
 			} else if isSelected {
 				nameStyle = m.Styles.SelectedDir
 			} else {
@@ -551,7 +551,7 @@ func (m EnhancedFilePickerModel) View() string {
 			} else if isCursor && isSelected {
 				nameStyle = m.Styles.SelectedFile
 			} else if isCursor {
-				nameStyle = m.Styles.File.Copy().Background(lipgloss.Color("238"))
+				nameStyle = m.Styles.File.Background(lipgloss.Color("238"))
 			} else if isSelected {
 				nameStyle = m.Styles.SelectedFile
 			} else {

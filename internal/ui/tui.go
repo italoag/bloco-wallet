@@ -6,7 +6,6 @@ import (
 	"blocowallet/pkg/localization"
 	"bytes"
 	"fmt"
-	"io"
 	"log"
 	"math/rand"
 	"os"
@@ -484,129 +483,6 @@ func (m *CLIModel) renderMenuItems() []string {
 	return menuRows
 }
 
-// renderImportMenuItems renderiza os itens do menu de importação
-func (m *CLIModel) renderImportMenuItems() string {
-	// Criar o menu de importação
-	importMenu := NewImportMenu()
-
-	// Renderizar cada item do menu
-	var menuItems []string
-	for i, item := range importMenu {
-		style := m.styles.MenuItem
-		titleStyle := m.styles.MenuTitle
-		if i == m.selectedMenu {
-			style = m.styles.MenuSelected
-			titleStyle = m.styles.SelectedTitle
-		}
-		menuText := fmt.Sprintf("%s\n%s", titleStyle.Render(item.title), m.styles.MenuDesc.Render(item.description))
-		menuItems = append(menuItems, style.Render(menuText))
-	}
-
-	// Organizar itens em linhas
-	numRows := (len(menuItems) + 1) / 2
-	var menuRows []string
-	for i := 0; i < numRows; i++ {
-		startIndex := i * 2
-		endIndex := startIndex + 2
-		if endIndex > len(menuItems) {
-			endIndex = len(menuItems)
-		}
-
-		// Se temos dois itens na linha
-		if endIndex-startIndex == 2 {
-			// Unir horizontalmente com espaçamento
-			menuRows = append(menuRows, lipgloss.JoinHorizontal(lipgloss.Top, menuItems[startIndex], "  ", menuItems[startIndex+1]))
-		} else {
-			// Apenas um item na linha
-			menuRows = append(menuRows, menuItems[startIndex])
-		}
-	}
-
-	// Unir todas as linhas verticalmente
-	return lipgloss.JoinVertical(lipgloss.Left, menuRows...)
-}
-
-// renderConfigMenuItems renderiza os itens do menu de configuração
-func (m *CLIModel) renderConfigMenuItems() string {
-	// Criar o menu de configuração
-	configMenu := NewConfigMenu()
-
-	// Renderizar cada item do menu
-	var menuItems []string
-	for i, item := range configMenu {
-		style := m.styles.MenuItem
-		titleStyle := m.styles.MenuTitle
-		if i == m.selectedMenu {
-			style = m.styles.MenuSelected
-			titleStyle = m.styles.SelectedTitle
-		}
-		menuText := fmt.Sprintf("%s\n%s", titleStyle.Render(item.title), m.styles.MenuDesc.Render(item.description))
-		menuItems = append(menuItems, style.Render(menuText))
-	}
-
-	// Organizar itens em linhas
-	numRows := (len(menuItems) + 1) / 2
-	var menuRows []string
-	for i := 0; i < numRows; i++ {
-		startIndex := i * 2
-		endIndex := startIndex + 2
-		if endIndex > len(menuItems) {
-			endIndex = len(menuItems)
-		}
-
-		// Se temos dois itens na linha
-		if endIndex-startIndex == 2 {
-			// Unir horizontalmente com espaçamento
-			menuRows = append(menuRows, lipgloss.JoinHorizontal(lipgloss.Top, menuItems[startIndex], "  ", menuItems[startIndex+1]))
-		} else {
-			// Apenas um item na linha
-			menuRows = append(menuRows, menuItems[startIndex])
-		}
-	}
-
-	// Unir todas as linhas verticalmente
-	return lipgloss.JoinVertical(lipgloss.Left, menuRows...)
-}
-
-// renderLanguageMenuItems renderiza os itens do menu de idiomas
-func (m *CLIModel) renderLanguageMenuItems() string {
-	// Renderizar cada item do menu
-	var menuItems []string
-	for i, item := range m.menuItems {
-		style := m.styles.MenuItem
-		titleStyle := m.styles.MenuTitle
-		if i == m.selectedMenu {
-			style = m.styles.MenuSelected
-			titleStyle = m.styles.SelectedTitle
-		}
-		menuText := fmt.Sprintf("%s\n%s", titleStyle.Render(item.title), m.styles.MenuDesc.Render(item.description))
-		menuItems = append(menuItems, style.Render(menuText))
-	}
-
-	// Organizar itens em linhas
-	numRows := (len(menuItems) + 1) / 2
-	var menuRows []string
-	for i := 0; i < numRows; i++ {
-		startIndex := i * 2
-		endIndex := startIndex + 2
-		if endIndex > len(menuItems) {
-			endIndex = len(menuItems)
-		}
-
-		// Se temos dois itens na linha
-		if endIndex-startIndex == 2 {
-			// Unir horizontalmente com espaçamento
-			menuRows = append(menuRows, lipgloss.JoinHorizontal(lipgloss.Top, menuItems[startIndex], "  ", menuItems[startIndex+1]))
-		} else {
-			// Apenas um item na linha
-			menuRows = append(menuRows, menuItems[startIndex])
-		}
-	}
-
-	// Unir todas as linhas verticalmente
-	return lipgloss.JoinVertical(lipgloss.Left, menuRows...)
-}
-
 func (m *CLIModel) getContentView() string {
 	switch m.currentView {
 	case constants.DefaultView:
@@ -700,7 +576,7 @@ func (m *CLIModel) updateCreateWalletName(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			name := strings.TrimSpace(m.nameInput.Value())
 			if name == "" {
-				m.err = errors.Wrap(fmt.Errorf("O nome da wallet não pode estar vazio"), 0)
+				m.err = errors.Wrap(fmt.Errorf("o nome da wallet não pode estar vazio"), 0)
 				if wrappedErr, ok := m.err.(*errors.Error); ok {
 					log.Println(wrappedErr.ErrorStack())
 				} else {
@@ -736,7 +612,7 @@ func (m *CLIModel) updateCreateWalletPassword(msg tea.Msg) (tea.Model, tea.Cmd) 
 			// Validar a complexidade da senha
 			validationErr, isValid := wallet.ValidatePassword(password)
 			if !isValid {
-				m.err = errors.Wrap(fmt.Errorf(validationErr.GetErrorMessage()), 0)
+				m.err = errors.Wrap(errors.New(validationErr.GetErrorMessage()), 0)
 				log.Println(m.err.(*errors.Error).ErrorStack())
 				return m, nil
 			}
@@ -752,7 +628,8 @@ func (m *CLIModel) updateCreateWalletPassword(msg tea.Msg) (tea.Model, tea.Cmd) 
 			m.walletDetails = walletDetails
 			// Ensure networks/config are loaded for balances rendering
 			if err := m.ensureConfigAndNetworksLoaded(); err != nil {
-				// Non-fatal: continue even if networks fail to load
+				// Log error but continue execution - network loading is non-fatal
+				log.Printf("Warning: failed to load networks/config: %v", err)
 			}
 			m.currentView = constants.WalletDetailsView
 
@@ -826,7 +703,7 @@ func (m *CLIModel) updateImportWalletPassword(msg tea.Msg) (tea.Model, tea.Cmd) 
 			// Validar a complexidade da senha
 			validationErr, isValid := wallet.ValidatePassword(password)
 			if !isValid {
-				m.err = errors.Wrap(fmt.Errorf(validationErr.GetErrorMessage()), 0)
+				m.err = errors.Wrap(errors.New(validationErr.GetErrorMessage()), 0)
 				log.Println(m.err.(*errors.Error).ErrorStack())
 				return m, nil
 			}
@@ -894,7 +771,7 @@ func (m *CLIModel) updateImportWalletPassword(msg tea.Msg) (tea.Model, tea.Cmd) 
 					if dupErr, ok := err.(*wallet.DuplicateWalletError); ok {
 						// Use the conflict type as both the import method context and conflict type when unknown
 						formatted := localization.FormatDuplicateImportError(dupErr.Type, dupErr.Type, dupErr.Address)
-						m.err = errors.Wrap(fmt.Errorf(formatted), 0)
+						m.err = errors.Wrap(errors.New(formatted), 0)
 					} else {
 						m.err = errors.Wrap(err, 0)
 					}
@@ -1117,7 +994,7 @@ func (m *CLIModel) updateImportKeystore(msg tea.Msg) (tea.Model, tea.Cmd) {
 					"No keystore path provided",
 					nil,
 				)
-				m.err = errors.Wrap(fmt.Errorf(localization.FormatKeystoreErrorWithField(
+				m.err = errors.Wrap(errors.New(localization.FormatKeystoreErrorWithField(
 					keystoreErr.GetLocalizedMessage(),
 					"",
 				)), 0)
@@ -1133,7 +1010,7 @@ func (m *CLIModel) updateImportKeystore(msg tea.Msg) (tea.Model, tea.Cmd) {
 					fmt.Sprintf("Keystore file not found at path: %s", keystorePath),
 					err,
 				)
-				m.err = errors.Wrap(fmt.Errorf(localization.FormatKeystoreErrorWithField(
+				m.err = errors.Wrap(errors.New(localization.FormatKeystoreErrorWithField(
 					keystoreErr.GetLocalizedMessage(),
 					"",
 				)), 0)
@@ -1149,7 +1026,7 @@ func (m *CLIModel) updateImportKeystore(msg tea.Msg) (tea.Model, tea.Cmd) {
 					fmt.Sprintf("Error accessing keystore file: %s", keystorePath),
 					err,
 				)
-				m.err = errors.Wrap(fmt.Errorf(localization.FormatKeystoreErrorWithField(
+				m.err = errors.Wrap(errors.New(localization.FormatKeystoreErrorWithField(
 					keystoreErr.GetLocalizedMessage(),
 					"",
 				)), 0)
@@ -1165,7 +1042,7 @@ func (m *CLIModel) updateImportKeystore(msg tea.Msg) (tea.Model, tea.Cmd) {
 					fmt.Sprintf("Keystore file too large: %d bytes (max %d bytes)", fileInfo.Size(), maxKeystoreSize),
 					nil,
 				)
-				m.err = errors.Wrap(fmt.Errorf(localization.FormatKeystoreErrorWithField(
+				m.err = errors.Wrap(errors.New(localization.FormatKeystoreErrorWithField(
 					keystoreErr.GetLocalizedMessage(),
 					"",
 				)), 0)
@@ -1688,28 +1565,6 @@ func (m *CLIModel) initConfigMenu() {
 	m.currentView = constants.ConfigurationView
 }
 
-func (m *CLIModel) initImportPrivateKey() {
-	// Setup private key input
-	m.privateKeyInput = textinput.New()
-	m.privateKeyInput.Placeholder = localization.Labels["enter_private_key"]
-	m.privateKeyInput.CharLimit = 66 // 0x + 64 hex characters
-	m.privateKeyInput.Width = 66
-	m.privateKeyInput.Focus()
-	m.currentView = constants.ImportPrivateKeyView
-}
-
-// initImportKeystore initializes the keystore import view
-func (m *CLIModel) initImportKeystore() {
-	// Setup keystore path input with autocomplete
-	m.privateKeyInput = textinput.New()
-	m.privateKeyInput.Placeholder = localization.Labels["enter_keystore_path"]
-	m.privateKeyInput.CharLimit = 256 // Path can be long
-	m.privateKeyInput.Width = 66
-	m.privateKeyInput.Focus()
-	m.privateKeyInput.ShowSuggestions = true // Enable suggestions
-	m.currentView = constants.ImportKeystoreView
-}
-
 func (m *CLIModel) initImportWallet() {
 	// Instead of directly initializing the mnemonic import view,
 	// now we show the selection screen first
@@ -2102,32 +1957,6 @@ func (m *CLIModel) rebuildWalletsTable() {
 
 	// Atualizar dimensões da tabela
 	m.updateTableDimensions()
-}
-
-// copyFile copia um arquivo de origem para um arquivo de destino
-func copyFile(src, dst string) error {
-	// Abrir o arquivo de origem
-	sourceFile, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer sourceFile.Close()
-
-	// Criar o arquivo de destino
-	destFile, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	defer destFile.Close()
-
-	// Copiar o conteúdo
-	_, err = io.Copy(destFile, sourceFile)
-	if err != nil {
-		return err
-	}
-
-	// Sincronizar para garantir que os dados sejam escritos no disco
-	return destFile.Sync()
 }
 
 // listenForProgressUpdates creates a command that listens for progress updates

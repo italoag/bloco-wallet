@@ -61,12 +61,6 @@ func getNetworkManager() *NetworkManager {
 	return globalNetworkManager
 }
 
-// addNetworkWithClassification adds a network using the NetworkManager with automatic classification
-func addNetworkWithClassification(network config.Network) error {
-	nm := getNetworkManager()
-	return nm.AddNetwork(network)
-}
-
 // addNetworkWithClassificationInfo adds a network and returns classification information
 func addNetworkWithClassificationInfo(network config.Network) (*NetworkClassificationInfo, error) {
 	nm := getNetworkManager()
@@ -114,20 +108,4 @@ func loadNetworksWithManager() (map[string]config.Network, error) {
 	return nm.LoadNetworks()
 }
 
-// getNetworkWithManager gets a specific network using the NetworkManager
-func getNetworkWithManager(key string) (*config.Network, error) {
-	nm := getNetworkManager()
-	return nm.GetNetwork(key)
-}
 
-// listNetworksWithClassification lists networks with their classification information
-func listNetworksWithClassification() (map[string]NetworkInfo, error) {
-	nm := getNetworkManager()
-	return nm.ListNetworks()
-}
-
-// migrateExistingNetworks migrates existing networks to the new classification system
-func migrateExistingNetworks() error {
-	nm := getNetworkManager()
-	return nm.MigrateExistingNetworks()
-}

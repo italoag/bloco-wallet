@@ -13,7 +13,11 @@ func TestPasswordFileIntegration(t *testing.T) {
 	// Create a temporary directory for testing
 	tempDir, err := os.MkdirTemp("", "password_integration_test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	pfm := NewPasswordFileManager()
 
@@ -163,7 +167,11 @@ func TestPasswordFileErrorScenarios(t *testing.T) {
 	// Create a temporary directory for testing
 	tempDir, err := os.MkdirTemp("", "password_error_test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	pfm := NewPasswordFileManager()
 

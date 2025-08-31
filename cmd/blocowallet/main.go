@@ -38,7 +38,12 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to initialize logger: %v", err)
 	}
-	defer logger.Sync()
+	defer func() {
+		if err := logger.Sync(); err != nil {
+			// Sync errors are usually not critical, log them if needed
+			log.Printf("Logger sync error: %v", err)
+		}
+	}()
 
 	// Initialize configuration
 	configManager := config.NewConfigurationManager()
@@ -64,7 +69,11 @@ func main() {
 		log.Printf("Failed to create wallet repository: %v", err)
 		os.Exit(1)
 	}
-	defer repo.Close()
+	defer func() {
+		if err := repo.Close(); err != nil {
+			log.Printf("Error closing repository: %v", err)
+		}
+	}()
 
 	// Create keystore
 	keystoreDir := filepath.Join(cfg.WalletsDir, "keystore")

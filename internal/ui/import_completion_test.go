@@ -194,7 +194,7 @@ func TestImportCompletionModel_ActionExecution(t *testing.T) {
 	assert.Equal(t, "retry_failed", retryMsg.Strategy)
 
 	// Test return to menu action
-	model, cmd = model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	_, cmd = model.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	assert.NotNil(t, cmd)
 
 	msg = cmd()

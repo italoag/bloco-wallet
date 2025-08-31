@@ -227,7 +227,7 @@ func TestPasswordPopupModel_PasswordMasking(t *testing.T) {
 	model := NewPasswordPopupModel("test.json", 3)
 
 	// Verify that the textinput is configured for password masking
-	assert.Equal(t, '•', model.Model.EchoCharacter)
+	assert.Equal(t, '•', model.EchoCharacter)
 	// Note: EchoMode is not directly accessible, but we can verify the character is set
 }
 
@@ -235,7 +235,7 @@ func TestPasswordPopupModel_CharacterLimit(t *testing.T) {
 	model := NewPasswordPopupModel("test.json", 3)
 
 	// Verify character limit is set
-	assert.Equal(t, 256, model.Model.CharLimit)
+	assert.Equal(t, 256, model.CharLimit)
 }
 
 func TestPasswordPopupModel_Integration_FullFlow(t *testing.T) {

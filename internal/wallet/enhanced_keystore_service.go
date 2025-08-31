@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"os"
 
 	"github.com/ethereum/go-ethereum/crypto"
 )
@@ -30,7 +30,7 @@ func NewEnhancedKeyStoreService() *EnhancedKeyStoreService {
 // ReadKeyStore versão melhorada que suporta qualquer KDF
 func (eks *EnhancedKeyStoreService) ReadKeyStore(filePath, password string) (*EnhancedWalletDetails, error) {
 	// Lê o arquivo JSON
-	data, err := ioutil.ReadFile(filePath)
+	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("erro ao ler arquivo: %w", err)
 	}

@@ -183,7 +183,7 @@ test-ui: ## Run only UI package tests
 lint: ## Run linting checks
 	@echo "$(CYAN)Running linter...$(RESET)"
 	@if command -v golangci-lint >/dev/null 2>&1; then \
-		golangci-lint run; \
+		golangci-lint run --timeout=5m; \
 	else \
 		echo "$(YELLOW)⚠ golangci-lint not installed, running go vet instead$(RESET)"; \
 		go vet ./...; \
@@ -276,7 +276,7 @@ deps: ## Install build dependencies
 	@go mod download
 	@if ! command -v golangci-lint >/dev/null 2>&1; then \
 		echo "$(YELLOW)Installing golangci-lint...$(RESET)"; \
-		curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$(go env GOPATH)/bin v1.60.1; \
+		curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$(go env GOPATH)/bin v1.61.0; \
 	fi
 	@echo "$(GREEN)✓ Dependencies installed$(RESET)"
 
