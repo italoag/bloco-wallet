@@ -41,9 +41,13 @@ jobs:
       run: go mod verify
 
     - name: Run tests
+      env:
+        CGO_LDFLAGS: ${{ runner.os == 'macOS' && '-Wl,-ld_classic' || '' }}
       run: make test
 
     - name: Run test coverage
+      env:
+        CGO_LDFLAGS: ${{ runner.os == 'macOS' && '-Wl,-ld_classic' || '' }}
       run: make cover
 
     - name: Upload coverage reports to Codecov

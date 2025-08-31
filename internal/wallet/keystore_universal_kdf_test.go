@@ -31,8 +31,9 @@ func TestImportWalletFromKeystoreV3WithUniversalKDF(t *testing.T) {
 	mockRepo.On("FindBySourceHash", mock.AnythingOfType("string")).Return(nil, nil)
 	mockRepo.On("AddWallet", mock.AnythingOfType("*wallet.Wallet")).Return(nil)
 
-	// Create keystore
-	ks := keystore.NewKeyStore(tempDir, keystore.StandardScryptN, keystore.StandardScryptP)
+	// Create keystore with test-optimized parameters
+	n, p := GetTestKeystoreParams()
+	ks := keystore.NewKeyStore(tempDir, n, p)
 
 	// Create wallet service
 	ws := NewWalletService(mockRepo, ks)
@@ -398,8 +399,9 @@ func TestKeystoreImportErrorMessages(t *testing.T) {
 	mockRepo := new(MockWalletRepository)
 	mockRepo.On("FindBySourceHash", mock.AnythingOfType("string")).Return(nil, nil)
 
-	// Create keystore
-	ks := keystore.NewKeyStore(tempDir, keystore.StandardScryptN, keystore.StandardScryptP)
+	// Create keystore with test-optimized parameters
+	n, p := GetTestKeystoreParams()
+	ks := keystore.NewKeyStore(tempDir, n, p)
 
 	// Create wallet service
 	ws := NewWalletService(mockRepo, ks)

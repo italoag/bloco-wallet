@@ -1,11 +1,11 @@
 # Project Configuration
-NAME            := bloco-wallet-manager
+NAME            := bloco-wallet
 VERSION         ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "v0.1.0")
 PACKAGE         := blocowallet
 OUTPUT_BIN      ?= build/${NAME}
 GO_FLAGS        ?=
 GO_TAGS         ?= netgo
-CGO_ENABLED     ?= 0
+CGO_ENABLED     ?= 1
 GIT_REV         ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 GIT_BRANCH      ?= $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
 
@@ -13,6 +13,13 @@ GIT_BRANCH      ?= $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "
 IMG_NAME        := ghcr.io/italoag/${NAME}
 IMAGE           := ${IMG_NAME}:${VERSION}
 BUILD_PLATFORMS ?= linux/amd64,linux/arm64
+
+# macOS CGO Linker Fix
+ifeq ($(shell uname), Darwin)
+CGO_LDFLAGS     ?= -Wl,-ld_classic
+else
+CGO_LDFLAGS     ?=
+endif
 
 # Date handling for different OS
 SOURCE_DATE_EPOCH ?= $(shell date +%s)
@@ -60,11 +67,24 @@ build: ## Build the application for current platform
 		./${CMD_DIR}
 	@echo "$(GREEN)✓ Build complete: ${OUTPUT_BIN}$(RESET)"
 
+.PHONY: build-static
+build-static: ## Build static binary using pure Go SQLite driver
+	@echo "$(CYAN)Building ${NAME} with pure Go SQLite driver...$(RESET)"
+	@echo "$(YELLOW)Note: Using modernc.org/sqlite driver for CGO_ENABLED=0 compatibility$(RESET)"
+	@mkdir -p ${BUILD_DIR}
+	@CGO_ENABLED=0 go build ${GO_FLAGS} \
+		-ldflags "${LDFLAGS}" \
+		-a -tags="${GO_TAGS}" \
+		-o ${OUTPUT_BIN}-static \
+		./${CMD_DIR}
+	@echo "$(GREEN)✓ Static build complete: ${OUTPUT_BIN}-static$(RESET)"
+
 .PHONY: build-all
-build-all: clean ## Build for all supported platforms
+build-all: clean ## Build for all supported platforms (both CGO and static versions)
 	@echo "$(CYAN)Building ${NAME} for all platforms...$(RESET)"
 	@mkdir -p ${DIST_DIR}
 	@$(foreach platform,$(PLATFORMS),$(call build_platform,$(platform)))
+	@$(foreach platform,$(PLATFORMS),$(call build_platform_static,$(platform)))
 	@echo "$(GREEN)✓ All platform builds complete$(RESET)"
 
 .PHONY: build-linux
@@ -93,30 +113,69 @@ build-windows: ## Build for Windows platform (amd64)
 ##@ Testing Targets
 
 .PHONY: test
-test: ## Run all tests
-	@echo "$(CYAN)Running tests...$(RESET)"
+test: ## Run all tests with optimized parameters
+	@echo "$(CYAN)Running tests with fast parameters...$(RESET)"
 	@go clean --testcache 
-	@go test ./... -v -race
+	@CGO_LDFLAGS="$(CGO_LDFLAGS)" go test ./... -v -race
 	@echo "$(GREEN)✓ Tests complete$(RESET)"
 
-.PHONY: test-short
-test-short: ## Run tests with short flag
-	@echo "$(CYAN)Running short tests...$(RESET)"
-	@go test ./... -short -v
-	@echo "$(GREEN)✓ Short tests complete$(RESET)"
+.PHONY: test-fast
+test-fast: ## Run tests with fastest parameters (development)
+	@echo "$(CYAN)Running fast tests for development...$(RESET)"
+	@go clean --testcache
+	@CGO_LDFLAGS="$(CGO_LDFLAGS)" go test ./... -short -v
+	@echo "$(GREEN)✓ Fast tests complete$(RESET)"
+
+# Alias for common development workflow
+.PHONY: t
+t: test-fast ## Alias for test-fast (quick development testing)
+
+.PHONY: test-production
+test-production: ## Run tests with production-grade security parameters
+	@echo "$(CYAN)Running tests with production parameters...$(RESET)"
+	@echo "$(YELLOW)⚠️  This will take longer due to secure scrypt parameters$(RESET)"
+	@go clean --testcache
+	@CGO_LDFLAGS="$(CGO_LDFLAGS)" go test ./... -v -race -tags=production
+	@echo "$(GREEN)✓ Production tests complete$(RESET)"
+
+.PHONY: test-quiet
+test-quiet: ## Run tests suppressing CGO linker warnings
+	@echo "$(CYAN)Running tests (quiet mode)...$(RESET)"
+	@CGO_LDFLAGS="$(CGO_LDFLAGS)" go test ./... -v -race 2>/dev/null || \
+		CGO_LDFLAGS="$(CGO_LDFLAGS)" go test ./... -v -race
+	@echo "$(GREEN)✓ Tests complete$(RESET)"
 
 .PHONY: cover
 cover: ## Run test coverage suite
 	@echo "$(CYAN)Generating test coverage...$(RESET)"
-	@go test ./... --coverprofile=coverage.out
+	@CGO_LDFLAGS="$(CGO_LDFLAGS)" go test ./... --coverprofile=coverage.out
 	@go tool cover --html=coverage.out -o coverage.html
 	@echo "$(GREEN)✓ Coverage report generated: coverage.html$(RESET)"
+
+.PHONY: cover-production
+cover-production: ## Run test coverage with production parameters
+	@echo "$(CYAN)Generating test coverage with production parameters...$(RESET)"
+	@CGO_LDFLAGS="$(CGO_LDFLAGS)" go test ./... --coverprofile=coverage.out -tags=production
+	@go tool cover --html=coverage.out -o coverage.html
+	@echo "$(GREEN)✓ Production coverage report generated: coverage.html$(RESET)"
 
 .PHONY: bench
 bench: ## Run benchmarks
 	@echo "$(CYAN)Running benchmarks...$(RESET)"
-	@go test ./... -bench=. -benchmem
+	@CGO_LDFLAGS="$(CGO_LDFLAGS)" go test ./... -bench=. -benchmem
 	@echo "$(GREEN)✓ Benchmarks complete$(RESET)"
+
+.PHONY: test-wallet
+test-wallet: ## Run only wallet package tests (fastest)
+	@echo "$(CYAN)Running wallet package tests...$(RESET)"
+	@CGO_LDFLAGS="$(CGO_LDFLAGS)" go test ./internal/wallet/... -v
+	@echo "$(GREEN)✓ Wallet tests complete$(RESET)"
+
+.PHONY: test-ui
+test-ui: ## Run only UI package tests
+	@echo "$(CYAN)Running UI package tests...$(RESET)"
+	@CGO_LDFLAGS="$(CGO_LDFLAGS)" go test ./internal/ui/... -v
+	@echo "$(GREEN)✓ UI tests complete$(RESET)"
 
 ##@ Code Quality Targets
 
@@ -272,7 +331,7 @@ define build_platform
 	$(eval OUTPUT := ${DIST_DIR}/${NAME}-${VERSION}-$(GOOS)-$(GOARCH)$(EXT))
 	$(eval ARCHIVE := $(if $(filter windows,$(GOOS)),${DIST_DIR}/${NAME}-${VERSION}-$(GOOS)-$(GOARCH).zip,${DIST_DIR}/${NAME}-${VERSION}-$(GOOS)-$(GOARCH).tar.gz))
 	
-	@echo "$(BLUE)  Building for $(GOOS)/$(GOARCH)...$(RESET)"
+	@echo "$(BLUE)  Building for $(GOOS)/$(GOARCH) (CGO)...$(RESET)"
 	@CGO_ENABLED=${CGO_ENABLED} GOOS=$(GOOS) GOARCH=$(GOARCH) \
 		go build ${GO_FLAGS} \
 		-ldflags "${LDFLAGS}" \
@@ -287,4 +346,29 @@ define build_platform
 	fi
 	@rm -f $(OUTPUT)
 	@echo "$(GREEN)    ✓ $(GOOS)/$(GOARCH) → $(notdir $(ARCHIVE))$(RESET)"
+endef
+
+# Build function for static cross-compilation (CGO_ENABLED=0)
+define build_platform_static
+	$(eval GOOS := $(word 1,$(subst /, ,$(1))))
+	$(eval GOARCH := $(word 2,$(subst /, ,$(1))))
+	$(eval EXT := $(if $(filter windows,$(GOOS)),.exe,))
+	$(eval OUTPUT := ${DIST_DIR}/${NAME}-${VERSION}-$(GOOS)-$(GOARCH)-static$(EXT))
+	$(eval ARCHIVE := $(if $(filter windows,$(GOOS)),${DIST_DIR}/${NAME}-${VERSION}-$(GOOS)-$(GOARCH)-static.zip,${DIST_DIR}/${NAME}-${VERSION}-$(GOOS)-$(GOARCH)-static.tar.gz))
+	
+	@echo "$(BLUE)  Building for $(GOOS)/$(GOARCH) (static)...$(RESET)"
+	@CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) \
+		go build ${GO_FLAGS} \
+		-ldflags "${LDFLAGS}" \
+		-a -tags="${GO_TAGS},nocgo" \
+		-o $(OUTPUT) \
+		./${CMD_DIR}
+	
+	@if [ "$(GOOS)" = "windows" ]; then \
+		cd ${DIST_DIR} && zip -q $(notdir $(ARCHIVE)) $(notdir $(OUTPUT)); \
+	else \
+		cd ${DIST_DIR} && tar -czf $(notdir $(ARCHIVE)) $(notdir $(OUTPUT)); \
+	fi
+	@rm -f $(OUTPUT)
+	@echo "$(GREEN)    ✓ $(GOOS)/$(GOARCH) (static) → $(notdir $(ARCHIVE))$(RESET)"
 endef
