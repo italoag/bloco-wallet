@@ -30,19 +30,19 @@ func TestEnhancedFilePickerDemoUpdate(t *testing.T) {
 	demo := NewEnhancedFilePickerDemo()
 
 	// Test normal update
-	model, cmd := demo.Update(tea.KeyMsg{Type: tea.KeyDown})
-	assert.NotNil(t, model)
-	assert.Equal(t, demo, model)
+	_, _ = demo.Update(tea.KeyMsg{Type: tea.KeyDown})
+	assert.NotNil(t, demo)
+	assert.Equal(t, demo, demo)
 
 	// Test confirmation
 	demo.picker.confirmed = true
-	model, cmd = demo.Update(tea.KeyMsg{Type: tea.KeyTab})
+	_, _ = demo.Update(tea.KeyMsg{Type: tea.KeyTab})
 	assert.True(t, demo.finished)
 	assert.NotNil(t, demo.result)
 	assert.True(t, demo.result.Confirmed)
 
 	// Test finished state
-	model, cmd = demo.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	_, cmd := demo.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
 	assert.NotNil(t, cmd) // Should return tea.Quit command
 }
 

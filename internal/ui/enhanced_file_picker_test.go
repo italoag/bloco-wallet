@@ -118,7 +118,11 @@ func TestToggleSelection(t *testing.T) {
 	// Create a temporary directory for testing
 	tempDir, err := os.MkdirTemp("", "enhanced_picker_test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	// Create test files
 	testFile := filepath.Join(tempDir, "test.json")
@@ -157,7 +161,11 @@ func TestSelectAll(t *testing.T) {
 	// Create a temporary directory for testing
 	tempDir, err := os.MkdirTemp("", "enhanced_picker_test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	// Create test files
 	files := []string{"wallet1.json", "wallet2.json", "readme.txt"}
@@ -234,7 +242,11 @@ func TestMultiSelectKeyboardActions(t *testing.T) {
 	// Create a temporary directory for testing
 	tempDir, err := os.MkdirTemp("", "enhanced_picker_test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	// Create test files
 	err = os.WriteFile(filepath.Join(tempDir, "test.json"), []byte("{}"), 0644)
@@ -318,7 +330,11 @@ func TestDirectoryNavigation(t *testing.T) {
 	// Create a temporary directory structure for testing
 	tempDir, err := os.MkdirTemp("", "enhanced_picker_nav_test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	// Create subdirectory
 	subDir := filepath.Join(tempDir, "subdir")

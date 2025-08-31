@@ -581,7 +581,8 @@ func (kca *KDFCompatibilityAnalyzer) analyzeParameterSecurity(kdf string, params
 		Suggestions: make([]string, 0),
 	}
 
-	if kdf == "scrypt" {
+	switch kdf {
+	case "scrypt":
 		n := kca.getIntParam(params, "n", 262144)
 		r := kca.getIntParam(params, "r", 8)
 		p := kca.getIntParam(params, "p", 1)
@@ -608,7 +609,7 @@ func (kca *KDFCompatibilityAnalyzer) analyzeParameterSecurity(kdf string, params
 			analysis.Suggestions = append(analysis.Suggestions, "⚠️ Usando parâmetros padrão - considere personalização para aplicações de alto valor")
 		}
 
-	} else if kdf == "pbkdf2" {
+	case "pbkdf2":
 		iterations := kca.getIntParam(params, "c", 262144)
 
 		if iterations < 100000 {

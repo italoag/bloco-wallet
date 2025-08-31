@@ -221,11 +221,21 @@ func TestNetworkManager_Integration(t *testing.T) {
 	// Create a temporary directory for the test
 	tempDir, err := os.MkdirTemp("", "network_manager_test")
 	assert.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	// Set environment variable to use temp directory
-	os.Setenv("BLOCO_WALLET_APP_APP_DIR", tempDir)
-	defer os.Unsetenv("BLOCO_WALLET_APP_APP_DIR")
+	if err := os.Setenv("BLOCO_WALLET_APP_APP_DIR", tempDir); err != nil {
+		t.Fatalf("Failed to set environment variable: %v", err)
+	}
+	defer func() {
+		if err := os.Unsetenv("BLOCO_WALLET_APP_APP_DIR"); err != nil {
+			t.Logf("Failed to unset environment variable: %v", err)
+		}
+	}()
 
 	// Create real ConfigurationManager
 	configManager := config.NewConfigurationManager()
@@ -233,7 +243,7 @@ func TestNetworkManager_Integration(t *testing.T) {
 	// Create mock ChainListService
 	mockChainListService := &MockChainListService{}
 
- // Mock chainlist response for custom network
+	// Mock chainlist response for custom network
 	mockChainListService.On("GetChainInfo", 12345).Return(nil, assert.AnError)
 
 	nm := NewNetworkManager(configManager, mockChainListService)

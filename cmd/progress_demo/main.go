@@ -15,9 +15,9 @@ import (
 
 // Demo implementation to validate progress tracking improvements
 type ProgressDemo struct {
-	state       *ui.EnhancedImportState
+	state        *ui.EnhancedImportState
 	batchService *DemoBatchService
-	styles      ui.Styles
+	styles       ui.Styles
 }
 
 type DemoBatchService struct{}
@@ -67,7 +67,7 @@ func (d *DemoBatchService) ImportBatch(
 		StartTime:       startTime,
 		ElapsedTime:     0,
 	}
-	
+
 	// Use the enhanced sendProgressUpdate pattern
 	sendProgressUpdate(progress, progressChan)
 
@@ -143,7 +143,7 @@ func sendProgressUpdate(progress wallet.ImportProgress, progressChan chan<- wall
 		// Successfully sent progress update
 	case <-time.After(500 * time.Millisecond):
 		// Log dropped update for debugging
-		log.Printf("Demo: Progress update dropped - channel may be blocked (file: %s, progress: %.1f%%)", 
+		log.Printf("Demo: Progress update dropped - channel may be blocked (file: %s, progress: %.1f%%)",
 			progress.CurrentFile, progress.Percentage)
 	}
 }
@@ -171,7 +171,7 @@ func (p *ProgressDemo) RunDemo() error {
 	// Create demo import jobs
 	demoFiles := []string{
 		"demo/keystore1.json",
-		"demo/keystore2.json", 
+		"demo/keystore2.json",
 		"demo/keystore3.json",
 		"demo/keystore4.json",
 		"demo/keystore5.json",
@@ -208,10 +208,10 @@ func (p *ProgressDemo) RunDemo() error {
 		defer close(done)
 		for progress := range progressChan {
 			progressUpdates = append(progressUpdates, progress)
-			
+
 			// Simulate UI update
 			p.state.UpdateProgress(progress)
-			
+
 			// Display progress
 			if progress.CurrentFile != "" {
 				fmt.Printf("📄 Processing: %-20s [%3d/%d] %6.1f%% (%.1fs)\n",
@@ -246,7 +246,7 @@ func (p *ProgressDemo) RunDemo() error {
 	fmt.Printf("   • Total files processed: %d\n", len(results))
 	fmt.Printf("   • Progress updates received: %d\n", len(progressUpdates))
 	fmt.Printf("   • Final progress: %.1f%%\n", progressUpdates[len(progressUpdates)-1].Percentage)
-	
+
 	// Validate monotonic progress
 	isMonotonic := true
 	for i := 1; i < len(progressUpdates); i++ {
@@ -255,7 +255,7 @@ func (p *ProgressDemo) RunDemo() error {
 			break
 		}
 	}
-	
+
 	if isMonotonic {
 		fmt.Println("   ✅ Progress validation: PASSED (monotonic)")
 	} else {
@@ -271,7 +271,7 @@ func (p *ProgressDemo) RunDemo() error {
 
 func main() {
 	demo := NewProgressDemo()
-	
+
 	if err := demo.RunDemo(); err != nil {
 		fmt.Fprintf(os.Stderr, "Demo failed: %v\n", err)
 		os.Exit(1)

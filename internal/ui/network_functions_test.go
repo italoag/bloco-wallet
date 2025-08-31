@@ -16,18 +16,28 @@ func TestSaveConfigToFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	// Set environment variable to use temp directory
 	originalEnv := os.Getenv("BLOCO_WALLET_APP_APP_DIR")
 	defer func() {
 		if originalEnv != "" {
-			os.Setenv("BLOCO_WALLET_APP_APP_DIR", originalEnv)
+			if err := os.Setenv("BLOCO_WALLET_APP_APP_DIR", originalEnv); err != nil {
+				t.Logf("Failed to restore environment variable: %v", err)
+			}
 		} else {
-			os.Unsetenv("BLOCO_WALLET_APP_APP_DIR")
+			if err := os.Unsetenv("BLOCO_WALLET_APP_APP_DIR"); err != nil {
+				t.Logf("Failed to unset environment variable: %v", err)
+			}
 		}
 	}()
-	os.Setenv("BLOCO_WALLET_APP_APP_DIR", tempDir)
+	if err := os.Setenv("BLOCO_WALLET_APP_APP_DIR", tempDir); err != nil {
+		t.Fatalf("Failed to set environment variable: %v", err)
+	}
 
 	// Reset the global configuration manager to pick up the new environment variable
 	globalConfigManager = nil

@@ -2,6 +2,7 @@ package ui
 
 import (
 	"blocowallet/internal/wallet"
+
 	tea "github.com/charmbracelet/bubbletea"
 )
 

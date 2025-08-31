@@ -555,7 +555,12 @@ func (ws *WalletService) ImportWalletFromKeystoreV3WithProgress(name, keystorePa
 			err,
 		)
 	}
-	defer destFile.Close()
+	defer func() {
+		if err := destFile.Close(); err != nil {
+			// Log the error but don't fail the operation
+			log.Printf("Warning: error closing destination file: %v", err)
+		}
+	}()
 
 	if _, err = destFile.Write(keyJSON); err != nil {
 		return nil, NewKeystoreImportError(
@@ -643,7 +648,7 @@ func (ws *WalletService) sendProgressUpdate(progressChan chan<- ImportProgress, 
 	case <-time.After(500 * time.Millisecond):
 		// Timeout after 500ms - this allows more time for UI to process
 		// Log the dropped update for debugging
-		log.Printf("WalletService: Progress update dropped - channel may be blocked (file: %s, progress: %.1f%%)", 
+		log.Printf("WalletService: Progress update dropped - channel may be blocked (file: %s, progress: %.1f%%)",
 			progress.CurrentFile, progress.Percentage)
 	}
 }

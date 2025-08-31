@@ -44,7 +44,11 @@ func TestImportWalletFromKeystoreV3WithProgress(t *testing.T) {
 	// Create test repository and service
 	repo, err := storage.NewWalletRepository(cfg)
 	require.NoError(t, err)
-	defer repo.Close()
+	defer func() {
+		if err := repo.Close(); err != nil {
+			t.Logf("Failed to close repository: %v", err)
+		}
+	}()
 
 	ks := keystore.NewKeyStore(keystoreDir, keystore.LightScryptN, keystore.LightScryptP)
 	service := wallet.NewWalletService(repo, ks)
@@ -207,7 +211,11 @@ func TestProgressUpdateTimeout(t *testing.T) {
 	// Create test service
 	repo, err := storage.NewWalletRepository(cfg)
 	require.NoError(t, err)
-	defer repo.Close()
+	defer func() {
+		if err := repo.Close(); err != nil {
+			t.Logf("Failed to close repository: %v", err)
+		}
+	}()
 
 	ks := keystore.NewKeyStore(keystoreDir, keystore.LightScryptN, keystore.LightScryptP)
 	service := wallet.NewWalletService(repo, ks)

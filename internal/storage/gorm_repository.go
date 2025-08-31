@@ -52,7 +52,6 @@ func NewWalletRepository(cfg *config.Config) (*GORMRepository, error) {
 	return &GORMRepository{db: db}, nil
 }
 
-
 // ensureDir garante que o diretório existe
 func ensureDir(dir string) error {
 	return os.MkdirAll(dir, os.ModePerm)

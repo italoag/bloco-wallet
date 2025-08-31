@@ -88,11 +88,15 @@ func setupTestEnvironment(t *testing.T, testName string) *testEnvironment {
 }
 
 // cleanup properly closes resources and removes temporary files
-func (env *testEnvironment) cleanup() {
+func (env *testEnvironment) cleanup(t *testing.T) {
 	if env.repo != nil {
-		env.repo.Close()
+		if err := env.repo.Close(); err != nil {
+			t.Logf("Warning: failed to close repository: %v", err)
+		}
 	}
-	os.RemoveAll(env.tempDir)
+	if err := os.RemoveAll(env.tempDir); err != nil {
+		t.Logf("Warning: failed to remove temp directory: %v", err)
+	}
 }
 
 // assertWalletImportSuccess verifies successful wallet import
@@ -124,30 +128,6 @@ func assertKeystoreImportError(t *testing.T, err error, expectedError string, ex
 	assert.Equal(t, expectedType, keystoreErr.Type)
 }
 
-// assertWalletPersistence verifies that a wallet was properly persisted and can be loaded
-func assertWalletPersistence(t *testing.T, walletService *wallet.WalletService, expectedAddress string, password string, originalMnemonic string) {
-	wallets, err := walletService.GetAllWallets()
-	require.NoError(t, err)
-
-	found := false
-	var persistedWallet *wallet.Wallet
-	for _, w := range wallets {
-		if w.Address == expectedAddress {
-			found = true
-			persistedWallet = &w
-			break
-		}
-	}
-	assert.True(t, found, "Wallet should be found in the database")
-
-	// Load the wallet to verify the mnemonic can be decrypted
-	loadedWalletDetails, err := walletService.LoadWallet(persistedWallet, password)
-	require.NoError(t, err)
-	require.NotNil(t, loadedWalletDetails)
-	require.NotNil(t, loadedWalletDetails.Mnemonic)
-	assert.Equal(t, originalMnemonic, *loadedWalletDetails.Mnemonic)
-}
-
 // createTestKeystoreFile creates a test keystore file with a random key
 func createTestKeystoreFile(t *testing.T, dir string, password string) (string, common.Address) {
 	// Create a new key
@@ -169,7 +149,7 @@ func createTestKeystoreFile(t *testing.T, dir string, password string) (string, 
 // including copying the keystore file to the managed directory
 func TestKeystoreImportIntegrationWithFileOperations(t *testing.T) {
 	env := setupTestEnvironment(t, "file-ops")
-	defer env.cleanup()
+	defer env.cleanup(t)
 
 	// Create a test keystore file in the source directory
 	password := testPassword
@@ -182,6 +162,7 @@ func TestKeystoreImportIntegrationWithFileOperations(t *testing.T) {
 	// Import the wallet from the source directory
 	walletName := "File Operations Test Wallet"
 	walletDetails, err := env.walletService.ImportWalletFromKeystoreV3(walletName, sourceKeystorePath, password)
+	require.NoError(t, err)
 
 	// Verify successful import
 	assertWalletImportSuccess(t, walletDetails, address, walletName)
@@ -199,7 +180,7 @@ func TestKeystoreImportIntegrationWithFileOperations(t *testing.T) {
 // TestKeystoreImportWithInvalidStructure tests importing keystores with invalid structure
 func TestKeystoreImportWithInvalidStructure(t *testing.T) {
 	env := setupTestEnvironment(t, "invalid-structure")
-	defer env.cleanup()
+	defer env.cleanup(t)
 
 	// Create a valid keystore file for reference
 	password := "testpassword"
@@ -261,7 +242,11 @@ func TestKeystoreImportWithFilePermissions(t *testing.T) {
 	// Create temporary directories for the test
 	tempDir, err := os.MkdirTemp("", "keystore-import-integration-permissions")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	// Create subdirectories
 	keystoreDir := filepath.Join(tempDir, "keystore")
@@ -293,7 +278,11 @@ func TestKeystoreImportWithFilePermissions(t *testing.T) {
 	// Create a real repository (not a mock) for integration testing
 	repo, err := storage.NewWalletRepository(cfg)
 	require.NoError(t, err)
-	defer repo.Close()
+	defer func() {
+		if err := repo.Close(); err != nil {
+			t.Logf("Warning: error closing repo: %v", err)
+		}
+	}()
 
 	// Create a keystore for the test
 	ks := keystore.NewKeyStore(keystoreDir, keystore.LightScryptN, keystore.LightScryptP)
@@ -336,7 +325,11 @@ func TestKeystoreImportWithDifferentEncryptionParameters(t *testing.T) {
 	// Create temporary directories for the test
 	tempDir, err := os.MkdirTemp("", "keystore-import-encryption-params")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	// Create subdirectories
 	keystoreDir := filepath.Join(tempDir, "keystore")
@@ -366,7 +359,11 @@ func TestKeystoreImportWithDifferentEncryptionParameters(t *testing.T) {
 	// Create a real repository (not a mock) for integration testing
 	repo, err := storage.NewWalletRepository(cfg)
 	require.NoError(t, err)
-	defer repo.Close()
+	defer func() {
+		if err := repo.Close(); err != nil {
+			t.Logf("Warning: error closing repo: %v", err)
+		}
+	}()
 
 	// Create a keystore for the test
 	ks := keystore.NewKeyStore(keystoreDir, keystore.LightScryptN, keystore.LightScryptP)
@@ -466,7 +463,11 @@ func TestKeystoreImportWithComplexPasswords(t *testing.T) {
 	// Create temporary directories for the test
 	tempDir, err := os.MkdirTemp("", "keystore-import-complex-passwords")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	// Create subdirectories
 	keystoreDir := filepath.Join(tempDir, "keystore")
@@ -496,7 +497,11 @@ func TestKeystoreImportWithComplexPasswords(t *testing.T) {
 	// Create a real repository (not a mock) for integration testing
 	repo, err := storage.NewWalletRepository(cfg)
 	require.NoError(t, err)
-	defer repo.Close()
+	defer func() {
+		if err := repo.Close(); err != nil {
+			t.Logf("Warning: error closing repo: %v", err)
+		}
+	}()
 
 	// Create a keystore for the test
 	ks := keystore.NewKeyStore(keystoreDir, keystore.LightScryptN, keystore.LightScryptP)
@@ -579,7 +584,11 @@ func TestDeterministicMnemonicConsistency(t *testing.T) {
 	// Create temporary directories for the test
 	tempDir, err := os.MkdirTemp("", "keystore-import-integration-deterministic")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	// Create subdirectories
 	keystoreDir := filepath.Join(tempDir, "keystore")
@@ -611,7 +620,11 @@ func TestDeterministicMnemonicConsistency(t *testing.T) {
 	// Create a real repository (not a mock) for integration testing
 	repo, err := storage.NewWalletRepository(cfg)
 	require.NoError(t, err)
-	defer repo.Close()
+	defer func() {
+		if err := repo.Close(); err != nil {
+			t.Logf("Warning: error closing repo: %v", err)
+		}
+	}()
 
 	// Create a keystore for the test
 	ks := keystore.NewKeyStore(keystoreDir, keystore.LightScryptN, keystore.LightScryptP)
@@ -650,7 +663,11 @@ func TestCompleteImportFlow(t *testing.T) {
 	// Create temporary directories for the test
 	tempDir, err := os.MkdirTemp("", "keystore-import-integration-complete")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	// Create subdirectories
 	keystoreDir := filepath.Join(tempDir, "keystore")
@@ -683,7 +700,11 @@ func TestCompleteImportFlow(t *testing.T) {
 	// Create a real repository (not a mock) for integration testing
 	repo, err := storage.NewWalletRepository(cfg)
 	require.NoError(t, err)
-	defer repo.Close()
+	defer func() {
+		if err := repo.Close(); err != nil {
+			t.Logf("Warning: error closing repo: %v", err)
+		}
+	}()
 
 	// Create a keystore for the test
 	ks := keystore.NewKeyStore(keystoreDir, keystore.LightScryptN, keystore.LightScryptP)
@@ -723,12 +744,18 @@ func TestCompleteImportFlow(t *testing.T) {
 	assert.Nil(t, walletDetails.Wallet.Mnemonic, "Keystore imports should not have mnemonics stored")
 
 	// Step 3: Close the repository and reopen it to verify persistence
-	repo.Close()
+	if err := repo.Close(); err != nil {
+		t.Logf("Warning: error closing repo: %v", err)
+	}
 
 	// Create a new repository with the same database file
 	newRepo, err := storage.NewWalletRepository(cfg)
 	require.NoError(t, err)
-	defer newRepo.Close()
+	defer func() {
+		if err := newRepo.Close(); err != nil {
+			t.Logf("Warning: error closing newRepo: %v", err)
+		}
+	}()
 
 	// Create a new wallet service with the new repository
 	newWalletService := wallet.NewWalletService(newRepo, ks)
@@ -767,7 +794,11 @@ func TestKeystoreImportErrorHandling(t *testing.T) {
 	// Create temporary directories for the test
 	tempDir, err := os.MkdirTemp("", "keystore-import-integration-errors")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	// Create subdirectories
 	keystoreDir := filepath.Join(tempDir, "keystore")
@@ -799,7 +830,11 @@ func TestKeystoreImportErrorHandling(t *testing.T) {
 	// Create a real repository (not a mock) for integration testing
 	repo, err := storage.NewWalletRepository(cfg)
 	require.NoError(t, err)
-	defer repo.Close()
+	defer func() {
+		if err := repo.Close(); err != nil {
+			t.Logf("Warning: error closing repo: %v", err)
+		}
+	}()
 
 	// Create a keystore for the test
 	ks := keystore.NewKeyStore(keystoreDir, keystore.LightScryptN, keystore.LightScryptP)
@@ -952,7 +987,11 @@ func TestKeystoreImportIntegrationWithMultipleWallets(t *testing.T) {
 	// Create temporary directories for the test
 	tempDir, err := os.MkdirTemp("", "keystore-import-integration-multiple")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	// Create subdirectories
 	keystoreDir := filepath.Join(tempDir, "keystore")
@@ -985,7 +1024,11 @@ func TestKeystoreImportIntegrationWithMultipleWallets(t *testing.T) {
 	// Create a real repository (not a mock) for integration testing
 	repo, err := storage.NewWalletRepository(cfg)
 	require.NoError(t, err)
-	defer repo.Close()
+	defer func() {
+		if err := repo.Close(); err != nil {
+			t.Logf("Warning: error closing repo: %v", err)
+		}
+	}()
 
 	// Create a keystore for the test
 	ks := keystore.NewKeyStore(keystoreDir, keystore.LightScryptN, keystore.LightScryptP)
@@ -1013,12 +1056,18 @@ func TestKeystoreImportIntegrationWithMultipleWallets(t *testing.T) {
 	}
 
 	// Close the repository and reopen it to verify persistence
-	repo.Close()
+	if err := repo.Close(); err != nil {
+		t.Logf("Warning: error closing repo: %v", err)
+	}
 
 	// Create a new repository with the same database file
 	newRepo, err := storage.NewWalletRepository(cfg)
 	require.NoError(t, err)
-	defer newRepo.Close()
+	defer func() {
+		if err := newRepo.Close(); err != nil {
+			t.Logf("Warning: error closing newRepo: %v", err)
+		}
+	}()
 
 	// Create a new wallet service with the new repository
 	newWalletService := wallet.NewWalletService(newRepo, ks)

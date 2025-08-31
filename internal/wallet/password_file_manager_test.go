@@ -15,7 +15,11 @@ func TestPasswordFileManager_FindPasswordFile(t *testing.T) {
 	// Create a temporary directory for testing
 	tempDir, err := os.MkdirTemp("", "password_file_test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	// Test cases
 	tests := []struct {
@@ -81,7 +85,11 @@ func TestPasswordFileManager_ReadPasswordFile(t *testing.T) {
 	// Create a temporary directory for testing
 	tempDir, err := os.MkdirTemp("", "password_file_test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	tests := []struct {
 		name          string
@@ -143,7 +151,9 @@ func TestPasswordFileManager_ReadPasswordFile(t *testing.T) {
 			}
 
 			// Clean up
-			os.Remove(pwdPath)
+			if err := os.Remove(pwdPath); err != nil {
+				t.Logf("Warning: could not remove test file: %v", err)
+			}
 		})
 	}
 }
@@ -154,7 +164,11 @@ func TestPasswordFileManager_ValidatePasswordFile(t *testing.T) {
 	// Create a temporary directory for testing
 	tempDir, err := os.MkdirTemp("", "password_file_test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	tests := []struct {
 		name          string
@@ -166,7 +180,9 @@ func TestPasswordFileManager_ValidatePasswordFile(t *testing.T) {
 			name: "Valid password file",
 			setupFunc: func() string {
 				path := filepath.Join(tempDir, "valid.pwd")
-				os.WriteFile(path, []byte("testpassword"), 0644)
+				if err := os.WriteFile(path, []byte("testpassword"), 0644); err != nil {
+					t.Fatalf("Failed to create test file: %v", err)
+				}
 				return path
 			},
 			shouldSucceed: true,
@@ -175,7 +191,9 @@ func TestPasswordFileManager_ValidatePasswordFile(t *testing.T) {
 			name: "Empty password file",
 			setupFunc: func() string {
 				path := filepath.Join(tempDir, "empty.pwd")
-				os.WriteFile(path, []byte(""), 0644)
+				if err := os.WriteFile(path, []byte(""), 0644); err != nil {
+					t.Fatalf("Failed to create test file: %v", err)
+				}
 				return path
 			},
 			expectedError: PasswordFileEmpty,
@@ -190,7 +208,9 @@ func TestPasswordFileManager_ValidatePasswordFile(t *testing.T) {
 				for i := range content {
 					content[i] = 'a'
 				}
-				os.WriteFile(path, content, 0644)
+				if err := os.WriteFile(path, content, 0644); err != nil {
+					t.Fatalf("Failed to create test file: %v", err)
+				}
 				return path
 			},
 			expectedError: PasswordFileOversized,
@@ -230,7 +250,11 @@ func TestPasswordFileManager_RequiresManualPassword(t *testing.T) {
 	// Create a temporary directory for testing
 	tempDir, err := os.MkdirTemp("", "password_file_test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	// Test case 1: Keystore with valid password file
 	keystorePath1 := filepath.Join(tempDir, "wallet1.json")
@@ -262,7 +286,11 @@ func TestPasswordFileManager_GetPasswordForKeystore(t *testing.T) {
 	// Create a temporary directory for testing
 	tempDir, err := os.MkdirTemp("", "password_file_test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to remove temp directory: %v", err)
+		}
+	}()
 
 	// Test case 1: Valid keystore with password file
 	keystorePath := filepath.Join(tempDir, "wallet1.json")

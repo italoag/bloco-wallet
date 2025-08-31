@@ -43,7 +43,7 @@ type AddNetworkComponent struct {
 	suggestions        []blockchain.NetworkSuggestion
 	suggestionList     list.Model // Interactive suggestion list
 	loadingSuggestions bool
-	lastSearchTerm     string
+	// lastSearchTerm     string // Currently unused but may be needed for debouncing
 	typingDebounce     time.Time
 }
 
@@ -217,41 +217,41 @@ func (c *AddNetworkComponent) searchNetworks(query string) tea.Cmd {
 }
 
 // networkDetailsFetchedMsg carries async fetched RPC details for a suggestion
- type networkDetailsFetchedMsg struct {
-     Suggestion  blockchain.NetworkSuggestion
-     RPCEndpoint string
-     Err         string
- }
+type networkDetailsFetchedMsg struct {
+	Suggestion  blockchain.NetworkSuggestion
+	RPCEndpoint string
+	Err         string
+}
 
- // fetchChainInfoCmd fetches chain info asynchronously
- func (c *AddNetworkComponent) fetchChainInfoCmd(suggestion blockchain.NetworkSuggestion) tea.Cmd {
-     return func() tea.Msg {
-         _, rpcURL, err := c.chainListService.GetChainInfoWithRetry(suggestion.ChainID)
-         if err != nil {
-             return networkDetailsFetchedMsg{Suggestion: suggestion, Err: fmt.Sprintf("%v", err)}
-         }
-         return networkDetailsFetchedMsg{Suggestion: suggestion, RPCEndpoint: rpcURL}
-     }
- }
+// fetchChainInfoCmd fetches chain info asynchronously
+func (c *AddNetworkComponent) fetchChainInfoCmd(suggestion blockchain.NetworkSuggestion) tea.Cmd {
+	return func() tea.Msg {
+		_, rpcURL, err := c.chainListService.GetChainInfoWithRetry(suggestion.ChainID)
+		if err != nil {
+			return networkDetailsFetchedMsg{Suggestion: suggestion, Err: fmt.Sprintf("%v", err)}
+		}
+		return networkDetailsFetchedMsg{Suggestion: suggestion, RPCEndpoint: rpcURL}
+	}
+}
 
- // fillNetworkData fills the form with network data when a suggestion is selected
- func (c *AddNetworkComponent) fillNetworkData(suggestion blockchain.NetworkSuggestion, rpcURL string) {
-     // Update input values directly
-     c.nameInput.SetValue(suggestion.Name)
-     c.chainIDInput.SetValue(strconv.Itoa(suggestion.ChainID))
-     c.symbolInput.SetValue(suggestion.Symbol)
-     c.rpcEndpointInput.SetValue(rpcURL)
+// fillNetworkData fills the form with network data when a suggestion is selected
+func (c *AddNetworkComponent) fillNetworkData(suggestion blockchain.NetworkSuggestion, rpcURL string) {
+	// Update input values directly
+	c.nameInput.SetValue(suggestion.Name)
+	c.chainIDInput.SetValue(strconv.Itoa(suggestion.ChainID))
+	c.symbolInput.SetValue(suggestion.Symbol)
+	c.rpcEndpointInput.SetValue(rpcURL)
 
-     // Update search input with the selected name
-     c.searchInput.SetValue(suggestion.Name)
+	// Update search input with the selected name
+	c.searchInput.SetValue(suggestion.Name)
 
-     // Clear error message
-     c.err = nil
+	// Clear error message
+	c.err = nil
 
-     // Move focus to the network name field for possible editing
-     c.focusIndex = 1
-     c.updateFocus()
- }
+	// Move focus to the network name field for possible editing
+	c.focusIndex = 1
+	c.updateFocus()
+}
 
 // Init initializes the component
 func (c *AddNetworkComponent) Init() tea.Cmd {
@@ -342,12 +342,9 @@ func (c *AddNetworkComponent) Update(msg tea.Msg) (*AddNetworkComponent, tea.Cmd
 
 					// Get the selected item and fetch details asynchronously
 					item := c.suggestionList.SelectedItem().(networkSuggestionItem)
-					c.err = fmt.Errorf("%s...", localization.Labels["searching_networks"]) // temporary status
+					c.err = fmt.Errorf("%s", localization.Labels["searching_networks"]) // temporary status
 					cmds = append(cmds, c.fetchChainInfoCmd(item.suggestion))
 					return c, tea.Batch(cmds...)
-				} else {
-					// Debug log removed
-				}
 			}
 		}
 
@@ -360,7 +357,7 @@ func (c *AddNetworkComponent) Update(msg tea.Msg) (*AddNetworkComponent, tea.Cmd
 			// Submit form if not in search mode
 			if !c.isSearchFocused && c.validateInputs() {
 				c.adding = true
-				c.err = fmt.Errorf("validating RPC endpoint...")
+				c.err = fmt.Errorf("validating RPC endpoint")
 
 				return c, func() tea.Msg {
 					// Validate RPC endpoint before submitting
@@ -400,8 +397,6 @@ func (c *AddNetworkComponent) Update(msg tea.Msg) (*AddNetworkComponent, tea.Cmd
 				// Debug log removed
 				c.nextInput()
 				return c, nil
-			} else {
-				// Debug log removed
 			}
 
 		case "shift+tab":
@@ -415,7 +410,7 @@ func (c *AddNetworkComponent) Update(msg tea.Msg) (*AddNetworkComponent, tea.Cmd
 		if msg.Type == tea.KeyRunes && len(msg.Runes) == 1 {
 			key := string(msg.Runes[0])
 			if num, err := strconv.Atoi(key); err == nil && num >= 1 && num <= len(c.suggestions) {
-				c.err = fmt.Errorf("%s...", localization.Labels["searching_networks"]) // temporary status
+				c.err = fmt.Errorf("%s", localization.Labels["searching_networks"]) // temporary status
 				cmds = append(cmds, c.fetchChainInfoCmd(c.suggestions[num-1]))
 				return c, tea.Batch(cmds...)
 			}
@@ -428,6 +423,7 @@ func (c *AddNetworkComponent) Update(msg tea.Msg) (*AddNetworkComponent, tea.Cmd
 			oldValue := c.searchInput.Value()
 			c.searchInput, cmd = c.searchInput.Update(msg)
 			newValue := c.searchInput.Value()
+			cmds = append(cmds, cmd)
 
 			// Trigger search if value changed
 			if oldValue != newValue {
@@ -453,6 +449,8 @@ func (c *AddNetworkComponent) Update(msg tea.Msg) (*AddNetworkComponent, tea.Cmd
 			c.rpcEndpointInput, cmd = c.rpcEndpointInput.Update(msg)
 			cmds = append(cmds, cmd)
 		}
+	}
+
 	}
 
 	return c, tea.Batch(cmds...)

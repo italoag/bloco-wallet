@@ -79,11 +79,12 @@ func AddKeystoreValidationMessages() {
 
 	// Add Portuguese and Spanish messages based on current language
 	currentLang := GetCurrentLanguage()
-	if currentLang == "pt" {
+	switch currentLang {
+	case "pt":
 		for key, value := range portugueseMessages {
 			Labels[key] = value
 		}
-	} else if currentLang == "es" {
+	case "es":
 		for key, value := range spanishMessages {
 			Labels[key] = value
 		}

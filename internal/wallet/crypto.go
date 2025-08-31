@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -29,7 +30,7 @@ func NewCryptoService(cfg *config.Config) *CryptoService {
 // EncryptMnemonic criptografa uma frase mnemônica usando Argon2ID
 func (cs *CryptoService) EncryptMnemonic(mnemonic, password string) (string, error) {
 	if password == "" {
-		return "", fmt.Errorf(localization.Get("error_empty_password"))
+		return "", errors.New(localization.Get("error_empty_password"))
 	}
 
 	// Obter configurações do Argon2id
@@ -71,10 +72,10 @@ func (cs *CryptoService) EncryptMnemonic(mnemonic, password string) (string, err
 // DecryptMnemonic descriptografa uma mnemônica usando Argon2ID
 func (cs *CryptoService) DecryptMnemonic(encryptedMnemonic, password string) (string, error) {
 	if encryptedMnemonic == "" {
-		return "", fmt.Errorf(localization.Get("error_empty_encrypted_mnemonic"))
+		return "", errors.New(localization.Get("error_empty_encrypted_mnemonic"))
 	}
 	if password == "" {
-		return "", fmt.Errorf(localization.Get("error_empty_password"))
+		return "", errors.New(localization.Get("error_empty_password"))
 	}
 
 	// Decodificar de base64
@@ -88,7 +89,7 @@ func (cs *CryptoService) DecryptMnemonic(encryptedMnemonic, password string) (st
 	hashLength := 32 // SHA-256 sempre tem 32 bytes
 
 	if len(combined) < saltLength+hashLength {
-		return "", fmt.Errorf(localization.Get("error_invalid_mnemonic_format"))
+		return "", errors.New(localization.Get("error_invalid_mnemonic_format"))
 	}
 
 	// Extrair salt, hash e dados criptografados
@@ -116,7 +117,7 @@ func (cs *CryptoService) DecryptMnemonic(encryptedMnemonic, password string) (st
 	hashInput := append(decrypted, []byte(password)...)
 	actualHash := sha256.Sum256(hashInput)
 	if subtle.ConstantTimeCompare(expectedHash, actualHash[:]) != 1 {
-		return "", fmt.Errorf(localization.Get("error_invalid_password"))
+		return "", errors.New(localization.Get("error_invalid_password"))
 	}
 
 	mnemonic := string(decrypted)
@@ -230,7 +231,7 @@ func EncryptMnemonic(mnemonic, password string) (string, error) {
 
 		// If still not initialized, return error
 		if defaultCryptoService == nil {
-			return "", fmt.Errorf(localization.Get("error_crypto_service_not_initialized"))
+			return "", errors.New(localization.Get("error_crypto_service_not_initialized"))
 		}
 	}
 	return defaultCryptoService.EncryptMnemonic(mnemonic, password)
@@ -249,7 +250,7 @@ func DecryptMnemonic(encryptedMnemonic, password string) (string, error) {
 
 		// If still not initialized, return error
 		if defaultCryptoService == nil {
-			return "", fmt.Errorf(localization.Get("error_crypto_service_not_initialized"))
+			return "", errors.New(localization.Get("error_crypto_service_not_initialized"))
 		}
 	}
 	return defaultCryptoService.DecryptMnemonic(encryptedMnemonic, password)
