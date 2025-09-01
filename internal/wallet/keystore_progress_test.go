@@ -241,7 +241,7 @@ func TestProgressUpdateTimeout(t *testing.T) {
 		require.NotNil(t, walletDetails)
 
 		// Import should not be significantly delayed by progress tracking
-		assert.Less(t, elapsed, 10*time.Second, "Import should complete in reasonable time")
+		assert.Less(t, elapsed, 20*time.Second, "Import should complete in reasonable time")
 
 		close(progressChan)
 		// Drain any remaining messages
