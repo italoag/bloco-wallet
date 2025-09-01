@@ -1,0 +1,61 @@
+name: Bump Version
+
+on:
+  pull_request:
+    branches: [main]
+    types: [closed]
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  bump:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Get last tag
+        id: last
+        run: |
+          tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "tag=$tag" >> $GITHUB_OUTPUT
+
+      - name: Calculate next version
+        id: next
+        run: |
+          last=${{ steps.last.outputs.tag }}
+          version=${last#v}
+          if [[ "$version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            major="${BASH_REMATCH[1]}"
+            minor="${BASH_REMATCH[2]}"
+            patch="${BASH_REMATCH[3]}"
+          else
+            echo "Warning: Tag '$last' does not follow semantic versioning. Defaulting to v0.0.0."
+            major=0
+            minor=0
+            patch=0
+          fi
+          if jq -e '.pull_request.labels | any(.name | test("hotfix"; "i"))' "$GITHUB_EVENT_PATH" > /dev/null; then
+            patch=$((patch+1))
+          else
+            minor=$((minor+1))
+            patch=0
+          fi
+          echo "version=v${major}.${minor}.${patch}" >> $GITHUB_OUTPUT
+
+      - name: Create tag
+        env:
+          NEW_TAG: ${{ steps.next.outputs.version }}
+        run: |
+          git tag "$NEW_TAG"
+          git push origin "$NEW_TAG"

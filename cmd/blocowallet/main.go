@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -33,6 +34,9 @@ func main() {
 		return
 	}
 
+	// Disable standard logger output to avoid terminal logs
+	log.SetOutput(io.Discard)
+
 	// Initialize configuration first to determine application directories
 	configManager := config.NewConfigurationManager()
 	cfg, err := configManager.LoadConfiguration()
@@ -56,6 +60,7 @@ func main() {
 	}
 	// Provide UI package with file-based logger for debug-only input logs
 	ui.SetLogger(lgr)
+	wallet.SetLogger(lgr)
 	defer func() {
 		if lgr != nil {
 			_ = lgr.Sync()

@@ -79,6 +79,14 @@ func NewFileLogger(c LoggingConfig) (Logger, error) {
 	appPath := filepath.Join(c.LogDir, "app.log")
 	errPath := filepath.Join(c.LogDir, "error.log")
 
+	// Ensure log files exist so tests and tools can rely on their presence even if empty
+	if f, err := os.OpenFile(appPath, os.O_CREATE|os.O_APPEND, 0644); err == nil {
+		_ = f.Close()
+	}
+	if f, err := os.OpenFile(errPath, os.O_CREATE|os.O_APPEND, 0644); err == nil {
+		_ = f.Close()
+	}
+
 	appWriter := zapcore.AddSync(&lumberjack.Logger{
 		Filename:   appPath,
 		MaxSize:    maxInt(c.MaxFileSize, 25), // default 25 MB

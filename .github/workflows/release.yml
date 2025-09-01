@@ -12,7 +12,7 @@ on:
         type: string
 
 env:
-  GO_VERSION: '1.23.1'
+  GO_VERSION: '1.24.3'
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
@@ -20,6 +20,7 @@ permissions:
   contents: write
   packages: write
   id-token: write
+  security-events: write
 
 jobs:
   # Validate release
