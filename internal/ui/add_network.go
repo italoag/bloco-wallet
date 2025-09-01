@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -155,7 +156,7 @@ func (c *AddNetworkComponent) GetNetworkName() string {
 func (c *AddNetworkComponent) GetChainID() (int64, error) {
 	chainID, err := strconv.ParseInt(strings.TrimSpace(c.chainIDInput.Value()), 10, 64)
 	if err != nil {
-		return 0, fmt.Errorf(localization.Labels["invalid_chain_id"])
+		return 0, errors.New(localization.Labels["invalid_chain_id"])
 	}
 	return chainID, nil
 }
@@ -299,7 +300,7 @@ func (c *AddNetworkComponent) Update(msg tea.Msg) (*AddNetworkComponent, tea.Cmd
 	case networkDetailsFetchedMsg:
 		c.loadingSuggestions = false
 		if msg.Err != "" {
-			c.err = fmt.Errorf(localization.Labels["failed_to_get_network_details"]+": %s", msg.Err)
+			c.err = fmt.Errorf("%s: %s", localization.Labels["failed_to_get_network_details"], msg.Err)
 			// Prefill what we can; leave RPC empty for manual entry
 			c.nameInput.SetValue(msg.Suggestion.Name)
 			c.chainIDInput.SetValue(strconv.Itoa(msg.Suggestion.ChainID))
@@ -342,7 +343,7 @@ func (c *AddNetworkComponent) Update(msg tea.Msg) (*AddNetworkComponent, tea.Cmd
 
 					// Get the selected item and fetch details asynchronously
 					item := c.suggestionList.SelectedItem().(networkSuggestionItem)
-					c.err = fmt.Errorf("%s", localization.Labels["searching_networks"]) // temporary status
+					c.err = errors.New(localization.Labels["searching_networks"]) // temporary status
 					cmds = append(cmds, c.fetchChainInfoCmd(item.suggestion))
 					return c, tea.Batch(cmds...)
 			}
@@ -410,7 +411,7 @@ func (c *AddNetworkComponent) Update(msg tea.Msg) (*AddNetworkComponent, tea.Cmd
 		if msg.Type == tea.KeyRunes && len(msg.Runes) == 1 {
 			key := string(msg.Runes[0])
 			if num, err := strconv.Atoi(key); err == nil && num >= 1 && num <= len(c.suggestions) {
-				c.err = fmt.Errorf("%s", localization.Labels["searching_networks"]) // temporary status
+				c.err = errors.New(localization.Labels["searching_networks"]) // temporary status
 				cmds = append(cmds, c.fetchChainInfoCmd(c.suggestions[num-1]))
 				return c, tea.Batch(cmds...)
 			}
@@ -501,12 +502,12 @@ func (c *AddNetworkComponent) updateFocus() {
 // validateInputs checks if the inputs are valid
 func (c *AddNetworkComponent) validateInputs() bool {
 	if strings.TrimSpace(c.nameInput.Value()) == "" {
-		c.err = fmt.Errorf(localization.Labels["network_name_required"])
+		c.err = errors.New(localization.Labels["network_name_required"])
 		return false
 	}
 
 	if strings.TrimSpace(c.chainIDInput.Value()) == "" {
-		c.err = fmt.Errorf(localization.Labels["chain_id_required"])
+		c.err = errors.New(localization.Labels["chain_id_required"])
 		return false
 	}
 
@@ -517,19 +518,19 @@ func (c *AddNetworkComponent) validateInputs() bool {
 	}
 
 	if strings.TrimSpace(c.symbolInput.Value()) == "" {
-		c.err = fmt.Errorf(localization.Labels["symbol_required"])
+		c.err = errors.New(localization.Labels["symbol_required"])
 		return false
 	}
 
 	if strings.TrimSpace(c.rpcEndpointInput.Value()) == "" {
-		c.err = fmt.Errorf(localization.Labels["rpc_endpoint_required"])
+		c.err = errors.New(localization.Labels["rpc_endpoint_required"])
 		return false
 	}
 
 	// Basic URL validation
 	rpc := strings.TrimSpace(c.rpcEndpointInput.Value())
 	if !strings.HasPrefix(rpc, "http://") && !strings.HasPrefix(rpc, "https://") {
-		c.err = fmt.Errorf(localization.Labels["invalid_rpc_endpoint"])
+		c.err = errors.New(localization.Labels["invalid_rpc_endpoint"])
 		return false
 	}
 
