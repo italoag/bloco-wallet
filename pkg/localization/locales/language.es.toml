@@ -392,3 +392,19 @@ other = "Configurar redes blockchain"
 [created_at]
 other = "Creado En"
 
+
+
+[error_title]
+other = "Error"
+
+[network_search_failed]
+other = "Búsqueda de redes fallida"
+
+[rpc_validation_failed]
+other = "Fallo en la validación de RPC"
+
+[failed_to_get_chain_id_from_rpc]
+other = "Error al obtener el ID de cadena desde RPC"
+
+[chain_id_mismatch]
+other = "El ID de cadena no coincide"

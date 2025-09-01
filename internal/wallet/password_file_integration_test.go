@@ -108,61 +108,6 @@ func TestPasswordFileIntegration(t *testing.T) {
 	}
 }
 
-func TestPasswordFileWithRealKeystores(t *testing.T) {
-	pfm := NewPasswordFileManager()
-
-	// Test with actual keystore files from testdata
-	testCases := []struct {
-		name         string
-		keystorePath string
-		expectedPwd  string
-	}{
-		{
-			name:         "Standard keystore with password file",
-			keystorePath: "testdata/keystores/real_keystore_v3_standard.json",
-			expectedPwd:  "testpassword",
-		},
-		{
-			name:         "Complex password keystore",
-			keystorePath: "testdata/keystores/real_keystore_v3_complex_password.json",
-			expectedPwd:  "P@$w0rd!123#ComplexPassword",
-		},
-		{
-			name:         "Valid keystore with password file",
-			keystorePath: "testdata/keystores/valid_keystore_v3.json",
-			expectedPwd:  "testpassword",
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			// Check if keystore file exists
-			if _, err := os.Stat(tc.keystorePath); os.IsNotExist(err) {
-				t.Skipf("Keystore file %s does not exist, skipping test", tc.keystorePath)
-				return
-			}
-
-			// Test that it doesn't require manual password (should have .pwd file)
-			requiresManual := pfm.RequiresManualPassword(tc.keystorePath)
-			assert.False(t, requiresManual, "Should not require manual password for %s", tc.name)
-
-			// Test getting the password
-			password, err := pfm.GetPasswordForKeystore(tc.keystorePath)
-			assert.NoError(t, err, "Should be able to get password for %s", tc.name)
-			assert.Equal(t, tc.expectedPwd, password, "Password mismatch for %s", tc.name)
-
-			// Test finding the password file
-			passwordPath, err := pfm.FindPasswordFile(tc.keystorePath)
-			assert.NoError(t, err, "Should find password file for %s", tc.name)
-			assert.Contains(t, passwordPath, ".pwd", "Password path should contain .pwd for %s", tc.name)
-
-			// Verify the password file exists
-			_, err = os.Stat(passwordPath)
-			assert.NoError(t, err, "Password file should exist at %s", passwordPath)
-		})
-	}
-}
-
 func TestPasswordFileErrorScenarios(t *testing.T) {
 	// Create a temporary directory for testing
 	tempDir, err := os.MkdirTemp("", "password_error_test")

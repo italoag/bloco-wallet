@@ -398,3 +398,19 @@ other = "Incorrect password for the keystore file"
 [error_invalid_mnemonic_format]
 other = "Invalid encrypted mnemonic format: too short"
 
+
+
+[error_title]
+other = "Error"
+
+[network_search_failed]
+other = "Network search failed"
+
+[rpc_validation_failed]
+other = "RPC validation failed"
+
+[failed_to_get_chain_id_from_rpc]
+other = "Failed to get chain ID from RPC"
+
+[chain_id_mismatch]
+other = "Chain ID mismatch"

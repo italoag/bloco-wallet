@@ -1,101 +1,146 @@
-Project-specific development guidelines for BLOCO Wallet Manager
+# BLOCO Wallet Manager – Development Guidelines (Project‑Specific)
 
-Audience: Advanced Go developers working on this codebase. This document captures non-obvious build/config/testing knowledge verified against the current repository state.
+This document captures project‑specific build, test, and development practices verified on 2025‑09‑01. It is intended for experienced Go developers working on this codebase.
 
-1. Build and Configuration
-- Go toolchain
-  - Module path: blocowallet (see go.mod)
-  - Go version: 1.23.1 (as declared in go.mod)
-- Building the CLI
-  - Command: go build -o blocowallet ./cmd/blocowallet
-  - Output binary can be executed directly: ./blocowallet
-  - The CLI uses Charm’s Bubble Tea and runs in an alt-screen TUI. Logs are written to blocowallet.log in the repo/workdir.
-- Runtime configuration
-  - On first run, a config file is materialized at: ~/.wallets/config.toml
-    - It is generated from the embedded pkg/config/default_config.toml (via go:embed and viper).
-    - The app ensures ~/.wallets exists.
-  - Effective config structure (pkg/config.Config):
-    - app: app_dir, language, wallets_dir, database_path, locale_dir
-    - database: type (only sqlite supported in code paths), dsn (optional)
-    - security: Argon2id params (argon2_time, argon2_memory, argon2_threads, argon2_key_len, salt_length)
-    - fonts.available: string list returned by Config.GetFontsList()
-    - networks: map[string]Network (name, rpc_endpoint, chain_id, symbol, explorer, is_active)
-  - Environment overrides
-    - Prefix: BLOCOWALLET_
-    - Mapping uses dot->underscore replacement by viper. Examples:
-      - BLOCOWALLET_APP_APP_DIR, BLOCOWALLET_APP_WALLETS_DIR, BLOCOWALLET_APP_DATABASE_PATH
-      - BLOCOWALLET_DATABASE_TYPE, BLOCOWALLET_DATABASE_DSN
-    - Paths with a leading ~/ are expanded to the user home directory by pkg/config.expandPath.
-  - Database
-    - internal/storage/gorm_repository.go currently selects gorm.io/driver/sqlite exclusively for dev/test.
-    - dsn behavior: if Config.Database.DSN is non-empty, it is used; otherwise Config.DatabasePath is used. 
-    - The code auto-migrates internal/wallet.Wallet on startup.
-    - Note on CGO: gorm.io/driver/sqlite pulls github.com/mattn/go-sqlite3 (CGO). Ensure a working C toolchain:
-      - macOS: xcode-select --install; Linux: gcc/clang + libc headers; Windows: use MSYS2/MinGW. Alternatively, use pure-Go SQLite only if you refactor to modernc/sqlite.
+
+## 1) Build and Configuration
+
+- Module and entrypoints
+  - Module: `blocowallet`
+  - Primary CLI: `cmd/blocowallet`
+  - Additional demos: `cmd/progress_demo` (dev/demo only)
+
+- Make targets (preferred)
+  - `make build` – Builds the CLI for the host platform with version metadata injection (ldflags). CGO is enabled by default.
+  - `make build-all` / `build-<os>` – Cross‑compiles release artifacts (uses matrix defined in Makefile). Intended for CI/release.
+  - `make info` – Prints the effective build environment (useful when debugging local toolchain issues).
+
+- CGO and SQLite
+  - Storage uses GORM with `github.com/mattn/go-sqlite3` (indirect). This requires CGO for the normal build path.
+  - macOS: harmless CGO linker warnings can appear; our Makefile sets `CGO_LDFLAGS="-Wl,-ld_classic"` automatically to reduce noise.
+  - Linux/Windows: ensure a working C toolchain (gcc / TDM-GCC) for CGO.
+
+- Static builds
+  - The Makefile has a `build-static` target (CGO_DISABLED=0) intended for a pure‑Go SQLite driver; the repository does not currently vendor `modernc.org/sqlite`. Treat `build-static` as experimental until the driver swap is wired. Prefer `make build` for now.
+
+- Version metadata
+  - The binary embeds: `main.version`, `main.commit`, `main.date` via `-ldflags`. Use `make build` to ensure values are injected (see `GIT_REV`, `DATE` in Makefile).
+
+- Configuration system (pkg/config)
+  - Default config is embedded from `pkg/config/default_config.toml` and written to `<AppDir>/config.toml` if missing.
+  - Environment variables are supported via Viper with prefix `BLOCO_WALLET`. Dots are converted to underscores.
+    - Example: `BLOCO_WALLET_DATABASE_TYPE=sqlite` overrides `database.type`.
+  - Legacy env vars with prefix `BLOCO_WALLET_` are also recognized for backward compatibility (see `LoadConfig` for the exact set).
+  - App directories are resolved per‑OS (XDG on Linux, `~/Library/Application Support` on macOS, `%AppData%` on Windows). If `app.app_dir` is empty, a platform‑specific default is chosen.
+  - Note: `default_config.toml` comments mention `wallets.db`, but runtime defaults in `config.go` currently resolve to `<app_dir>/bloco.db` if `database_path` is empty. Code wins.
+
+
+## 2) Testing
+
+- Overview
+  - Tests are split across internal packages (`internal/wallet`, `internal/ui`, etc.) and pkg‑level code (`pkg/config`, `pkg/localization`, etc.). Some tests exercise crypto and UI flows and can be slow.
+  - The Makefile provides curated targets that set sane defaults and mitigate macOS CGO noise.
+
+- Quick commands
+  - `make t` or `make test-fast` – Fast dev loop (`go test ./... -short -v`).
+  - `make test` – Full test run with race detector (still optimized parameters).
+  - `make test-production` – Security‑grade parameters via `-tags=production`; much slower, use pre‑release.
+  - `make test-wallet` / `make test-ui` – Scope to wallet or UI packages.
+  - `make cover` / `make bench` – Coverage and benchmarks.
+
+- Parameters and build tags
+  - Development runs prefer faster code paths (primarily via `-short`). Production/security validation uses `-tags=production` to enable heavy KDFs and longer paths.
+  - Historical docs may mention scrypt; current implementation focuses on Argon2 parameters (see `pkg/config.SecurityConfig`). Use `-short` vs `-tags=production` as the effective switch.
+
+- Platform specifics
+  - macOS: CGO linker warnings are benign; Makefile already sets `CGO_LDFLAGS` to use the classic linker.
+  - Ensure CGO toolchains are present (Xcode CLI tools on macOS; gcc on Linux; TDM‑GCC on Windows) if running database‑touching tests.
+
+- Adding new tests
+  - Place `_test.go` next to the code, same package unless you intentionally need black‑box tests with `package xxx_test`.
+  - Prefer table‑driven tests; honor `testing.Short()` for heavy operations.
+  - For security/crypto parametrization, gate expensive variants behind the `production` build tag and/or skip when `testing.Short()` is true.
+  - Use `testify` (already a dependency) when helpful, but keep core logic in standard library if assertions are simple.
+
+- Running subsets
+  - Run a single package: `go test -v ./internal/wallet`
+  - Run by pattern: `go test -run TestNamePattern ./internal/ui -v -short`
+  - CI should prefer Makefile targets to ensure uniform flags and env.
+
+- Simple demo test (verified locally)
+  - We validated the test workflow by adding a temporary, pure‑Go example and running it:
+    - File (temporary): `internal/devexample/demo.go`
+      ```go
+      package devexample
+      func Add(a, b int) int { return a + b }
+      ```
+    - Test: `internal/devexample/demo_test.go`
+      ```go
+      package devexample
+      import "testing"
+      func TestAdd(t *testing.T) {
+          if got := Add(2, 3); got != 5 { t.Fatalf("Add(2,3)=%d, want 5", got) }
+      }
+      ```
+    - Command executed: `go test -v ./internal/devexample`
+    - Result: PASS (confirmed).
+  - The files above were removed after verification as they were only for demonstration.
+
+
+## 3) Additional Development Notes
+
+- Code layout
+  - CLI (Bubble Tea TUI) under `internal/ui` and service logic under `internal/wallet` and `internal/blockchain`.
+  - Configuration and localization live in `pkg/config` and `pkg/localization` respectively. Locales are TOML files in `pkg/localization/locales`.
+
+- Logging
+  - Uses `go.uber.org/zap`. Prefer structured logs in lower layers; UI paths should keep user‑facing messages localized.
+
 - Localization
-  - Initialization: pkg/localization.InitLocalization(cfg) in cmd/blocowallet/main.go after config load.
-  - There is a legacy map pkg/localization.Labels retained for compatibility; do not rely on it unless necessary. Prefer the newer locale-driven APIs where applicable.
+  - Implemented via `github.com/nicksnyder/go-i18n/v2` with TOML resources. Utilities in `pkg/localization` load `language.<lang>.toml` from the configured locale directory and will enumerate all `*.toml` files there.
 
-2. Testing
-- Running tests
-  - Full suite: go test ./...
-    - Current state (verified): some packages pass (internal/storage, internal/ui, pkg/config), while internal/wallet and pkg/localization contain tests that may fail depending on localization message expectations and environment. When iterating quickly, target packages or tests to avoid unrelated failures.
-  - Package subset: go test ./internal/storage ./pkg/config
-  - Single package, verbose: go test -v ./pkg/config
-  - Filter tests by regex: go test ./pkg/localization -run 'TestGetKeystoreErrorMessage|TestFormatKeystoreErrorWithField'
-  - Skip heavy/interactive domains: avoid ./internal/wallet and TUI-centric tests unless you are explicitly working there. You can hone in with -run on specific tests you’re fixing.
-- Coverage and race checks
-  - Coverage: go test -cover ./...
-  - HTML coverage: go test -coverprofile=coverage.out ./... && go tool cover -html=coverage.out
-  - Race detector (recommended for concurrency/code touching UI or storage): go test -race ./...
-- Test data and fixtures
-  - Keystore fixtures live under internal/wallet/testdata/keystores and keystores/.
-  - Some tests generate additional fixtures (see internal/wallet/testdata/generate_*.go). These are not part of typical runs; do not run generators unless you intend to update fixtures and their README.
-  - When writing new tests that touch keystores or Argon2, keep parameters small (as in default_config.toml) for CI performance.
-- Localization tests
-  - pkg/localization contains helpers like InitCryptoMessagesForTesting() to set up messages deterministically for unit tests.
-  - Be aware: message expectations are language-specific and some tests expect exact English strings or key passthrough semantics for unknown keys. Align your expectations or initialize the locale appropriately in your tests before assertions.
-- UI/TUI tests
-  - internal/ui tests validate network and fetch behaviors and typically run non-interactively. TUI-fullscreen behavior is only in the main program; tests should avoid invoking interactive TUI. If you add tests here, keep them deterministic and avoid sleeping on real network calls—mock or stub where possible.
-- Database tests
-  - internal/storage tests use SQLite (via GORM). If you encounter CGO issues locally, ensure your toolchain is set up (see CGO note above). To speed up, you can direct tests to use an in-memory DSN like ":memory:" when authoring new tests.
+- Makefile utilities
+  - `make fmt`, `make vet`, `make lint` (uses `golangci-lint` if present). `make mod` to tidy/download modules.
 
-2.1 Demonstration: Adding and running a new test (verified now)
-- Example file (temporary for demonstration; do not keep in VCS): pkg/config/guidelines_demo_test.go
-  - Contents (essence): construct Config{Fonts: []string{"a","b"}} and assert GetFontsList() returns the same slice.
-- Run the single test:
-  - go test ./pkg/config -run TestGuidelinesDemo -v
-  - Verified result: PASS (0.00s) on current repo state.
-- Clean up: remove the demo test file after use to avoid polluting coverage or CI results.
+- Releasing
+  - Use `make build-all` then `make checksums` (or `make release-prep`). Container images are built with `docker-build`/`docker-push` using `docker buildx`.
 
-3. Development Notes and Conventions
-- Project layout
-  - cmd/blocowallet: CLI entrypoint
-  - internal/wallet: cryptographic operations, keystore import/validation, and wallet service (uses go-ethereum and KDFs). Many integration and debug-focused tests reside here; run selectively.
-  - internal/storage: GORM repository (currently SQLite-only code path enabled).
-  - internal/ui: Bubble Tea model and network fetch helpers used by the TUI.
-  - pkg/config: Configuration loader (viper + embedded default_config.toml). Prefer using LoadConfig(appDir) and letting it materialize ~/.wallets/config.toml.
-  - pkg/localization: Locale handling and crypto/keystore messages. Legacy Labels map exists for backward compatibility.
-  - pkg/logger: Logging plumbing; main currently uses standard log to blocowallet.log.
-- Coding style and quality
-  - Follow standard Go formatting: go fmt ./...
-  - Linting suggestions: go vet ./... and staticcheck ./... (if available locally) before submitting changes.
-  - Keep tests deterministic: avoid real network calls and time-dependent flakiness. Use fixtures and explicit seeds for randomness.
-  - Security and performance in tests: Argon2 parameters are intentionally small in default config for dev/test speed. Do not increase them in unit tests.
-- Configuration ergonomics
-  - Prefer environment variables for ad-hoc overrides during development (e.g., BLOCOWALLET_DATABASE_DSN=":memory:" go test ./internal/storage -v).
-  - Values in default_config.toml use ~/ expansion; test code that relies on paths should avoid hard-coding absolute paths.
-- Versioning in UI
-  - cmd sets a semantic version in localization labels by inspecting build info (debug.ReadBuildInfo). If you need to surface versions in the TUI, route through localization.
+- Known rough edges
+  - Static builds are not fully wired for a pure‑Go SQLite driver; default path requires CGO. Prefer `make build` unless you plan the driver migration.
+  - TESTING.md still references scrypt in places; the current configuration code uses Argon2 parameters. Follow the guidance in this document for test modes.
 
-Appendix: Quick commands
-- Build: go build -o blocowallet ./cmd/blocowallet
-- Run CLI: ./blocowallet (logs to blocowallet.log)
-- Full tests: go test ./... (may include failing suites not under active work)
-- Targeted tests: go test ./internal/storage ./pkg/config
-- Coverage: go test -cover ./...
-- Race: go test -race ./...
-- Demo test (create locally, then remove):
-  - echo 'package config; import "testing"; func TestGuidelinesDemo(t *testing.T){ cfg:=&Config{Fonts:[]string{"a","b"}}; got:=cfg.GetFontsList(); if len(got)!=2||got[0]!="a"||got[1]!="b"{ t.Fatalf("unexpected: %#v", got)}}' > pkg/config/guidelines_demo_test.go
-  - go test ./pkg/config -run TestGuidelinesDemo -v
-  - rm pkg/config/guidelines_demo_test.go
+
+## 4) Quickstart (copy‑paste)
+
+- Build (host platform):
+  - `make build`
+- Run CLI:
+  - `./build/bloco-wallet` (or move into PATH)
+- Fast tests during development:
+  - `make t`
+- Wallet‑only tests:
+  - `make test-wallet`
+- Full security validation:
+  - `make test-production`
+
+
+## 5) Environment Overrides (examples)
+
+- Linux (XDG):
+  - `BLOCO_WALLET_APP_APP_DIR="$XDG_DATA_HOME/bloco" make build`
+- macOS:
+  - `BLOCO_WALLET_DATABASE_TYPE=sqlite make test`
+- Windows (PowerShell):
+  - `$env:BLOCO_WALLET_APP_DATABASE_PATH = "$env:APPDATA\Bloco\bloco.db"; go test ./pkg/config -v`
+
+
+## 6) How to add a new feature safely
+
+1. Write or extend unit tests for the target package; honor `-short` for heavy/crypto paths.
+2. If you need production‑grade KDFs or integration coverage, add `//go:build production` guarded tests/branches.
+3. Run `make t`, then scope deeper with `make test-wallet` or `make test-ui`.
+4. Run `make cover` or `make bench` when optimizing crypto/IO paths.
+5. Build with `make build` and validate the TUI flows.
+
+
+— End —

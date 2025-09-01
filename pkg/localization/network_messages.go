@@ -43,6 +43,10 @@ func DefaultNetworkMessagesEnglish() map[string]string {
 		"rpc_endpoint_tip":              "Use reliable RPC endpoints for better performance",
 		"chainlist_unavailable_warning": "ChainList is unavailable. The network will be added as a custom network.",
 		"network_validation_failed":     "Network validation failed",
+		"network_search_failed":         "Network search failed",
+		"rpc_validation_failed":         "RPC validation failed",
+		"failed_to_get_chain_id_from_rpc": "Failed to get chain ID from RPC",
+		"chain_id_mismatch":             "Chain ID mismatch",
 	}
 }
 
@@ -89,6 +93,10 @@ func DefaultNetworkMessagesPortuguese() map[string]string {
 		"rpc_endpoint_tip":              "Use endpoints RPC confiáveis para melhor desempenho",
 		"chainlist_unavailable_warning": "O ChainList está indisponível. A rede será adicionada como personalizada.",
 		"network_validation_failed":     "Falha na validação da rede",
+		"network_search_failed":         "Falha na busca de redes",
+		"rpc_validation_failed":         "Falha na validação do RPC",
+		"failed_to_get_chain_id_from_rpc": "Falha ao obter ID da cadeia do RPC",
+		"chain_id_mismatch":             "ID da cadeia não corresponde",
 	}
 }
 
@@ -133,5 +141,9 @@ func DefaultNetworkMessagesSpanish() map[string]string {
 		"search_networks_tip":           "Busque redes por nombre y seleccione de las sugerencias",
 		"chain_id_tip":                  "El ID de cadena debe ser único (consulte chainlist.org para referencia)",
 		"rpc_endpoint_tip":              "Use endpoints RPC confiables para un mejor rendimiento",
+		"network_search_failed":         "Búsqueda de redes fallida",
+		"rpc_validation_failed":         "Fallo en la validación de RPC",
+		"failed_to_get_chain_id_from_rpc": "Error al obtener el ID de cadena desde RPC",
+		"chain_id_mismatch":             "El ID de cadena no coincide",
 	}
 }

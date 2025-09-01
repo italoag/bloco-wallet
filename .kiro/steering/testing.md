@@ -13,10 +13,13 @@ inclusion: always
 ## Testing Commands
 ```bash
 # Run all tests
-go test ./...
+make test
 
-# Run tests with coverage
-go test -cover ./...
+# Run tests coverage
+make cover
+
+# Run linter
+make lint
 
 # Run specific package tests
 go test ./internal/wallet/...
@@ -56,3 +59,19 @@ go test -v ./...
 - Verify proper handling of invalid or corrupted keystores
 - Test memory cleanup for sensitive data
 - Validate proper error messages without leaking sensitive information
+
+## General Guidelines
+- Ensure all tests pass before merging changes
+- Use deterministic test data and mocks for reproducible results
+- Write tests before implementing new functionality following the TDD pratices.
+- Test CLI commands manually for user-facing features
+- Use `go test -v ./...` to run tests with verbose output
+- Use `make test` and `make cover` commands for convenience
+- Never commit real private keys or sensitive data to test files
+- Use `make lint` to run linter before committing changes
+- Use `make fmt` to format code before committing changes
+- Use `make generate` to regenerate code before committing changes
+- Use `make clean` to remove generated files before committing changes
+- Use `make clean-all` to remove all generated files before committing changes
+- Use `make clean-all` to remove all generated files before committing changes
+- Use `make clean-all` to remove all generated files before committing changes

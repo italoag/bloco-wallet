@@ -33,25 +33,30 @@ func main() {
 		return
 	}
 
-	// Initialize logger
-	logger, err := logger.NewLogger("info")
-	if err != nil {
-		log.Fatalf("Failed to initialize logger: %v", err)
-	}
-	defer func() {
-		if err := logger.Sync(); err != nil {
-			// Sync errors are usually not critical, log them if needed
-			log.Printf("Logger sync error: %v", err)
-		}
-	}()
-
-	// Initialize configuration
+	// Initialize configuration first to determine application directories
 	configManager := config.NewConfigurationManager()
 	cfg, err := configManager.LoadConfiguration()
 	if err != nil {
 		log.Printf("Failed to load configuration: %v", err)
 		os.Exit(1)
 	}
+
+	// Initialize file-based logger (no terminal output)
+	logDir := filepath.Join(cfg.AppDir, "logs")
+	lgr, err := logger.NewFileLogger(logger.LoggingConfig{
+		LogDir:      logDir,
+		LogLevel:    "info",
+		MaxFileSize: 25,
+		MaxBackups:  3,
+		MaxAge:      14,
+	})
+	if err != nil {
+		// Fall back silently; continue without crashing per requirements
+		lgr = nil
+	}
+	// Provide UI package with file-based logger for debug-only input logs
+	ui.SetLogger(lgr)
+	defer func() { if lgr != nil { _ = lgr.Sync() } }()
 
 	// Initialize localization
 	if err := localization.InitLocalization(cfg); err != nil {
@@ -61,7 +66,7 @@ func main() {
 
 	// Initialize crypto service
 	wallet.InitCryptoService(cfg)
-	logger.Info("Crypto service initialized")
+	lgr.Info("Crypto service initialized")
 
 	// Create wallet repository
 	repo, err := storage.NewWalletRepository(cfg)
@@ -86,13 +91,13 @@ func main() {
 
 	// Initialize wallet service
 	walletService := wallet.NewWalletService(repo, ks)
-	logger.Info("Wallet service initialized")
+	lgr.Info("Wallet service initialized")
 
 	// Initialize and start the TUI application
 	app := ui.NewCLIModel(walletService)
 	p := tea.NewProgram(app, tea.WithAltScreen())
 
-	logger.Info("Starting application")
+	lgr.Info("Starting application")
 	if _, err := p.Run(); err != nil {
 		log.Printf("Application error: %v", err)
 		os.Exit(1)
