@@ -230,7 +230,6 @@ func (s *ChainListService) loadChains() error {
 
 		var chains []ChainInfo
 		if err := json.Unmarshal(bodyBytes, &chains); err != nil {
-			lastErr = err
 			return NewNetworkOperationError("search", "failed to parse ChainList response", fmt.Errorf("%w: %v", ErrChainlistUnavailable, err))
 		}
 
@@ -241,7 +240,7 @@ func (s *ChainListService) loadChains() error {
 	}
 
 	// Exhausted attempts
- return NewNetworkOperationError("search", "unable to fetch network data from ChainList", lastErr)
+	return NewNetworkOperationError("search", "unable to fetch network data from ChainList", lastErr)
 }
 
 // isTransientNetworkError determines whether an error is likely transient

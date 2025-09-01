@@ -56,7 +56,11 @@ func main() {
 	}
 	// Provide UI package with file-based logger for debug-only input logs
 	ui.SetLogger(lgr)
-	defer func() { if lgr != nil { _ = lgr.Sync() } }()
+	defer func() {
+		if lgr != nil {
+			_ = lgr.Sync()
+		}
+	}()
 
 	// Initialize localization
 	if err := localization.InitLocalization(cfg); err != nil {

@@ -4,6 +4,7 @@ import (
 	"blocowallet/internal/constants"
 	"blocowallet/internal/wallet"
 	"blocowallet/pkg/localization"
+	"blocowallet/pkg/logger"
 	"bytes"
 	"fmt"
 	"log"
@@ -111,12 +112,16 @@ func initializeFont(model *CLIModel) error {
 		if os.IsNotExist(err) {
 			err = os.MkdirAll(customFontDir, os.ModePerm)
 			if err != nil {
-				log.Printf("Não foi possível criar o diretório de fontes personalizado: %v\n", err)
+				if uiLogger != nil {
+					uiLogger.Error("Failed to create custom fonts directory", logger.Error(err), logger.String("component", "fonts"), logger.String("dir", customFontDir))
+				}
 				// Continuar com as fontes embutidas
 				customFontDir = ""
 			}
 		} else {
-			log.Printf("Erro ao verificar o diretório de fontes personalizado: %v\n", err)
+			if uiLogger != nil {
+				uiLogger.Warn("Failed to stat custom fonts directory", logger.Error(err), logger.String("component", "fonts"), logger.String("dir", customFontDir))
+			}
 			customFontDir = ""
 		}
 	}
@@ -131,7 +136,9 @@ func initializeFont(model *CLIModel) error {
 	// Carregar nomes das fontes configuradas
 	configuredFontNames, err := loadFontsList(appDir)
 	if err != nil {
-		log.Println("Erro ao carregar a lista de fontes configuradas:", err)
+		if uiLogger != nil {
+			uiLogger.Error("Failed to load configured fonts list", logger.Error(err), logger.String("component", "fonts"))
+		}
 		// Se houver erro, escolher qualquer fonte disponível
 		rand.NewSource(time.Now().UnixNano())
 		selectedFontInfo := availableFonts[rand.Intn(len(availableFonts))]
@@ -140,7 +147,9 @@ func initializeFont(model *CLIModel) error {
 
 	// Se não houver fontes configuradas, escolher qualquer fonte disponível
 	if len(configuredFontNames) == 0 {
-		log.Println("A lista de fontes configuradas está vazia, selecionando aleatoriamente.")
+		if uiLogger != nil {
+			uiLogger.Info("Configured fonts list is empty; selecting randomly", logger.String("component", "fonts"))
+		}
 		rand.NewSource(time.Now().UnixNano())
 		selectedFontInfo := availableFonts[rand.Intn(len(availableFonts))]
 		return loadSelectedFont(model, selectedFontInfo)
@@ -149,7 +158,9 @@ func initializeFont(model *CLIModel) error {
 	// Selecionar uma fonte da lista configurada
 	selectedName, err := selectRandomFont(configuredFontNames)
 	if err != nil {
-		log.Println("Erro ao selecionar uma fonte aleatoriamente:", err)
+		if uiLogger != nil {
+			uiLogger.Error("Failed to randomly select a configured font", logger.Error(err), logger.String("component", "fonts"))
+		}
 		// Selecionar qualquer fonte disponível como fallback
 		rand.NewSource(time.Now().UnixNano())
 		selectedFontInfo := availableFonts[rand.Intn(len(availableFonts))]
@@ -168,7 +179,9 @@ func initializeFont(model *CLIModel) error {
 
 	// Se não encontrada, usar qualquer fonte disponível como fallback
 	if selectedFontInfo == nil {
-		log.Printf("Fonte '%s' não encontrada. Usando uma fonte aleatória como fallback.\n", selectedName)
+		if uiLogger != nil {
+			uiLogger.Warn("Configured font not found; using random fallback", logger.String("component", "fonts"), logger.String("selected_name", selectedName))
+		}
 		rand.NewSource(time.Now().UnixNano())
 		selectedFontInfo = availableFonts[rand.Intn(len(availableFonts))]
 	}
@@ -181,12 +194,16 @@ func loadSelectedFont(model *CLIModel, fontInfo *tdf.FontInfo) error {
 	// Carregar a fonte selecionada
 	fontFile, err := tdf.LoadFont(fontInfo)
 	if err != nil {
-		log.Println("Erro ao carregar a fonte:", err)
+		if uiLogger != nil {
+			uiLogger.Error("Failed to load font", logger.Error(err), logger.String("component", "fonts"), logger.String("file", fontInfo.File))
+		}
 		return errors.Wrap(err, 0)
 	}
 
 	if len(fontFile.Fonts) == 0 {
-		log.Printf("Nenhuma fonte carregada de '%s'\n", fontInfo.File)
+		if uiLogger != nil {
+			uiLogger.Warn("No fonts loaded from file", logger.String("component", "fonts"), logger.String("file", fontInfo.File))
+		}
 		return errors.New("nenhuma fonte carregada")
 	}
 
@@ -194,7 +211,9 @@ func loadSelectedFont(model *CLIModel, fontInfo *tdf.FontInfo) error {
 	model.selectedFont = &fontFile.Fonts[0]
 	model.fontInfo = fontInfo
 
-	log.Printf("Fonte carregada com sucesso: %s\n", fontInfo.File)
+	if uiLogger != nil {
+		uiLogger.Info("Font loaded successfully", logger.String("component", "fonts"), logger.String("file", fontInfo.File))
+	}
 	return nil
 }
 

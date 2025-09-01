@@ -414,3 +414,15 @@ other = "Falha ao obter ID da cadeia do RPC"
 
 [chain_id_mismatch]
 other = "ID da cadeia não corresponde"
+
+[network_search_failed_guidance]
+other = "Verifique sua conexão com a internet e tente novamente."
+
+[rpc_validation_failed_guidance]
+other = "Verifique se a URL do RPC está correta e acessível."
+
+[network_selection_failed]
+other = "Falha ao selecionar a rede"
+
+[operation_failed_generic]
+other = "Falha na operação"

@@ -2,7 +2,7 @@
 
 ## Introduction
 
-This feature addresses critical issues with the network addition functionality in BLOCO Wallet Manager, specifically focusing on input handling problems on ARM64 MacBook systems, error handling during network selection, and proper logging configuration to prevent log messages from appearing in the terminal interface.
+This feature addresses critical issues with the network addition functionality in BLOCO Wallet Manager, specifically focusing on input handling problems detected on ARM64 MacBook systems, error handling during network selection, and proper logging configuration to prevent log messages from appearing in the terminal interface.
 
 ## Requirements
 

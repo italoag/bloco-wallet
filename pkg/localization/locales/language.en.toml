@@ -414,3 +414,15 @@ other = "Failed to get chain ID from RPC"
 
 [chain_id_mismatch]
 other = "Chain ID mismatch"
+
+[network_search_failed_guidance]
+other = "Please check your internet connection and try again."
+
+[rpc_validation_failed_guidance]
+other = "Verify the RPC URL is correct and reachable."
+
+[network_selection_failed]
+other = "Network selection failed"
+
+[operation_failed_generic]
+other = "Operation failed"

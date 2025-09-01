@@ -124,11 +124,11 @@ func NewFileLogger(c LoggingConfig) (Logger, error) {
 }
 
 // levelRange enables a range of levels
- type levelRange struct{ min, max zapcore.Level }
+type levelRange struct{ min, max zapcore.Level }
 
- func (l levelRange) Enabled(level zapcore.Level) bool {
-     return level >= l.min && level <= l.max
- }
+func (l levelRange) Enabled(level zapcore.Level) bool {
+	return level >= l.min && level <= l.max
+}
 
 // Info logs an informational message
 func (z *zapLogger) Info(msg string, fields ...zap.Field) {

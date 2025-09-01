@@ -16,7 +16,7 @@ BUILD_PLATFORMS ?= linux/amd64,linux/arm64
 
 # macOS CGO Linker Fix
 ifeq ($(shell uname), Darwin)
-CGO_LDFLAGS     ?= -Wl,-ld_classic
+CGO_LDFLAGS     ?= -Wl,-w
 else
 CGO_LDFLAGS     ?=
 endif

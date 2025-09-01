@@ -329,58 +329,58 @@ func (c *AddNetworkComponent) Update(msg tea.Msg) (*AddNetworkComponent, tea.Cmd
 		c.loadingSuggestions = false
 		c.adding = false
 
-		case tea.KeyMsg:
-			// Debug log removed
+	case tea.KeyMsg:
+		// Debug log removed
 
-			// Global key handling for navigation and submission
-			switch msg.String() {
-			case "esc":
-				return c, func() tea.Msg { return BackToNetworkMenuMsg{} }
-			case "tab":
-				c.nextInput()
-				return c, nil
-			case "shift+tab":
-				c.prevInput()
-				return c, nil
-			case "enter":
-				if c.isSearchFocused && len(c.suggestionList.Items()) > 0 {
-					if c.selectedSuggestion < 0 {
-						c.selectedSuggestion = 0
-						c.suggestionList.Select(0)
-					}
-					item := c.suggestionList.SelectedItem().(networkSuggestionItem)
-					return c, c.fetchChainInfoCmd(item.suggestion)
+		// Global key handling for navigation and submission
+		switch msg.String() {
+		case "esc":
+			return c, func() tea.Msg { return BackToNetworkMenuMsg{} }
+		case "tab":
+			c.nextInput()
+			return c, nil
+		case "shift+tab":
+			c.prevInput()
+			return c, nil
+		case "enter":
+			if c.isSearchFocused && len(c.suggestionList.Items()) > 0 {
+				if c.selectedSuggestion < 0 {
+					c.selectedSuggestion = 0
+					c.suggestionList.Select(0)
 				}
-				if !c.isSearchFocused && c.validateInputs() {
-					c.adding = true
-					return c, func() tea.Msg {
-						rpcURL := c.GetRPCEndpoint()
- 					if err := c.chainListService.ValidateRPCEndpoint(rpcURL); err != nil {
- 						return errorMsg(c.generateErrorMessage(err, "validate"))
- 					}
- 					chainIDStr := c.chainIDInput.Value()
- 					expectedChainID, err := strconv.ParseInt(chainIDStr, 10, 64)
- 					if err != nil {
- 						return errorMsg(localization.Labels["invalid_chain_id"])
- 					}
- 					actualChainID, err := c.chainListService.GetChainIDFromRPC(rpcURL)
- 					if err != nil {
- 						return errorMsg(c.generateErrorMessage(err, "validate"))
- 					}
- 					if int64(actualChainID) != expectedChainID {
- 						return errorMsg(fmt.Sprintf("%s: expected %d, got %d", localization.Labels["chain_id_mismatch"], expectedChainID, actualChainID))
- 					}
-						return AddNetworkRequestMsg{
-							Name:        c.GetNetworkName(),
-							ChainID:     c.chainIDInput.Value(),
-							Symbol:      c.GetSymbol(),
-							RPCEndpoint: c.GetRPCEndpoint(),
-						}
+				item := c.suggestionList.SelectedItem().(networkSuggestionItem)
+				return c, c.fetchChainInfoCmd(item.suggestion)
+			}
+			if !c.isSearchFocused && c.validateInputs() {
+				c.adding = true
+				return c, func() tea.Msg {
+					rpcURL := c.GetRPCEndpoint()
+					if err := c.chainListService.ValidateRPCEndpoint(rpcURL); err != nil {
+						return errorMsg(c.generateErrorMessage(err, "validate"))
+					}
+					chainIDStr := c.chainIDInput.Value()
+					expectedChainID, err := strconv.ParseInt(chainIDStr, 10, 64)
+					if err != nil {
+						return errorMsg(localization.Labels["invalid_chain_id"])
+					}
+					actualChainID, err := c.chainListService.GetChainIDFromRPC(rpcURL)
+					if err != nil {
+						return errorMsg(c.generateErrorMessage(err, "validate"))
+					}
+					if int64(actualChainID) != expectedChainID {
+						return errorMsg(fmt.Sprintf("%s: expected %d, got %d", localization.Labels["chain_id_mismatch"], expectedChainID, actualChainID))
+					}
+					return AddNetworkRequestMsg{
+						Name:        c.GetNetworkName(),
+						ChainID:     c.chainIDInput.Value(),
+						Symbol:      c.GetSymbol(),
+						RPCEndpoint: c.GetRPCEndpoint(),
 					}
 				}
 			}
+		}
 
-			if c.isSearchFocused && len(c.suggestions) > 0 {
+		if c.isSearchFocused {
 			switch msg.String() {
 			case "up", "down":
 				// Debug log removed
@@ -562,6 +562,24 @@ func (c *AddNetworkComponent) Update(msg tea.Msg) (*AddNetworkComponent, tea.Cmd
 			}
 		}
 
+		// Ensure non-search fields also receive input updates
+		if !c.isSearchFocused {
+			var cmd tea.Cmd
+			switch c.focusIndex {
+			case 1:
+				c.nameInput, cmd = c.nameInput.Update(msg)
+			case 2:
+				c.chainIDInput, cmd = c.chainIDInput.Update(msg)
+			case 3:
+				c.symbolInput, cmd = c.symbolInput.Update(msg)
+			case 4:
+				c.rpcEndpointInput, cmd = c.rpcEndpointInput.Update(msg)
+			default:
+				c.searchInput, cmd = c.searchInput.Update(msg)
+			}
+			cmds = append(cmds, cmd)
+		}
+
 	}
 
 	return c, tea.Batch(cmds...)
@@ -668,16 +686,24 @@ func (c *AddNetworkComponent) generateErrorMessage(err error, operation string) 
 
 	switch operation {
 	case "search":
-		if detail == "" { detail = localization.Labels["network_search_failed"] }
-		return fmt.Sprintf("%s: %s. %s", localization.Labels["network_search_failed"], detail, localization.Labels["network_search_failed_guidance"]) 
+		if detail == "" {
+			detail = localization.Labels["network_search_failed"]
+		}
+		return fmt.Sprintf("%s: %s. %s", localization.Labels["network_search_failed"], detail, localization.Labels["network_search_failed_guidance"])
 	case "validate":
-		if detail == "" { detail = localization.Labels["rpc_validation_failed"] }
-		return fmt.Sprintf("%s: %s. %s", localization.Labels["rpc_validation_failed"], detail, localization.Labels["rpc_validation_failed_guidance"]) 
+		if detail == "" {
+			detail = localization.Labels["rpc_validation_failed"]
+		}
+		return fmt.Sprintf("%s: %s. %s", localization.Labels["rpc_validation_failed"], detail, localization.Labels["rpc_validation_failed_guidance"])
 	case "select":
-		if detail == "" { detail = localization.Labels["network_selection_failed"] }
+		if detail == "" {
+			detail = localization.Labels["network_selection_failed"]
+		}
 		return fmt.Sprintf("%s: %s", localization.Labels["network_selection_failed"], detail)
 	default:
-		if detail == "" { detail = localization.Labels["operation_failed_generic"] }
+		if detail == "" {
+			detail = localization.Labels["operation_failed_generic"]
+		}
 		return fmt.Sprintf("%s: %s", localization.Labels["operation_failed_generic"], detail)
 	}
 }
@@ -820,7 +846,7 @@ func (c *AddNetworkComponent) View() string {
 		b.WriteString(loadingStyle.Render("⏳ " + localization.Labels["adding_network"] + "..."))
 	} else if c.err != nil {
 		b.WriteString("\n")
- 	b.WriteString(errorStyle.Render("❌ " + localization.Labels["error_title"] + ": " + c.err.Error()))
+		b.WriteString(errorStyle.Render("❌ " + localization.Labels["error_title"] + ": " + c.err.Error()))
 	}
 
 	// Instructions
