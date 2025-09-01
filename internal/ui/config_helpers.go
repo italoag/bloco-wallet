@@ -107,5 +107,3 @@ func loadNetworksWithManager() (map[string]config.Network, error) {
 	nm := getNetworkManager()
 	return nm.LoadNetworks()
 }
-
-

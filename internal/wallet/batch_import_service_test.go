@@ -476,7 +476,7 @@ func TestImportBatchChannelCommunication(t *testing.T) {
 	var finalProgress ImportProgress
 	progressReceived := false
 
-	outerLoop:
+outerLoop:
 	for {
 		select {
 		case progress, ok := <-progressChan:
