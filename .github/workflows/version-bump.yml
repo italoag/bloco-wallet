@@ -1,0 +1,104 @@
+name: Version Bump
+
+on:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: write
+
+jobs:
+  bump-version:
+    name: Bump and Tag Version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Skip if bot or release commit
+        run: |
+          if [ "${{ github.actor }}" = "github-actions[bot]" ]; then
+            echo "Skip: triggered by bot"; exit 0; fi
+          last_msg=$(git log -1 --pretty=%s)
+          if echo "$last_msg" | grep -qi "chore(release)\|[skip release]"; then
+            echo "Skip: release commit"; exit 0; fi
+
+      - name: Configure Git EOL
+        run: |
+          git config core.autocrlf false
+          git config core.eol lf
+
+      - name: Determine next version (Conventional Commits)
+        id: semver
+        shell: bash
+        run: |
+          set -euo pipefail
+          last_tag=$(git tag --sort=-version:refname | head -n1)
+          if [[ -z "$last_tag" ]]; then
+            last_tag="v0.1.0"
+          fi
+          echo "Last tag: $last_tag"
+
+          # Collect commit messages since last tag
+          if git rev-parse "$last_tag" >/dev/null 2>&1; then
+            range="$last_tag..HEAD"
+          else
+            range="HEAD"
+          fi
+
+          # Ensure there are commits since last tag; otherwise skip
+          if [ "$range" != "HEAD" ]; then
+            count=$(git rev-list --count $range)
+            if [ "$count" -eq 0 ]; then
+              echo "No commits since $last_tag; skipping"; exit 0
+            fi
+          fi
+
+          log=$(git log --format=%s $range || true)
+          if [ -z "$log" ]; then
+            echo "No conventional commits detected; skipping"; exit 0
+          fi
+
+          bump="patch"
+          # Major if BREAKING CHANGE or ! in type scope (feat!/fix!)
+          if echo "$log" | grep -E "BREAKING CHANGE|!:\s" -q; then
+            bump="major"
+          # Minor if feat
+          elif echo "$log" | grep -E "^feat(\(|:)|^feat!" -q; then
+            bump="minor"
+          else
+            # Patch if fix/perf/refactor/chore/docs etc.
+            if echo "$log" | grep -E "^(fix|perf|refactor|chore|docs)(\(|:)|^fix!" -q; then
+              bump="patch"
+            else
+              bump="patch"
+            fi
+          fi
+
+          # Parse current version numbers
+          ver=${last_tag#v}
+          IFS='.' read -r major minor patch <<<"$ver"
+          case "$bump" in
+            major) major=$((major+1)); minor=0; patch=0;;
+            minor) minor=$((minor+1)); patch=0;;
+            patch) patch=$((patch+1));;
+          esac
+          next="v${major}.${minor}.${patch}"
+          echo "bump=$bump" >> $GITHUB_OUTPUT
+          echo "next=$next" >> $GITHUB_OUTPUT
+          echo "Next version: $next"
+
+      - name: Create and push tag
+        if: steps.semver.outputs.next != ''
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          next=${{ steps.semver.outputs.next }}
+          if git rev-parse "$next" >/dev/null 2>&1; then
+            echo "Tag $next already exists, skipping"
+            exit 0
+          fi
+          git tag -a "$next" -m "chore(release): $next"
+          git push origin "$next"

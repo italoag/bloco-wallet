@@ -40,6 +40,11 @@ jobs:
     - name: Verify dependencies
       run: go mod verify
 
+    - name: Configure Git EOL
+      run: |
+        git config core.autocrlf false
+        git config core.eol lf
+
     - name: Run tests
       env:
         CGO_LDFLAGS: ${{ runner.os == 'macOS' && '-Wl,-ld_classic' || '' }}
@@ -104,11 +109,8 @@ jobs:
     strategy:
       matrix:
         goos: [linux, darwin, windows]
-        goarch: [amd64, arm64]
-        exclude:
-          # Windows ARM64 builds are not commonly needed
-          - goos: windows
-            goarch: arm64
+        goarch: [amd64]
+        exclude: []
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -153,14 +155,14 @@ jobs:
         CGO_ENABLED=0 go build \
           -ldflags="-w -s -X main.version=${VERSION} -X main.commit=${GIT_REV} -X main.date=${BUILD_DATE}" \
           -a -tags=netgo \
-          -o "bloco-wallet-manager-${GOOS}-${GOARCH}${EXT}" \
+          -o "bloco-wallet-${GOOS}-${GOARCH}${EXT}" \
           ./cmd/blocowallet
 
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: bloco-wallet-manager-${{ matrix.goos }}-${{ matrix.goarch }}
-        path: bloco-wallet-manager-*
+        name: bloco-wallet-${{ matrix.goos }}-${{ matrix.goarch }}
+        path: bloco-wallet-*
         retention-days: 30
 
   # Security scan
