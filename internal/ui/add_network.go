@@ -45,7 +45,7 @@ type AddNetworkComponent struct {
 	suggestionList     list.Model // Interactive suggestion list
 	loadingSuggestions bool
 	// lastSearchTerm     string // Currently unused but may be needed for debouncing
-	typingDebounce     time.Time
+	typingDebounce time.Time
 }
 
 // networkSuggestionItem is a wrapper for NetworkSuggestion to implement list.Item
@@ -346,111 +346,111 @@ func (c *AddNetworkComponent) Update(msg tea.Msg) (*AddNetworkComponent, tea.Cmd
 					c.err = errors.New(localization.Labels["searching_networks"]) // temporary status
 					cmds = append(cmds, c.fetchChainInfoCmd(item.suggestion))
 					return c, tea.Batch(cmds...)
-			}
-		}
-
-		// Handle global special keys
-		switch msg.String() {
-		case "esc":
-			return c, func() tea.Msg { return BackToNetworkMenuMsg{} }
-
-		case "enter":
-			// Submit form if not in search mode
-			if !c.isSearchFocused && c.validateInputs() {
-				c.adding = true
-				c.err = fmt.Errorf("validating RPC endpoint")
-
-				return c, func() tea.Msg {
-					// Validate RPC endpoint before submitting
-					rpcURL := c.GetRPCEndpoint()
-					if err := c.chainListService.ValidateRPCEndpoint(rpcURL); err != nil {
-						return errorMsg(fmt.Sprintf("RPC validation failed: %v", err))
-					}
-
-					// Verify chain ID matches
-					chainIDStr := c.chainIDInput.Value()
-					expectedChainID, err := strconv.ParseInt(chainIDStr, 10, 64)
-					if err != nil {
-						return errorMsg("Invalid chain ID format")
-					}
-
-					actualChainID, err := c.chainListService.GetChainIDFromRPC(rpcURL)
-					if err != nil {
-						return errorMsg(fmt.Sprintf("Failed to get chain ID from RPC: %v", err))
-					}
-
-					if int64(actualChainID) != expectedChainID {
-						return errorMsg(fmt.Sprintf("Chain ID mismatch: expected %d, got %d", expectedChainID, actualChainID))
-					}
-
-					return AddNetworkRequestMsg{
-						Name:        c.GetNetworkName(),
-						ChainID:     c.chainIDInput.Value(),
-						Symbol:      c.GetSymbol(),
-						RPCEndpoint: c.GetRPCEndpoint(),
-					}
 				}
 			}
 
-		case "tab":
-			// Move to next input (handled separately if search is focused)
-			if !c.isSearchFocused {
+			// Handle global special keys
+			switch msg.String() {
+			case "esc":
+				return c, func() tea.Msg { return BackToNetworkMenuMsg{} }
+
+			case "enter":
+				// Submit form if not in search mode
+				if !c.isSearchFocused && c.validateInputs() {
+					c.adding = true
+					c.err = fmt.Errorf("validating RPC endpoint")
+
+					return c, func() tea.Msg {
+						// Validate RPC endpoint before submitting
+						rpcURL := c.GetRPCEndpoint()
+						if err := c.chainListService.ValidateRPCEndpoint(rpcURL); err != nil {
+							return errorMsg(fmt.Sprintf("RPC validation failed: %v", err))
+						}
+
+						// Verify chain ID matches
+						chainIDStr := c.chainIDInput.Value()
+						expectedChainID, err := strconv.ParseInt(chainIDStr, 10, 64)
+						if err != nil {
+							return errorMsg("Invalid chain ID format")
+						}
+
+						actualChainID, err := c.chainListService.GetChainIDFromRPC(rpcURL)
+						if err != nil {
+							return errorMsg(fmt.Sprintf("Failed to get chain ID from RPC: %v", err))
+						}
+
+						if int64(actualChainID) != expectedChainID {
+							return errorMsg(fmt.Sprintf("Chain ID mismatch: expected %d, got %d", expectedChainID, actualChainID))
+						}
+
+						return AddNetworkRequestMsg{
+							Name:        c.GetNetworkName(),
+							ChainID:     c.chainIDInput.Value(),
+							Symbol:      c.GetSymbol(),
+							RPCEndpoint: c.GetRPCEndpoint(),
+						}
+					}
+				}
+
+			case "tab":
+				// Move to next input (handled separately if search is focused)
+				if !c.isSearchFocused {
+					// Debug log removed
+					c.nextInput()
+					return c, nil
+				}
+
+			case "shift+tab":
+				// Move to previous input
 				// Debug log removed
-				c.nextInput()
+				c.prevInput()
 				return c, nil
 			}
 
-		case "shift+tab":
-			// Move to previous input
-			// Debug log removed
-			c.prevInput()
-			return c, nil
-		}
-
-		// Handle number key selection for suggestions
-		if msg.Type == tea.KeyRunes && len(msg.Runes) == 1 {
-			key := string(msg.Runes[0])
-			if num, err := strconv.Atoi(key); err == nil && num >= 1 && num <= len(c.suggestions) {
-				c.err = errors.New(localization.Labels["searching_networks"]) // temporary status
-				cmds = append(cmds, c.fetchChainInfoCmd(c.suggestions[num-1]))
-				return c, tea.Batch(cmds...)
-			}
-		}
-
-		// Update the currently focused input
-		var cmd tea.Cmd
-		switch c.focusIndex {
-		case 0: // Search input
-			oldValue := c.searchInput.Value()
-			c.searchInput, cmd = c.searchInput.Update(msg)
-			newValue := c.searchInput.Value()
-			cmds = append(cmds, cmd)
-
-			// Trigger search if value changed
-			if oldValue != newValue {
-				// Auto-search after a short delay
-				c.loadingSuggestions = true
-				c.selectedSuggestion = -1
-				cmds = append(cmds, c.searchNetworks(newValue))
+			// Handle number key selection for suggestions
+			if msg.Type == tea.KeyRunes && len(msg.Runes) == 1 {
+				key := string(msg.Runes[0])
+				if num, err := strconv.Atoi(key); err == nil && num >= 1 && num <= len(c.suggestions) {
+					c.err = errors.New(localization.Labels["searching_networks"]) // temporary status
+					cmds = append(cmds, c.fetchChainInfoCmd(c.suggestions[num-1]))
+					return c, tea.Batch(cmds...)
+				}
 			}
 
-		case 1: // Name input
-			c.nameInput, cmd = c.nameInput.Update(msg)
-			cmds = append(cmds, cmd)
+			// Update the currently focused input
+			var cmd tea.Cmd
+			switch c.focusIndex {
+			case 0: // Search input
+				oldValue := c.searchInput.Value()
+				c.searchInput, cmd = c.searchInput.Update(msg)
+				newValue := c.searchInput.Value()
+				cmds = append(cmds, cmd)
 
-		case 2: // Chain ID input
-			c.chainIDInput, cmd = c.chainIDInput.Update(msg)
-			cmds = append(cmds, cmd)
+				// Trigger search if value changed
+				if oldValue != newValue {
+					// Auto-search after a short delay
+					c.loadingSuggestions = true
+					c.selectedSuggestion = -1
+					cmds = append(cmds, c.searchNetworks(newValue))
+				}
 
-		case 3: // Symbol input
-			c.symbolInput, cmd = c.symbolInput.Update(msg)
-			cmds = append(cmds, cmd)
+			case 1: // Name input
+				c.nameInput, cmd = c.nameInput.Update(msg)
+				cmds = append(cmds, cmd)
 
-		case 4: // RPC endpoint input
-			c.rpcEndpointInput, cmd = c.rpcEndpointInput.Update(msg)
-			cmds = append(cmds, cmd)
+			case 2: // Chain ID input
+				c.chainIDInput, cmd = c.chainIDInput.Update(msg)
+				cmds = append(cmds, cmd)
+
+			case 3: // Symbol input
+				c.symbolInput, cmd = c.symbolInput.Update(msg)
+				cmds = append(cmds, cmd)
+
+			case 4: // RPC endpoint input
+				c.rpcEndpointInput, cmd = c.rpcEndpointInput.Update(msg)
+				cmds = append(cmds, cmd)
+			}
 		}
-	}
 
 	}
 
