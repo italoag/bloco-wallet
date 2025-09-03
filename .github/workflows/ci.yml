@@ -110,7 +110,21 @@ jobs:
     strategy:
       matrix:
         include:
-          # CGO builds for native platforms
+matrix:
+  include:
+    # Add static builds for all release platforms
+    - goos: windows
+      goarch: amd64
+      cgo: "0"
+      static: true
+    - goos: darwin
+      goarch: amd64
+      cgo: "0"
+      static: true
+    - goos: darwin
+      goarch: arm64
+      cgo: "0"
+      static: true
           - goos: linux
             goarch: amd64
             cgo: "1"
