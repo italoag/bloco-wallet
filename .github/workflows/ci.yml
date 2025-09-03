@@ -206,7 +206,12 @@ matrix:
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: bloco-wallet-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.static && '-static' || '' }}
+- name: Upload build artifacts
+  uses: actions/upload-artifact@v4
+  with:
+    name: bloco-wallet-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.static && '-static' || '' }}
+  # Replace with:
+    name: bloco-wallet-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.static && '-static' || '' }}
         path: bloco-wallet-*
         retention-days: 30
 
