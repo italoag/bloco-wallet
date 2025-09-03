@@ -7,7 +7,7 @@ on:
     branches: [ main ]
 
 env:
-  GO_VERSION: '1.25.0'
+  GO_VERSION: '1.23.1'
   GOLANGCI_LINT_VERSION: 'v1.64.8'
 
 permissions:
@@ -110,21 +110,6 @@ jobs:
     strategy:
       matrix:
         include:
-matrix:
-  include:
-    # Add static builds for all release platforms
-    - goos: windows
-      goarch: amd64
-      cgo: "0"
-      static: true
-    - goos: darwin
-      goarch: amd64
-      cgo: "0"
-      static: true
-    - goos: darwin
-      goarch: arm64
-      cgo: "0"
-      static: true
           - goos: linux
             goarch: amd64
             cgo: "1"
@@ -206,12 +191,7 @@ matrix:
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
-- name: Upload build artifacts
-  uses: actions/upload-artifact@v4
-  with:
-    name: bloco-wallet-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.static && '-static' || '' }}
-  # Replace with:
-    name: bloco-wallet-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.static && '-static' || '' }}
+        name: bloco-wallet-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.static && '-static' || '' }}
         path: bloco-wallet-*
         retention-days: 30
 
