@@ -127,7 +127,12 @@ jobs:
         # Create output directory
         mkdir -p dist
         
-        # Build binary
+# Build binary (maintain static linking for releases)
+CGO_ENABLED=0 GOOS=$GOOS GOARCH=$GOARCH go build \
+  -ldflags="-w -s -X main.version=${VERSION} -X main.commit=${GIT_REV} -X main.date=${BUILD_DATE}" \
+  -a -tags=netgo,sqlite_omit_load_extension \
+  -o "${BINARY_NAME}${EXT}" \
+  ./cmd/blocowallet
         CGO_ENABLED=1 GOOS=$GOOS GOARCH=$GOARCH go build \
           -ldflags="-w -s -X main.version=${VERSION} -X main.commit=${GIT_REV} -X main.date=${BUILD_DATE}" \
           -a -tags=netgo \
