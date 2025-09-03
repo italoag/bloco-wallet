@@ -7,7 +7,7 @@ on:
     branches: [ main ]
 
 env:
-  GO_VERSION: '1.24.3'
+  GO_VERSION: '1.25.0'
   GOLANGCI_LINT_VERSION: 'v1.64.8'
 
 permissions:
@@ -109,12 +109,46 @@ jobs:
     needs: [test, lint]
     strategy:
       matrix:
-        goos: [linux, darwin, windows]
-        goarch: [amd64, arm64]
-        exclude:
-          # Windows ARM64 builds are not commonly needed
-          - goos: windows
+        include:
+matrix:
+  include:
+    # Add static builds for all release platforms
+    - goos: windows
+      goarch: amd64
+      cgo: "0"
+      static: true
+    - goos: darwin
+      goarch: amd64
+      cgo: "0"
+      static: true
+    - goos: darwin
+      goarch: arm64
+      cgo: "0"
+      static: true
+          - goos: linux
+            goarch: amd64
+            cgo: "1"
+          - goos: linux
             goarch: arm64
+            cgo: "1"
+          - goos: darwin
+            goarch: amd64
+            cgo: "1"
+          - goos: darwin
+            goarch: arm64
+            cgo: "1"
+          - goos: windows
+            goarch: amd64
+            cgo: "1"
+          # Static builds for containers/cross-platform
+          - goos: linux
+            goarch: amd64
+            cgo: "0"
+            static: true
+          - goos: linux
+            goarch: arm64
+            cgo: "0"
+            static: true
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -143,6 +177,7 @@ jobs:
       env:
         GOOS: ${{ matrix.goos }}
         GOARCH: ${{ matrix.goarch }}
+        CGO_ENABLED: ${{ matrix.cgo }}
       run: |
         # Set version information
         VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "v0.1.0")
@@ -155,17 +190,28 @@ jobs:
           EXT=".exe"
         fi
         
+        # Set binary suffix for static builds
+        SUFFIX=""
+        if [ "${{ matrix.static }}" = "true" ]; then
+          SUFFIX="-static"
+        fi
+        
         # Build binary
-        CGO_ENABLED=0 go build \
+        CGO_ENABLED=${{ matrix.cgo }} go build \
           -ldflags="-w -s -X main.version=${VERSION} -X main.commit=${GIT_REV} -X main.date=${BUILD_DATE}" \
           -a -tags=netgo \
-          -o "bloco-wallet-${GOOS}-${GOARCH}${EXT}" \
+          -o "bloco-wallet-${GOOS}-${GOARCH}${SUFFIX}${EXT}" \
           ./cmd/blocowallet
 
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: bloco-wallet-${{ matrix.goos }}-${{ matrix.goarch }}
+- name: Upload build artifacts
+  uses: actions/upload-artifact@v4
+  with:
+    name: bloco-wallet-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.static && '-static' || '' }}
+  # Replace with:
+    name: bloco-wallet-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.static && '-static' || '' }}
         path: bloco-wallet-*
         retention-days: 30
 
