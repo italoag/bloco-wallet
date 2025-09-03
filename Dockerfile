@@ -21,7 +21,12 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build the application (static build for scratch container)
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
+    go build \
+    -ldflags="-w -s -X main.version=${VERSION} -X main.commit=${GIT_REV} -X main.date=${BUILD_DATE}" \
+    -a -tags=netgo,sqlite_omit_load_extension \
+    -o bloco-wallet-manager \
+    ./cmd/blocowallet
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
     go build \
     -ldflags="-w -s -X main.version=${VERSION} -X main.commit=${GIT_REV} -X main.date=${BUILD_DATE}" \
