@@ -62,7 +62,21 @@ jobs:
           const { data: pr } = await github.rest.pulls.create({
             owner: context.repo.owner,
             repo: context.repo.repo,
-            title: 'Merge develop to main (prioritizing develop)',
+- name: Create Pull Request
+  uses: actions/github-script@v7
+  env:
+    BRANCH_NAME: ${{ env.BRANCH_NAME }}
+  with:
+    script: |
+      const { data: pr } = await github.rest.pulls.create({
+        owner: context.repo.owner,
+        repo: context.repo.repo,
+        title: 'Merge develop to main (prioritizing develop)',
+        head: process.env.BRANCH_NAME,
+        base: 'main',
+        body: `## Merge develop to main...`,
+        draft: false
+      });
             head: process.env.BRANCH_NAME,
             base: 'main',
             body: `## Merge develop to main
