@@ -8,7 +8,7 @@ on:
 
 env:
   GO_VERSION: '1.24.3'
-  GOLANGCI_LINT_VERSION: 'v1.61.0'
+  GOLANGCI_LINT_VERSION: 'v1.62.0'
 
 permissions:
   contents: read
@@ -69,7 +69,6 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
-    continue-on-error: true  # Allow lint to fail temporarily while fixing mock issues
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -100,7 +99,7 @@ jobs:
     - name: Run golangci-lint
       uses: golangci/golangci-lint-action@v6
       with:
-        version: ${{ env.GOLANGCI_LINT_VERSION }}
+        version: latest
         args: --timeout=5m
 
   # Build Job
