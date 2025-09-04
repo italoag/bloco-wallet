@@ -176,6 +176,27 @@ jobs:
         with:
           sarif_file: results.sarif
 
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Check if Trivy SARIF exists
+        run: |
+          if [ ! -f trivy-results.sarif ]; then
+            echo "Trivy SARIF file not found!"
+            exit 1
+          fi
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
       - name: Run govulncheck
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
