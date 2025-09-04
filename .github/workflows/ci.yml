@@ -8,7 +8,7 @@ on:
 
 env:
   GO_VERSION: '1.24.3'
-  GOLANGCI_LINT_VERSION: 'v1.60.1'
+  GOLANGCI_LINT_VERSION: 'v1.64.3'
 
 permissions:
   contents: read
