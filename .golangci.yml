@@ -1,0 +1,142 @@
+# golangci-lint configuration for bloco-wallet project
+# See https://golangci-lint.run/usage/configuration/ for details
+
+run:
+  timeout: 5m
+  go: '1.23.1'
+  modules-download-mode: readonly
+  build-tags:
+    - netgo
+
+output:
+  format: colored-line-number
+  print-issued-lines: true
+  print-linter-name: true
+
+linters-settings:
+  gofmt:
+    simplify: true
+  
+  goimports:
+    local-prefixes: blocowallet
+  
+  govet:
+    check-shadowing: true
+    
+  errcheck:
+    check-type-assertions: true
+    check-blank: true
+    exclude-functions:
+      - fmt.Fprint
+      - fmt.Fprintf
+      - fmt.Fprintln
+      - fmt.Print
+      - fmt.Printf
+      - fmt.Println
+      - (*os.File).Close
+      - (*database/sql.Rows).Close
+  
+  golint:
+    min-confidence: 0.8
+  
+  gocyclo:
+    min-complexity: 15
+  
+  dupl:
+    threshold: 100
+  
+  goconst:
+    min-len: 3
+    min-occurrences: 3
+  
+  unparam:
+    check-exported: false
+  
+  nakedret:
+    max-func-lines: 30
+  
+  prealloc:
+    simple: true
+    range-loops: true
+    for-loops: false
+  
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - experimental
+      - opinionated
+      - performance
+      - style
+    disabled-checks:
+      - dupImport # https://github.com/go-critic/go-critic/issues/845
+      - ifElseChain
+      - octalLiteral
+      - whyNoLint
+      - wrapperFunc
+
+linters:
+  enable:
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - typecheck
+    - unused
+    - gofmt
+    - goimports
+    - golint
+    - gocyclo
+    - dupl
+    - goconst
+    - unconvert
+    - unparam
+    - nakedret
+    - prealloc
+    - gocritic
+    - misspell
+    - exportloopref
+  
+  disable:
+    - deadcode # deprecated
+    - varcheck # deprecated 
+    - structcheck # deprecated
+    - scopelint # deprecated
+
+issues:
+  exclude-rules:
+    # Exclude some linters from running on tests files.
+    - path: _test\.go
+      linters:
+        - gocyclo
+        - errcheck
+        - dupl
+        - gosec
+        
+    # Exclude shadow issues in test files
+    - path: _test\.go
+      text: "shadow"
+      linters:
+        - govet
+        
+    # Exclude known linter issues on third-party imports
+    - path: vendor/
+      linters:
+        - errcheck
+        - gosec
+        - staticcheck
+        
+    # Allow long lines in generated files
+    - path: ".*\\.pb\\.go"
+      linters:
+        - lll
+        
+  exclude-use-default: false
+  max-issues-per-linter: 50
+  max-same-issues: 10
+  new: false
+
+# Custom severity configurations
+severity:
+  default-severity: error
+  case-sensitive: false
