@@ -65,7 +65,7 @@ func TestPasswordPopupDemo_Update_PopupCompleted(t *testing.T) {
 	demo := NewPasswordPopupDemo()
 
 	// Simulate popup completion by setting the popup state
-	demo.popup.Model.SetValue("testpassword")
+	demo.popup.SetValue("testpassword")
 	demo.popup.confirmed = true
 
 	// Update should detect completion
@@ -126,7 +126,7 @@ func TestPasswordPopupDemo_Integration_FullFlow(t *testing.T) {
 	assert.Nil(t, demo.result)
 
 	// Enter password
-	demo.popup.Model.SetValue("integration-test")
+	demo.popup.SetValue("integration-test")
 	model, _ := demo.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	demo = model.(PasswordPopupDemo)
 
