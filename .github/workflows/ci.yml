@@ -8,7 +8,7 @@ on:
 
 env:
   GO_VERSION: '1.24.3'
-  GOLANGCI_LINT_VERSION: 'v1.64.3'
+  GOLANGCI_LINT_VERSION: 'v1.61.0'
 
 permissions:
   contents: read
@@ -57,7 +57,7 @@ jobs:
       run: make cover
 
     - name: Upload coverage reports to Codecov
-      uses: codecov/codecov-action@v4
+      uses: codecov/codecov-action@v5
       with:
         file: ./coverage.out
         flags: unittests
@@ -222,9 +222,9 @@ jobs:
       run: go mod download
 
     - name: Run Gosec Security Scanner
-      run: |
-        go install github.com/securecodewarrior/gosec/v2/cmd/gosec@latest
-        gosec -fmt sarif -out gosec-results.sarif ./...
+      uses: securecodewarrior/github-action-gosec@master
+      with:
+        args: '-fmt sarif -out gosec-results.sarif ./...'
         
     - name: Upload Gosec scan results to GitHub Security tab
       uses: github/codeql-action/upload-sarif@v3
@@ -233,7 +233,7 @@ jobs:
         sarif_file: 'gosec-results.sarif'
         
     - name: Run Trivy vulnerability scanner
-      uses: aquasecurity/trivy-action@master
+      uses: aquasecurity/trivy-action@0.28.0
       with:
         scan-type: 'fs'
         scan-ref: '.'
