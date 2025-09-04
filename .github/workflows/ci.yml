@@ -109,6 +109,8 @@ jobs:
     needs: [test, lint]
     strategy:
       matrix:
+        goos: [linux, darwin, windows]
+        goarch: [amd64, arm64]
         include:
           - goos: linux
             goarch: amd64
@@ -134,6 +136,9 @@ jobs:
             goarch: arm64
             cgo: "0"
             static: true
+        exclude:
+          - goos: windows
+            goarch: arm64
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -222,7 +227,7 @@ jobs:
       run: go mod download
 
     - name: Run Gosec Security Scanner
-      uses: securecodewarrior/github-action-gosec@master
+      uses: securego/gosec@master
       with:
         args: '-fmt sarif -out gosec-results.sarif ./...'
         
@@ -245,3 +250,8 @@ jobs:
       if: always()
       with:
         sarif_file: 'trivy-results.sarif'
+
+    - name: Run govulncheck
+      run: |
+        go install golang.org/x/vuln/cmd/govulncheck@latest
+        govulncheck ./...
