@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -117,7 +118,7 @@ func (s *ChainListService) GetChainInfo(chainID int) (*ChainInfo, error) {
 // ValidateRPCEndpoint checks if an RPC endpoint is accessible
 func (s *ChainListService) ValidateRPCEndpoint(rpcURL string) error {
 	if rpcURL == "" {
-		return fmt.Errorf("RPC URL cannot be empty")
+		return NewNetworkOperationError("validate", "RPC URL cannot be empty", nil)
 	}
 
 	// Create a simple JSON-RPC request to check if the endpoint is alive
@@ -126,17 +127,14 @@ func (s *ChainListService) ValidateRPCEndpoint(rpcURL string) error {
 	resp, err := s.client.Post(rpcURL, "application/json",
 		strings.NewReader(reqBody))
 	if err != nil {
-		return fmt.Errorf("RPC endpoint is not accessible: %w", err)
+		return NewNetworkOperationError("validate", "RPC endpoint is not accessible", err)
 	}
 	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
-			fmt.Printf("Error closing response body: %v\n", err)
-		}
+		_ = Body.Close()
 	}(resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("RPC endpoint returned status: %d", resp.StatusCode)
+		return NewNetworkOperationError("validate", fmt.Sprintf("RPC endpoint returned status: %d", resp.StatusCode), nil)
 	}
 
 	return nil
@@ -149,17 +147,14 @@ func (s *ChainListService) GetChainIDFromRPC(rpcURL string) (int, error) {
 	resp, err := s.client.Post(rpcURL, "application/json",
 		strings.NewReader(reqBody))
 	if err != nil {
-		return 0, fmt.Errorf("failed to call RPC: %w", err)
+		return 0, NewNetworkOperationError("validate", "failed to call RPC", err)
 	}
 	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
-			fmt.Printf("Error closing response body: %v\n", err)
-		}
+		_ = Body.Close()
 	}(resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
-		return 0, fmt.Errorf("RPC call failed with status: %d", resp.StatusCode)
+		return 0, NewNetworkOperationError("validate", fmt.Sprintf("RPC call failed with status: %d", resp.StatusCode), nil)
 	}
 
 	var result struct {
@@ -171,71 +166,108 @@ func (s *ChainListService) GetChainIDFromRPC(rpcURL string) (int, error) {
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return 0, fmt.Errorf("failed to decode response: %w", err)
+		return 0, NewNetworkOperationError("validate", "failed to decode RPC response", err)
 	}
 
 	if result.Error != nil {
-		return 0, fmt.Errorf("RPC error: %s", result.Error.Message)
+		return 0, NewNetworkOperationError("validate", fmt.Sprintf("RPC error: %s", result.Error.Message), nil)
 	}
 
 	// Convert hex chain ID to int
 	chainID, err := strconv.ParseInt(result.Result, 0, 64)
 	if err != nil {
-		return 0, fmt.Errorf("failed to parse chain ID: %w", err)
+		return 0, NewNetworkOperationError("validate", "failed to parse chain ID", err)
 	}
 
 	return int(chainID), nil
 }
 
-// loadChains loads and caches chain data from ChainList API
+// loadChains loads and caches chain data from ChainList API with simple retry/backoff
 func (s *ChainListService) loadChains() error {
 	s.cacheMu.Lock()
 	defer s.cacheMu.Unlock()
 
 	// Check if cache is still valid (24 hours)
 	if time.Now().Before(s.cacheExpiry) && len(s.chains) > 0 {
-		// Debug log removed
 		return nil
 	}
 
-	// Debug log removed
 	url := fmt.Sprintf("%s/rpcs.json", s.baseURL)
-	resp, err := s.client.Get(url)
-	if err != nil {
-		// Debug log removed
-		return fmt.Errorf("%w: failed to fetch chain list: %v", ErrChainlistUnavailable, err)
-	}
-	defer func(Body io.ReadCloser) {
-		err := Body.Close()
+
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		resp, err := s.client.Get(url)
 		if err != nil {
-			// Debug log removed
-			fmt.Printf("Error closing response body: %v\n", err)
+			lastErr = err
+			if attempt < 2 && isTransientNetworkError(err) {
+				time.Sleep(time.Duration(300*(1<<attempt)) * time.Millisecond)
+				continue
+			}
+			return NewNetworkOperationError("search", "failed to fetch chain list", fmt.Errorf("%w: %v", ErrChainlistUnavailable, err))
 		}
-	}(resp.Body)
 
-	if resp.StatusCode != http.StatusOK {
-		// Debug log removed
-		return fmt.Errorf("%w: API request failed with status: %d", ErrChainlistUnavailable, resp.StatusCode)
+		// Ensure body is closed each iteration
+		bodyBytes, readErr := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if readErr != nil {
+			lastErr = readErr
+			if attempt < 2 && isTransientNetworkError(readErr) {
+				time.Sleep(time.Duration(300*(1<<attempt)) * time.Millisecond)
+				continue
+			}
+			return NewNetworkOperationError("search", "failed to read ChainList response", fmt.Errorf("%w: %v", ErrChainlistUnavailable, readErr))
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			lastErr = fmt.Errorf("API request failed with status: %d", resp.StatusCode)
+			// Retry for 5xx errors
+			if attempt < 2 && resp.StatusCode >= 500 {
+				time.Sleep(time.Duration(300*(1<<attempt)) * time.Millisecond)
+				continue
+			}
+			return NewNetworkOperationError("search", "ChainList API error", fmt.Errorf("%w: %v", ErrChainlistUnavailable, lastErr))
+		}
+
+		var chains []ChainInfo
+		if err := json.Unmarshal(bodyBytes, &chains); err != nil {
+			return NewNetworkOperationError("search", "failed to parse ChainList response", fmt.Errorf("%w: %v", ErrChainlistUnavailable, err))
+		}
+
+		// Success: cache and return
+		s.chains = chains
+		s.cacheExpiry = time.Now().Add(24 * time.Hour)
+		return nil
 	}
 
-	// Debug log removed
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		// Debug log removed
-		return fmt.Errorf("%w: failed to read response body: %v", ErrChainlistUnavailable, err)
-	}
+	// Exhausted attempts
+	return NewNetworkOperationError("search", "unable to fetch network data from ChainList", lastErr)
+}
 
-	// Debug log removed
-	var chains []ChainInfo
-	if err := json.Unmarshal(body, &chains); err != nil {
-		// Debug log removed
-		return fmt.Errorf("%w: failed to parse JSON response: %v", ErrChainlistUnavailable, err)
+// isTransientNetworkError determines whether an error is likely transient
+func isTransientNetworkError(err error) bool {
+	if err == nil {
+		return false
 	}
-
-	// Debug log removed
-	s.chains = chains
-	s.cacheExpiry = time.Now().Add(24 * time.Hour)
-	return nil
+	var ne net.Error
+	if errors.As(err, &ne) {
+		if ne.Timeout() {
+			return true
+		}
+		// Temporary() is deprecated in Go 1.20+, but many implementations still provide it
+		type temporary interface{ Temporary() bool }
+		if t, ok := any(ne).(temporary); ok && t.Temporary() {
+			return true
+		}
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	// Fallback heuristic by message substring
+	s := strings.ToLower(err.Error())
+	if strings.Contains(s, "timeout") || strings.Contains(s, "temporar") || strings.Contains(s, "connection reset") || strings.Contains(s, "connection refused") || strings.Contains(s, "econnreset") {
+		return true
+	}
+	return false
 }
 
 // SearchNetworksByName searches for networks by name with fuzzy matching

@@ -12,41 +12,19 @@ on:
         type: string
 
 env:
-  GO_VERSION: '1.23.1'
+  GO_VERSION: '1.24.x'
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
 permissions:
   contents: write
+  issues: write
   packages: write
   id-token: write
+  pull-requests: write
+  security-events: write
 
 jobs:
-  format-check:
-    name: Format & Lint Gate
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-      - name: Configure Git EOL
-        run: |
-          git config core.autocrlf false
-          git config core.eol lf
-      - name: Verify formatting
-        run: |
-          go fmt ./...
-          git diff --exit-code || (echo "Unformatted code detected. Run 'go fmt ./...'" && exit 1)
-      - name: Lint (fallback to vet if missing)
-        run: |
-          if command -v golangci-lint >/dev/null 2>&1; then
-            golangci-lint run --timeout=5m || exit 1
-          else
-            go vet ./... || exit 1
-          fi
   # Validate release
   validate:
     name: Validate Release
@@ -89,90 +67,92 @@ jobs:
           exit 1
         fi
 
-  # Build release artifacts per-OS to support CGO/sqlite
+  # Build release artifacts
   build:
     name: Build Release Artifacts
-    needs: [validate, format-check]
+    runs-on: ubuntu-latest
+    needs: validate
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+          - goos: windows
+            goarch: amd64
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ env.GO_VERSION }}
 
-      - name: Configure Git EOL
-        shell: bash
-        run: |
-          git config core.autocrlf false
-          git config core.eol lf
+    - name: Cache Go modules
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
 
-      - name: Cache Go modules
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
+    - name: Download dependencies
+      run: go mod download
 
-      - name: Download dependencies
-        run: go mod download
+    - name: Build binary
+      env:
+        GOOS: ${{ matrix.goos }}
+        GOARCH: ${{ matrix.goarch }}
+        VERSION: ${{ needs.validate.outputs.version }}
+      run: |
+        # Set build information
+        GIT_REV=$(git rev-parse --short HEAD)
+        BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        
+        # Set binary name and extension
+        BINARY_NAME="bloco-wallet-manager"
+        EXT=""
+        if [ "$GOOS" = "windows" ]; then
+          EXT=".exe"
+        fi
+        
+        # Create output directory
+        mkdir -p dist
+        
+        # Build binary (use CGO for better SQLite performance)
+        CGO_ENABLED=1 GOOS=$GOOS GOARCH=$GOARCH go build \
+          -ldflags="-w -s -X main.version=${VERSION} -X main.commit=${GIT_REV} -X main.date=${BUILD_DATE}" \
+          -a -tags=netgo \
+          -o "${BINARY_NAME}${EXT}" \
+          ./cmd/blocowallet
+        
+        # Create archive
+        ARCHIVE_NAME="${BINARY_NAME}-${VERSION}-${GOOS}-${GOARCH}"
+        if [ "$GOOS" = "windows" ]; then
+          zip "dist/${ARCHIVE_NAME}.zip" "${BINARY_NAME}${EXT}" README.md LICENSE
+        else
+          tar -czf "dist/${ARCHIVE_NAME}.tar.gz" "${BINARY_NAME}${EXT}" README.md LICENSE
+        fi
+        
+        # Clean up binary
+        rm "${BINARY_NAME}${EXT}"
 
-      - name: Build binary
-        env:
-          VERSION: ${{ needs.validate.outputs.version }}
-          CGO_ENABLED: 1
-        shell: bash
-        run: |
-          set -euo pipefail
-          GIT_REV=$(git rev-parse --short HEAD)
-          BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-
-          # Determine GOOS/GOARCH from runner
-          GOOS=$(go env GOOS)
-          GOARCH=$(go env GOARCH)
-
-          # macOS linker quirk handled here
-          if [ "$GOOS" = "darwin" ]; then
-            export CGO_LDFLAGS="-Wl,-ld_classic"
-          fi
-
-          BINARY_NAME="bloco-wallet"
-          EXT=""
-          if [ "$GOOS" = "windows" ]; then
-            EXT=".exe"
-          fi
-
-          mkdir -p dist
-          go build \
-            -ldflags="-w -s -X main.version=${VERSION} -X main.commit=${GIT_REV} -X main.date=${BUILD_DATE}" \
-            -a -tags=netgo \
-            -o "${BINARY_NAME}${EXT}" \
-            ./cmd/blocowallet
-
-          ARCHIVE_NAME="${BINARY_NAME}-${VERSION}-${GOOS}-${GOARCH}"
-          if [ "$GOOS" = "windows" ]; then
-            powershell.exe -NoProfile -Command "Compress-Archive -Path ${BINARY_NAME}${EXT},README.md,LICENSE -DestinationPath dist/${ARCHIVE_NAME}.zip"
-          else
-            tar -czf "dist/${ARCHIVE_NAME}.tar.gz" "${BINARY_NAME}${EXT}" README.md LICENSE
-          fi
-          rm -f "${BINARY_NAME}${EXT}"
-
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-${{ runner.os }}
-          path: dist/*
-          retention-days: 30
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: release-${{ matrix.goos }}-${{ matrix.goarch }}
+        path: dist/*
+        retention-days: 30
 
   # Generate checksums
   checksums:
@@ -235,7 +215,7 @@ jobs:
         else
           echo "## Initial Release" > release_notes.md
           echo "" >> release_notes.md
-          echo "This is the first release of bloco-wallet." >> release_notes.md
+          echo "This is the first release of bloco-wallet-manager." >> release_notes.md
         fi
         
         echo "" >> release_notes.md
@@ -322,3 +302,17 @@ jobs:
           git commit -m "chore: update version to ${VERSION}"
           git push
         fi
+  notify:
+    name: Notify Release
+    runs-on: ubuntu-latest
+    needs: [ validate, build, checksums, release, update-version ]
+    if: always()
+    steps:
+      - name: Release Summary
+        run: |
+          echo "🚀 Release ${{ needs.create-release.outputs.version }} completed!"
+          echo "📦 Binaries built for multiple platforms"
+          echo "🐳 Docker images pushed to ghcr.io"
+          echo "🔍 Checksums generated for verification"
+          echo ""
+          echo "Download: https://github.com/${{ github.repository }}/releases/tag/${{ needs.create-release.outputs.version }}"

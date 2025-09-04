@@ -1,0 +1,110 @@
+name: Merge Develop to Main
+
+on:
+  workflow_dispatch:
+    inputs:
+      force_merge:
+        description: 'Force merge (will prioritize develop branch completely)'
+        required: false
+        default: 'true'
+        type: boolean
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  create-merge-pr:
+    name: Create PR to Merge Develop to Main
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout develop branch
+      uses: actions/checkout@v4
+      with:
+        ref: develop
+        fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Configure git
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+    - name: Create merge branch
+      run: |
+        # Create a temporary branch from develop
+        TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+        BRANCH_NAME="merge/develop-to-main-${TIMESTAMP}"
+        echo "BRANCH_NAME=${BRANCH_NAME}" >> $GITHUB_ENV
+        
+        git checkout -b "${BRANCH_NAME}"
+
+    - name: Merge main with develop strategy (prioritize develop)
+      if: ${{ github.event.inputs.force_merge == 'true' }}
+      run: |
+        # Fetch main branch
+        git fetch origin main
+        
+        # Merge main into our branch, but prioritize develop changes
+        # Using -X ours strategy means in case of conflicts, choose develop version
+        git merge origin/main -X ours --no-ff -m "Merge main into develop (prioritizing develop changes)"
+        
+        echo "Merged main into develop with develop taking priority"
+
+    - name: Push merge branch
+      run: |
+        git push origin "${BRANCH_NAME}"
+
+    - name: Create Pull Request
+      id: create-pr
+      uses: actions/github-script@v7
+      env:
+        BRANCH_NAME: ${{ env.BRANCH_NAME }}
+      with:
+        script: |
+          const { data: pr } = await github.rest.pulls.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            title: 'Merge develop to main (prioritizing develop)',
+            head: process.env.BRANCH_NAME,
+            base: 'main',
+            body: `## Merge develop to main
+
+          This PR merges the develop branch into main with develop taking priority over any conflicting changes in main.
+
+          ### Strategy Used:
+          - ✅ Develop branch changes take complete priority
+          - ✅ Main branch changes are discarded when there are conflicts
+          - ✅ Non-conflicting changes from both branches are preserved
+
+          ### What happens next:
+          1. Review the changes in this PR
+          2. Merge this PR to update main with develop's changes
+          3. Main branch will be updated to match develop's state
+
+          **Auto-generated PR from develop branch merge workflow**`,
+            draft: false
+          });
+          
+          console.log(\`Created PR #\${pr.number}: \${pr.html_url}\`);
+          
+          // Set output for potential follow-up actions
+          core.setOutput('pr-number', pr.number);
+          core.setOutput('pr-url', pr.html_url);
+
+    - name: Add labels to PR
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const prNumber = '${{ steps.create-pr.outputs.pr-number }}';
+          
+          try {
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              labels: ['merge', 'develop-to-main', 'automated']
+            });
+          } catch (error) {
+            console.log('Could not add labels (labels may not exist):', error.message);
+          }

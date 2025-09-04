@@ -101,7 +101,7 @@ jobs:
       if: github.event_name != 'pull_request'
       uses: anchore/sbom-action@v0
       with:
-        image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
+        image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
         format: spdx-json
         output-file: sbom.spdx.json
 
@@ -126,7 +126,7 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
     - name: Extract metadata
       id: meta
@@ -143,7 +143,7 @@ jobs:
     - name: Run Trivy vulnerability scanner
       uses: aquasecurity/trivy-action@master
       with:
-        image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
+        image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
         format: 'sarif'
         output: 'trivy-results.sarif'
         severity: 'CRITICAL,HIGH'
@@ -155,10 +155,10 @@ jobs:
         sarif_file: 'trivy-results.sarif'
 
     - name: Run Grype vulnerability scanner
-      uses: anchore/scan-action@v3
+      uses: anchore/scan-action@v6
       id: grype-scan
       with:
-        image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
+        image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
         severity-cutoff: high
         output-format: sarif
 
@@ -197,17 +197,17 @@ jobs:
     - name: Test container startup
       run: |
         # Test that the container starts and responds to version flag
-        docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }} --version
+        docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest --version
 
     - name: Test container structure
       run: |
         # Test that the container has the expected structure
-        docker run --rm --entrypoint="" ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }} ls -la /
+        docker run --rm --entrypoint="" ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest ls -la /
 
     - name: Inspect container
       run: |
         # Get container information
-        docker image inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
+        docker image inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
 
   # Cleanup old images (only on main branch)
   cleanup:

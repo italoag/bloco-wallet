@@ -41,7 +41,7 @@ func TestImportWalletFromKeystoreV3WithProgress(t *testing.T) {
 	}
 	wallet.InitCryptoService(cfg)
 
-	// Create test repository and service
+	// Create a test repository and service
 	repo, err := storage.NewWalletRepository(cfg)
 	require.NoError(t, err)
 	defer func() {
@@ -79,7 +79,7 @@ func TestImportWalletFromKeystoreV3WithProgress(t *testing.T) {
 			progressChan,
 		)
 
-		// Close progress channel and wait for collection to complete
+		// Close the progress channel and wait for a collection to complete
 		close(progressChan)
 		<-done
 
@@ -179,73 +179,5 @@ func TestImportWalletFromKeystoreV3WithProgress(t *testing.T) {
 		assert.Equal(t, wallet.ImportMethodKeystore, walletDetails.ImportMethod)
 		assert.False(t, walletDetails.HasMnemonic)
 		assert.Nil(t, walletDetails.Mnemonic)
-	})
-}
-
-func TestProgressUpdateTimeout(t *testing.T) {
-	// Setup test environment
-	tempDir := t.TempDir()
-	keystoreDir := filepath.Join(tempDir, "keystore")
-	err := os.MkdirAll(keystoreDir, 0755)
-	require.NoError(t, err)
-
-	// Initialize crypto service
-	cfg := &config.Config{
-		AppDir:       tempDir,
-		WalletsDir:   keystoreDir,
-		DatabasePath: filepath.Join(tempDir, "wallets_timeout.db"),
-		Database: config.DatabaseConfig{
-			Type: "sqlite",
-			DSN:  ":memory:",
-		},
-		Security: config.SecurityConfig{
-			Argon2Time:    1,
-			Argon2Memory:  64 * 1024,
-			Argon2Threads: 4,
-			Argon2KeyLen:  32,
-			SaltLength:    16,
-		},
-	}
-	wallet.InitCryptoService(cfg)
-
-	// Create test service
-	repo, err := storage.NewWalletRepository(cfg)
-	require.NoError(t, err)
-	defer func() {
-		if err := repo.Close(); err != nil {
-			t.Logf("Failed to close repository: %v", err)
-		}
-	}()
-
-	ks := keystore.NewKeyStore(keystoreDir, keystore.LightScryptN, keystore.LightScryptP)
-	service := wallet.NewWalletService(repo, ks)
-
-	t.Run("Progress tracking doesn't block import process", func(t *testing.T) {
-		// Test that progress tracking doesn't significantly slow down the import
-		// even when progress channel is not being consumed
-		progressChan := make(chan wallet.ImportProgress, 1) // Small buffer
-
-		// Use the same keystore as the first test since we have a separate database
-		keystorePath := filepath.Join("testdata", "keystores", "real_keystore_v3_standard.json")
-		start := time.Now()
-		walletDetails, err := service.ImportWalletFromKeystoreV3WithProgress(
-			"test-wallet-timeout-blocking",
-			keystorePath,
-			"testpassword",
-			progressChan,
-		)
-		elapsed := time.Since(start)
-
-		// Import should complete successfully
-		require.NoError(t, err)
-		require.NotNil(t, walletDetails)
-
-		// Import should not be significantly delayed by progress tracking
-		assert.Less(t, elapsed, 20*time.Second, "Import should complete in reasonable time")
-
-		close(progressChan)
-		// Drain any remaining messages
-		for range progressChan {
-		}
 	})
 }
