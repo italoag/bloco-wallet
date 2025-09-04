@@ -77,12 +77,12 @@ jobs:
             
             ### Using Go
             ```bash
-            go install github.com/italoag/ghcloner/cmd/ghclone@${{ steps.version.outputs.version }}
+            go install github.com/italoag/bloco-wallet/cmd/blocowallet@${{ steps.version.outputs.version }}
             ```
             
             ### Docker
             ```bash
-            docker pull ghcr.io/italoag/ghclone:${{ steps.version.outputs.version }}
+            docker pull ghcr.io/italoag/bloco-wallet:${{ steps.version.outputs.version }}
             ```
             
             ## Verification
@@ -126,7 +126,7 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: 0
         run: |
-          export BINARY_NAME=ghclone
+          export BINARY_NAME=blocowallet
           if [ "$GOOS" = "windows" ]; then
             export BINARY_NAME="${BINARY_NAME}.exe"
           fi
@@ -136,18 +136,18 @@ jobs:
           go build \
             -ldflags="-w -s -X main.version=${{ needs.create-release.outputs.version }} -X main.commit=${{ github.sha }} -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             -o dist/${BINARY_NAME} \
-            ./cmd/ghclone
+            ./cmd/blocowallet
 
       - name: Create archive
         run: |
           cd dist
-          BINARY_NAME=ghclone
+          BINARY_NAME=blocowallet
           if [ "${{ matrix.goos }}" = "windows" ]; then
             BINARY_NAME="${BINARY_NAME}.exe"
-            ARCHIVE_NAME="ghclone-${{ needs.create-release.outputs.version }}-${{ matrix.goos }}-${{ matrix.goarch }}.zip"
+            ARCHIVE_NAME="blocowallet-${{ needs.create-release.outputs.version }}-${{ matrix.goos }}-${{ matrix.goarch }}.zip"
             zip "${ARCHIVE_NAME}" "${BINARY_NAME}"
           else
-            ARCHIVE_NAME="ghclone-${{ needs.create-release.outputs.version }}-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz"
+            ARCHIVE_NAME="blocowallet-${{ needs.create-release.outputs.version }}-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz"
             tar -czf "${ARCHIVE_NAME}" "${BINARY_NAME}"
           fi
           echo "ARCHIVE_NAME=${ARCHIVE_NAME}" >> $GITHUB_ENV
@@ -225,7 +225,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository_owner }}/ghclone
+          images: ghcr.io/${{ github.repository_owner }}/bloco-wallet
           tags: |
             type=ref,event=tag
             type=semver,pattern={{version}}
