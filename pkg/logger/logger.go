@@ -71,7 +71,7 @@ func NewFileLogger(c LoggingConfig) (Logger, error) {
 	}
 
 	// Ensure log directory exists
-	if err := os.MkdirAll(c.LogDir, 0755); err != nil {
+	if err := os.MkdirAll(c.LogDir, 0750); err != nil {
 		// Fall back to a no-op logger if we cannot create directory
 		return &zapLogger{logger: zap.NewNop()}, nil
 	}
@@ -80,10 +80,10 @@ func NewFileLogger(c LoggingConfig) (Logger, error) {
 	errPath := filepath.Join(c.LogDir, "error.log")
 
 	// Ensure log files exist so tests and tools can rely on their presence even if empty
-	if f, err := os.OpenFile(appPath, os.O_CREATE|os.O_APPEND, 0644); err == nil {
+	if f, err := os.OpenFile(appPath, os.O_CREATE|os.O_APPEND, 0600); err == nil {
 		_ = f.Close()
 	}
-	if f, err := os.OpenFile(errPath, os.O_CREATE|os.O_APPEND, 0644); err == nil {
+	if f, err := os.OpenFile(errPath, os.O_CREATE|os.O_APPEND, 0600); err == nil {
 		_ = f.Close()
 	}
 
