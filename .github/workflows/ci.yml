@@ -38,6 +38,7 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
+
       - name: Verify dependencies
         run: go mod verify
 
