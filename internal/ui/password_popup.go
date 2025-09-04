@@ -64,7 +64,7 @@ func (m PasswordPopupModel) Update(msg tea.Msg) (PasswordPopupModel, tea.Cmd) {
 			m.cancelled = true
 			return m, tea.Quit
 		case "enter":
-			if len(strings.TrimSpace(m.Value())) > 0 {
+			if len(strings.TrimSpace(m.Model.Value())) > 0 {
 				m.confirmed = true
 				return m, tea.Quit
 			}
@@ -155,7 +155,7 @@ func (m PasswordPopupModel) View() string {
 func (m *PasswordPopupModel) SetError(err string) {
 	m.errorMessage = err
 	m.retryCount++
-	m.SetValue("") // Clear the password input
+	m.Model.SetValue("") // Clear the password input
 }
 
 // GetResult returns the result of the popup interaction
@@ -169,7 +169,7 @@ func (m PasswordPopupModel) GetResult() PasswordPopupResult {
 
 	if m.confirmed {
 		return PasswordPopupResult{
-			Password: strings.TrimSpace(m.Value()),
+			Password: strings.TrimSpace(m.Model.Value()),
 		}
 	}
 
@@ -193,5 +193,5 @@ func (m *PasswordPopupModel) Reset(keystoreFile string) {
 	m.retryCount = 0
 	m.cancelled = false
 	m.confirmed = false
-	m.SetValue("")
+	m.Model.SetValue("")
 }
