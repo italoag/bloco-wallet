@@ -27,7 +27,7 @@ func TestPasswordPopupModel_Update_EnterKey(t *testing.T) {
 	model := NewPasswordPopupModel("test.json", 3)
 
 	// Set a password value
-	model.SetValue("testpassword")
+	model.Model.SetValue("testpassword")
 
 	// Send enter key
 	updatedModel, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
@@ -85,19 +85,19 @@ func TestPasswordPopupModel_Update_CtrlS_Skip(t *testing.T) {
 
 func TestPasswordPopupModel_SetError(t *testing.T) {
 	model := NewPasswordPopupModel("test.json", 3)
-	model.SetValue("wrongpassword")
+	model.Model.SetValue("wrongpassword")
 
 	errorMsg := "Invalid password"
 	model.SetError(errorMsg)
 
 	assert.Equal(t, errorMsg, model.errorMessage)
 	assert.Equal(t, 1, model.retryCount)
-	assert.Empty(t, model.Value()) // Password should be cleared
+	assert.Empty(t, model.Model.Value()) // Password should be cleared
 }
 
 func TestPasswordPopupModel_GetResult_Confirmed(t *testing.T) {
 	model := NewPasswordPopupModel("test.json", 3)
-	model.SetValue("mypassword")
+	model.Model.SetValue("mypassword")
 	model.confirmed = true
 
 	result := model.GetResult()
@@ -173,7 +173,7 @@ func TestPasswordPopupModel_Reset(t *testing.T) {
 	model := NewPasswordPopupModel("old-file.json", 3)
 
 	// Set some state
-	model.SetValue("password")
+	model.Model.SetValue("password")
 	model.SetError("some error")
 	model.cancelled = true
 	model.confirmed = true
@@ -187,7 +187,7 @@ func TestPasswordPopupModel_Reset(t *testing.T) {
 	assert.Equal(t, 0, model.retryCount)
 	assert.False(t, model.cancelled)
 	assert.False(t, model.confirmed)
-	assert.Empty(t, model.Value())
+	assert.Empty(t, model.Model.Value())
 }
 
 func TestPasswordPopupModel_View(t *testing.T) {
@@ -227,7 +227,7 @@ func TestPasswordPopupModel_PasswordMasking(t *testing.T) {
 	model := NewPasswordPopupModel("test.json", 3)
 
 	// Verify that the textinput is configured for password masking
-	assert.Equal(t, '•', model.EchoCharacter)
+	assert.Equal(t, '•', model.Model.EchoCharacter)
 	// Note: EchoMode is not directly accessible, but we can verify the character is set
 }
 
@@ -235,14 +235,14 @@ func TestPasswordPopupModel_CharacterLimit(t *testing.T) {
 	model := NewPasswordPopupModel("test.json", 3)
 
 	// Verify character limit is set
-	assert.Equal(t, 256, model.CharLimit)
+	assert.Equal(t, 256, model.Model.CharLimit)
 }
 
 func TestPasswordPopupModel_Integration_FullFlow(t *testing.T) {
 	model := NewPasswordPopupModel("integration-test.json", 2)
 
 	// Test wrong password flow
-	model.SetValue("wrongpassword")
+	model.Model.SetValue("wrongpassword")
 	model, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	assert.True(t, model.confirmed)
 
@@ -250,10 +250,10 @@ func TestPasswordPopupModel_Integration_FullFlow(t *testing.T) {
 	model.confirmed = false
 	model.SetError("Authentication failed")
 	assert.Equal(t, 1, model.retryCount)
-	assert.Empty(t, model.Value())
+	assert.Empty(t, model.Model.Value())
 
 	// Try again with correct password
-	model.SetValue("correctpassword")
+	model.Model.SetValue("correctpassword")
 	model, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	assert.True(t, model.confirmed)
 
@@ -266,7 +266,7 @@ func TestPasswordPopupModel_Integration_CancelFlow(t *testing.T) {
 	model := NewPasswordPopupModel("cancel-test.json", 3)
 
 	// Start entering password then cancel
-	model.SetValue("partialpassword")
+	model.Model.SetValue("partialpassword")
 	model, _ = model.Update(tea.KeyMsg{Type: tea.KeyEsc})
 
 	assert.True(t, model.cancelled)
