@@ -86,7 +86,7 @@ Always use `make test-fast` or `make t` during development, and `make test-produ
 - **Static builds**: Available with pure Go SQLite driver (`make build-static`)
 
 ### Configuration Files
-- **go.mod**: Go 1.23.1+ required
+- **go.mod**: Go 1.24.3+ required
 - **Makefile**: Comprehensive build automation with cross-platform support
 - **.golangci.yml**: Linting configuration (install with `make deps`)
 

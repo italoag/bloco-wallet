@@ -217,7 +217,7 @@ func NewFileLogger(config LoggingConfig) (Logger, error) {
 
 1. **macOS ARM64**: Full compatibility with Apple Silicon Macs
 2. **macOS Intel**: Maintain compatibility with Intel-based Macs
-3. **Go Version**: Compatible with Go 1.23.1
+3. **Go Version**: Compatible with Go 1.24.3
 4. **Terminal Emulators**: Work with various terminal applications (Terminal.app, iTerm2, etc.)
 
 ## Monitoring and Observability
