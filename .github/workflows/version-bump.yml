@@ -27,7 +27,7 @@ jobs:
       - name: Get last tag
         id: last
         run: |
-          tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.1.0")
           echo "tag=$tag" >> $GITHUB_OUTPUT
 
       - name: Calculate next version
@@ -40,7 +40,7 @@ jobs:
             minor="${BASH_REMATCH[2]}"
             patch="${BASH_REMATCH[3]}"
           else
-            echo "Warning: Tag '$last' does not follow semantic versioning. Defaulting to v0.0.0."
+            echo "Warning: Tag '$last' does not follow semantic versioning. Defaulting to v0.1.0."
             major=0
             minor=0
             patch=0
