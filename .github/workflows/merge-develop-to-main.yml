@@ -23,7 +23,7 @@ jobs:
       with:
         ref: develop
         fetch-depth: 0
-        token: ${{ secrets.GITHUB_TOKEN }}
+        token: ${{ secrets.GH_PAT_TOKEN }}
 
     - name: Configure git
       run: |

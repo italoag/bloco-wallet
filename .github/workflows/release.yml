@@ -17,6 +17,8 @@ permissions:
   contents: write
   issues: write
   pull-requests: write
+  packages: write
+  security-events: write
 
 jobs:
   create-release:
@@ -61,7 +63,7 @@ jobs:
         id: create_release
         uses: actions/create-release@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_PAT_TOKEN }}
         with:
           tag_name: ${{ steps.version.outputs.version }}
           release_name: Release ${{ steps.version.outputs.version }}
@@ -181,7 +183,7 @@ jobs:
           cd checksums
           
           # Get all release assets
-          curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          curl -H "Authorization: token ${{ secrets.GH_PAT_TOKEN }}" \
                -H "Accept: application/vnd.github.v3+json" \
                https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ needs.create-release.outputs.version }} | \
                jq -r '.assets[] | select(.name | test("\\.(tar\\.gz|zip)$")) | .browser_download_url' | \
@@ -196,7 +198,7 @@ jobs:
       - name: Upload checksums
         uses: actions/upload-release-asset@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_PAT_TOKEN }}
         with:
           upload_url: ${{ needs.create-release.outputs.upload_url }}
           asset_path: checksums/checksums.txt
@@ -219,7 +221,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.GH_PAT_TOKEN }}
 
       - name: Extract metadata
         id: meta
