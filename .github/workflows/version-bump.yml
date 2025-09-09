@@ -45,9 +45,13 @@ jobs:
             minor=0
             patch=0
           fi
-          if jq -e '.pull_request.labels | any(.name | test("hotfix"; "i"))' "$GITHUB_EVENT_PATH" > /dev/null; then
+          src_branch=$(jq -r '.pull_request.head.ref' "$GITHUB_EVENT_PATH")
+          echo "Source branch: $src_branch"
+          if [[ "$src_branch" =~ ^(hotfix|bugfix)/ ]]; then
+            # hotfix/* or bugfix/* => patch bump
             patch=$((patch+1))
           else
+            # feature/* and others (default) => minor bump
             minor=$((minor+1))
             patch=0
           fi
