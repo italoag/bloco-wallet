@@ -73,5 +73,3 @@ go test -v ./...
 - Use `make generate` to regenerate code before committing changes
 - Use `make clean` to remove generated files before committing changes
 - Use `make clean-all` to remove all generated files before committing changes
-- Use `make clean-all` to remove all generated files before committing changes
-- Use `make clean-all` to remove all generated files before committing changes

@@ -10,7 +10,7 @@ This document outlines the design for implementing a comprehensive build system 
 - **CI/CD Platform**: GitHub Actions
 - **Container Platform**: Docker with Buildx
 - **Target Platforms**: linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, windows/amd64
-- **Go Version**: 1.23.1 (as specified in go.mod)
+- **Go Version**: 1.24.3 (as specified in go.mod)
 - **Container Registry**: GitHub Container Registry (ghcr.io)
 
 ## Architecture
@@ -200,7 +200,7 @@ graph LR
 
 ```dockerfile
 # Multi-stage build for optimal image size
-FROM --platform=$BUILDPLATFORM golang:1.23.1-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.24.3-alpine AS builder
 FROM scratch AS runtime
 ```
 
@@ -312,7 +312,7 @@ sequenceDiagram
 strategy:
   matrix:
     os: [ubuntu-latest, macos-latest, windows-latest]
-    go-version: [1.23.1]
+    go-version: [1.24.3]
     include:
       - os: ubuntu-latest
         platforms: linux/amd64,linux/arm64

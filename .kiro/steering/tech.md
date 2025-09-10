@@ -1,7 +1,7 @@
 # Technical Stack
 
 ## Programming Language
-- Go (version 1.23.1)
+- Go (version 1.24.3)
 
 ## Key Libraries and Dependencies
 - **Ethereum**: github.com/ethereum/go-ethereum - Core Ethereum functionality and keystore management

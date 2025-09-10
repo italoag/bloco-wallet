@@ -1,6 +1,7 @@
 package wallet
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -79,7 +80,7 @@ func TestTUIExactSimulation(t *testing.T) {
 
 	// This is the exact logic from updateImportWalletPassword:
 	if mnemonic != "" {
-		// Import from keystore file
+		// Import from a keystore file
 		name = "Imported Keystore Wallet"
 		keystorePathFromMnemonic := mnemonic // We stored the keystore path in the mnemonic field
 		fmt.Printf("✅ Using keystore import method\n")
@@ -92,12 +93,13 @@ func TestTUIExactSimulation(t *testing.T) {
 		t.Fatal("Should not reach here in this test")
 	}
 
-	// Step 7: Check result
+	// Step 7: Check a result
 	if err != nil {
 		fmt.Printf("❌ ImportWalletFromKeystore failed: %v\n", err)
 
 		// Detailed error analysis
-		if keystoreErr, ok := err.(*KeystoreImportError); ok {
+		var keystoreErr *KeystoreImportError
+		if errors.As(err, &keystoreErr) {
 			fmt.Printf("   Error Type: %v\n", keystoreErr.Type)
 			fmt.Printf("   Message: %s\n", keystoreErr.Message)
 			fmt.Printf("   Field: %s\n", keystoreErr.Field)
@@ -148,10 +150,10 @@ func TestTUIWithRealApplication(t *testing.T) {
 	InitCryptoService(cfg)
 	fmt.Printf("✅ CryptoService initialized with real config\n")
 
-	// Create keystore like the real application
+	// Create a keystore like the real application
 	ks := keystore.NewKeyStore(keystoreDir, keystore.StandardScryptN, keystore.StandardScryptP)
 
-	// Use mock repository for testing
+	// Use a mock repository for testing
 	repo := &MockWalletRepository{}
 	repo.On("AddWallet", mock.AnythingOfType("*wallet.Wallet")).Return(nil)
 	repo.On("GetAllWallets").Return([]Wallet{}, nil)

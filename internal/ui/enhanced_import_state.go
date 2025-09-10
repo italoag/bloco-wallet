@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"strings"
 	"sync"
@@ -12,6 +11,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"blocowallet/internal/wallet"
+	"blocowallet/pkg/logger"
 )
 
 // ImportPhase represents the current phase of the import process
@@ -476,7 +476,9 @@ func (s *EnhancedImportState) UpdateProgress(progress wallet.ImportProgress) {
 
 	// Validate progress update
 	if err := s.validateProgressUpdate(progress); err != nil {
-		log.Printf("Invalid progress update received: %v", err)
+		if uiLogger != nil {
+			uiLogger.Warn("Invalid import progress update", logger.Error(err))
+		}
 		return
 	}
 

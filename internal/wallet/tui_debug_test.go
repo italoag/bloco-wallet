@@ -1,6 +1,7 @@
 package wallet
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -91,7 +92,8 @@ func TestTUIDebugWithLogging(t *testing.T) {
 			fmt.Printf("❌ ImportWalletFromKeystore failed: %v\n", err)
 
 			// Detailed error analysis
-			if keystoreErr, ok := err.(*KeystoreImportError); ok {
+			var keystoreErr *KeystoreImportError
+			if errors.As(err, &keystoreErr) {
 				fmt.Printf("   Error Type: %v\n", keystoreErr.Type)
 				fmt.Printf("   Message: %s\n", keystoreErr.Message)
 				fmt.Printf("   Field: %s\n", keystoreErr.Field)
@@ -165,7 +167,8 @@ func TestDebugSpecificError(t *testing.T) {
 	_, err = service.ImportWalletFromKeystore("Test Without Crypto", keystorePath, password)
 	if err != nil {
 		fmt.Printf("❌ Expected error without CryptoService: %v\n", err)
-		if keystoreErr, ok := err.(*KeystoreImportError); ok {
+		var keystoreErr *KeystoreImportError
+		if errors.As(err, &keystoreErr) {
 			fmt.Printf("   Error Type: %v\n", keystoreErr.Type)
 			if keystoreErr.Cause != nil {
 				fmt.Printf("   Cause: %v\n", keystoreErr.Cause)

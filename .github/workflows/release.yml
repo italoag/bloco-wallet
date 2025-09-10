@@ -6,69 +6,96 @@ on:
       - 'v*.*.*'
   workflow_dispatch:
     inputs:
-      version:
-        description: 'Version to release (e.g., v1.0.0)'
+      tag:
+        description: 'Tag to release'
         required: true
         type: string
-
 env:
-  GO_VERSION: '1.23.1'
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  GO_VERSION: '1.24.x'
 
 permissions:
   contents: write
+  issues: write
+  pull-requests: write
   packages: write
-  id-token: write
+  security-events: write
 
 jobs:
-  # Validate release
-  validate:
-    name: Validate Release
+  create-release:
+    name: Create Release
     runs-on: ubuntu-latest
     outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
       version: ${{ steps.version.outputs.version }}
-      is_prerelease: ${{ steps.version.outputs.is_prerelease }}
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-    - name: Determine version
-      id: version
-      run: |
-        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-          VERSION="${{ github.event.inputs.version }}"
-        else
-          VERSION="${GITHUB_REF#refs/tags/}"
-        fi
-        
-        echo "version=${VERSION}" >> $GITHUB_OUTPUT
-        
-        # Check if this is a prerelease (contains alpha, beta, rc)
-        if echo "${VERSION}" | grep -qE "(alpha|beta|rc)"; then
-          echo "is_prerelease=true" >> $GITHUB_OUTPUT
-        else
-          echo "is_prerelease=false" >> $GITHUB_OUTPUT
-        fi
-        
-        echo "Version: ${VERSION}"
-        echo "Is prerelease: $(echo "${VERSION}" | grep -qE "(alpha|beta|rc)" && echo "true" || echo "false")"
+      - name: Get version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
 
-    - name: Validate version format
-      run: |
-        VERSION="${{ steps.version.outputs.version }}"
-        if ! echo "${VERSION}" | grep -qE "^v[0-9]+\.[0-9]+\.[0-9]+"; then
-          echo "Error: Invalid version format. Expected vX.Y.Z, got ${VERSION}"
-          exit 1
-        fi
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Generate changelog from git commits since last tag
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [ -n "$PREVIOUS_TAG" ]; then
+            CHANGELOG=$(git log --pretty=format:"- %s (%h)" $PREVIOUS_TAG..HEAD)
+          else
+            CHANGELOG=$(git log --pretty=format:"- %s (%h)" HEAD)
+          fi
+          
+          # Save changelog to file and output
+          echo "$CHANGELOG" > changelog.txt
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
-  # Build release artifacts
-  build:
-    name: Build Release Artifacts
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_PAT_TOKEN }}
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          release_name: Release ${{ steps.version.outputs.version }}
+          body: |
+            ## Changes in ${{ steps.version.outputs.version }}
+            
+            ${{ steps.changelog.outputs.changelog }}
+            
+            ## Installation
+            
+            ### Binary Downloads
+            Download the appropriate binary for your platform from the assets below.
+            
+            ### Using Go
+            ```bash
+            go install github.com/italoag/bloco-wallet/cmd/blocowallet@${{ steps.version.outputs.version }}
+            ```
+            
+            ### Docker
+            ```bash
+            docker pull ghcr.io/italoag/bloco-wallet:${{ steps.version.outputs.version }}
+            ```
+            
+            ## Verification
+            All binaries are signed and checksums are provided for verification.
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.version, '-') }}
+
+  build-and-upload:
+    name: Build and Upload
     runs-on: ubuntu-latest
-    needs: validate
+    needs: create-release
     strategy:
       matrix:
         include:
@@ -82,220 +109,162 @@ jobs:
             goarch: arm64
           - goos: windows
             goarch: amd64
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-    - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version: ${{ env.GO_VERSION }}
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
 
-    - name: Cache Go modules
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.cache/go-build
-          ~/go/pkg/mod
-        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-        restore-keys: |
-          ${{ runner.os }}-go-
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          export BINARY_NAME=blocowallet
+          if [ "$GOOS" = "windows" ]; then
+            export BINARY_NAME="${BINARY_NAME}.exe"
+          fi
+          
+          mkdir -p dist
+          
+          go build \
+            -ldflags="-w -s -X main.version=${{ needs.create-release.outputs.version }} -X main.commit=${{ github.sha }} -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            -o dist/${BINARY_NAME} \
+            ./cmd/blocowallet
 
-    - name: Download dependencies
-      run: go mod download
+      - name: Create archive
+        run: |
+          cd dist
+          BINARY_NAME=blocowallet
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            BINARY_NAME="${BINARY_NAME}.exe"
+            ARCHIVE_NAME="blocowallet-${{ needs.create-release.outputs.version }}-${{ matrix.goos }}-${{ matrix.goarch }}.zip"
+            zip "${ARCHIVE_NAME}" "${BINARY_NAME}"
+          else
+            ARCHIVE_NAME="blocowallet-${{ needs.create-release.outputs.version }}-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz"
+            tar -czf "${ARCHIVE_NAME}" "${BINARY_NAME}"
+          fi
+          echo "ARCHIVE_NAME=${ARCHIVE_NAME}" >> $GITHUB_ENV
+          echo "ARCHIVE_PATH=dist/${ARCHIVE_NAME}" >> $GITHUB_ENV
 
-    - name: Build binary
-      env:
-        GOOS: ${{ matrix.goos }}
-        GOARCH: ${{ matrix.goarch }}
-        VERSION: ${{ needs.validate.outputs.version }}
-      run: |
-        # Set build information
-        GIT_REV=$(git rev-parse --short HEAD)
-        BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-        
-        # Set binary name and extension
-        BINARY_NAME="bloco-wallet-manager"
-        EXT=""
-        if [ "$GOOS" = "windows" ]; then
-          EXT=".exe"
-        fi
-        
-        # Create output directory
-        mkdir -p dist
-        
-        # Build binary
-        CGO_ENABLED=0 GOOS=$GOOS GOARCH=$GOARCH go build \
-          -ldflags="-w -s -X main.version=${VERSION} -X main.commit=${GIT_REV} -X main.date=${BUILD_DATE}" \
-          -a -tags=netgo \
-          -o "${BINARY_NAME}${EXT}" \
-          ./cmd/blocowallet
-        
-        # Create archive
-        ARCHIVE_NAME="${BINARY_NAME}-${VERSION}-${GOOS}-${GOARCH}"
-        if [ "$GOOS" = "windows" ]; then
-          zip "dist/${ARCHIVE_NAME}.zip" "${BINARY_NAME}${EXT}" README.md LICENSE
-        else
-          tar -czf "dist/${ARCHIVE_NAME}.tar.gz" "${BINARY_NAME}${EXT}" README.md LICENSE
-        fi
-        
-        # Clean up binary
-        rm "${BINARY_NAME}${EXT}"
+      - name: Upload Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ${{ env.ARCHIVE_PATH }}
+          asset_name: ${{ env.ARCHIVE_NAME }}
+          asset_content_type: application/octet-stream
 
-    - name: Upload build artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: release-${{ matrix.goos }}-${{ matrix.goarch }}
-        path: dist/*
-        retention-days: 30
-
-  # Generate checksums
-  checksums:
+  generate-checksums:
     name: Generate Checksums
     runs-on: ubuntu-latest
-    needs: [validate, build]
+    needs: [create-release, build-and-upload]
     steps:
-    - name: Download all artifacts
-      uses: actions/download-artifact@v4
-      with:
-        path: artifacts
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
 
-    - name: Collect artifacts and generate checksums
-      run: |
-        mkdir -p dist
-        find artifacts -name "*.tar.gz" -o -name "*.zip" | xargs -I {} cp {} dist/
-        cd dist
-        sha256sum *.tar.gz *.zip > checksums.txt
-        cat checksums.txt
+      - name: Get release assets
+        id: assets
+        run: |
+          # Download release assets to generate checksums
+          mkdir -p checksums
+          cd checksums
+          
+          # Get all release assets
+          curl -H "Authorization: token ${{ secrets.GH_PAT_TOKEN }}" \
+               -H "Accept: application/vnd.github.v3+json" \
+               https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ needs.create-release.outputs.version }} | \
+               jq -r '.assets[] | select(.name | test("\\.(tar\\.gz|zip)$")) | .browser_download_url' | \
+               xargs -I {} wget {}
 
-    - name: Upload checksums
-      uses: actions/upload-artifact@v4
-      with:
-        name: checksums
-        path: dist/checksums.txt
-        retention-days: 30
+      - name: Generate checksums
+        run: |
+          cd checksums
+          sha256sum * > checksums.txt
+          cat checksums.txt
 
-  # Create GitHub release
-  release:
-    name: Create GitHub Release
+      - name: Upload checksums
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_PAT_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: checksums/checksums.txt
+          asset_name: checksums.txt
+          asset_content_type: text/plain
+
+  docker-build:
+    name: Build and Push Docker Image
     runs-on: ubuntu-latest
-    needs: [validate, build, checksums]
+    needs: create-release
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-    - name: Download all artifacts
-      uses: actions/download-artifact@v4
-      with:
-        path: artifacts
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-    - name: Prepare release assets
-      run: |
-        mkdir -p release-assets
-        find artifacts -name "*.tar.gz" -o -name "*.zip" -o -name "checksums.txt" | xargs -I {} cp {} release-assets/
-        ls -la release-assets/
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GH_PAT_TOKEN }}
 
-    - name: Generate release notes
-      id: release_notes
-      run: |
-        VERSION="${{ needs.validate.outputs.version }}"
-        
-        # Get the previous tag
-        PREVIOUS_TAG=$(git tag --sort=-version:refname | grep -v "${VERSION}" | head -n1)
-        
-        if [ -n "$PREVIOUS_TAG" ]; then
-          echo "## Changes since ${PREVIOUS_TAG}" > release_notes.md
-          echo "" >> release_notes.md
-          git log --pretty=format:"- %s" "${PREVIOUS_TAG}..HEAD" >> release_notes.md
-        else
-          echo "## Initial Release" > release_notes.md
-          echo "" >> release_notes.md
-          echo "This is the first release of bloco-wallet-manager." >> release_notes.md
-        fi
-        
-        echo "" >> release_notes.md
-        echo "## Assets" >> release_notes.md
-        echo "" >> release_notes.md
-        echo "### Binaries" >> release_notes.md
-        echo "" >> release_notes.md
-        echo "| Platform | Architecture | Download |" >> release_notes.md
-        echo "|----------|--------------|----------|" >> release_notes.md
-        
-        for file in release-assets/*.tar.gz release-assets/*.zip; do
-          if [ -f "$file" ]; then
-            basename_file=$(basename "$file")
-            if echo "$basename_file" | grep -q "linux-amd64"; then
-              echo "| Linux | x86_64 | [$basename_file]($file) |" >> release_notes.md
-            elif echo "$basename_file" | grep -q "linux-arm64"; then
-              echo "| Linux | ARM64 | [$basename_file]($file) |" >> release_notes.md
-            elif echo "$basename_file" | grep -q "darwin-amd64"; then
-              echo "| macOS | x86_64 | [$basename_file]($file) |" >> release_notes.md
-            elif echo "$basename_file" | grep -q "darwin-arm64"; then
-              echo "| macOS | ARM64 (Apple Silicon) | [$basename_file]($file) |" >> release_notes.md
-            elif echo "$basename_file" | grep -q "windows-amd64"; then
-              echo "| Windows | x86_64 | [$basename_file]($file) |" >> release_notes.md
-            fi
-          fi
-        done
-        
-        echo "" >> release_notes.md
-        echo "### Verification" >> release_notes.md
-        echo "" >> release_notes.md
-        echo "SHA256 checksums are available in [checksums.txt](checksums.txt)." >> release_notes.md
-        echo "" >> release_notes.md
-        echo "To verify a download:" >> release_notes.md
-        echo '```bash' >> release_notes.md
-        echo 'sha256sum -c checksums.txt' >> release_notes.md
-        echo '```' >> release_notes.md
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/bloco-wallet
+          tags: |
+            type=ref,event=tag
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest,enable={{is_default_branch}}
 
-    - name: Create GitHub Release
-      uses: softprops/action-gh-release@v2
-      with:
-        tag_name: ${{ needs.validate.outputs.version }}
-        name: Release ${{ needs.validate.outputs.version }}
-        body_path: release_notes.md
-        files: release-assets/*
-        prerelease: ${{ needs.validate.outputs.is_prerelease == 'true' }}
-        generate_release_notes: false
-        draft: false
+      - name: Set build variables
+        id: vars
+        run: echo "build_date=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
 
-  # Update version in main branch (only for stable releases)
-  update-version:
-    name: Update Version in Main Branch
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ needs.create-release.outputs.version }}
+            GIT_REV=${{ github.sha }}
+            BUILD_DATE=${{ steps.vars.outputs.build_date }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  notify:
+    name: Notify Release
     runs-on: ubuntu-latest
-    needs: [validate, release]
-    if: needs.validate.outputs.is_prerelease == 'false' && github.ref_name == 'main'
+    needs: [create-release, build-and-upload, generate-checksums, docker-build]
+    if: always()
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-        ref: main
-
-    - name: Update version in localization files
-      run: |
-        VERSION="${{ needs.validate.outputs.version }}"
-        # Remove 'v' prefix for version strings
-        VERSION_NUMBER="${VERSION#v}"
-        
-        # Update version in localization files
-        find pkg/localization/locales -name "*.toml" -exec sed -i.bak "s/other = \"[0-9]*\.[0-9]*\.[0-9]*\"/other = \"${VERSION_NUMBER}\"/g" {} \;
-        
-        # Clean up backup files
-        find pkg/localization/locales -name "*.bak" -delete
-
-    - name: Commit version update
-      run: |
-        VERSION="${{ needs.validate.outputs.version }}"
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
-        
-        if git diff --quiet; then
-          echo "No changes to commit"
-        else
-          git add .
-          git commit -m "chore: update version to ${VERSION}"
-          git push
-        fi
+      - name: Release Summary
+        run: |
+          echo "🚀 Release ${{ needs.create-release.outputs.version }} completed!"
+          echo "📦 Binaries built for multiple platforms"
+          echo "🐳 Docker images pushed to ghcr.io"
+          echo "🔍 Checksums generated for verification"
+          echo ""
+          echo "Download: https://github.com/${{ github.repository }}/releases/tag/${{ needs.create-release.outputs.version }}"

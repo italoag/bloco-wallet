@@ -1,5 +1,5 @@
 # Multi-stage build for optimal image size
-FROM --platform=$BUILDPLATFORM golang:1.23.1-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.24.6-alpine AS builder
 
 # Build arguments
 ARG TARGETOS
@@ -21,7 +21,12 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build the application
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
+    go build \
+    -ldflags="-w -s -X main.version=${VERSION} -X main.commit=${GIT_REV} -X main.date=${BUILD_DATE}" \
+    -a -tags=netgo,sqlite_omit_load_extension \
+    -o bloco-wallet-manager \
+    ./cmd/blocowallet
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
     go build \
     -ldflags="-w -s -X main.version=${VERSION} -X main.commit=${GIT_REV} -X main.date=${BUILD_DATE}" \
