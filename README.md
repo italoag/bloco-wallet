@@ -19,8 +19,6 @@
 <img src="https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square" alt="License: MIT">
 </a>
 
-
-
 <br/>
 
 <a href="https://github.com/italoag/bloco-wallet-manager/releases" style="text-decoration: none">
@@ -33,6 +31,19 @@
 
 <br/>
 <br/>
+
+## SonarQube Quality Analysis
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=italoag_bloco-wallet&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=italoag_bloco-wallet)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=italoag_bloco-wallet&metric=coverage)](https://sonarcloud.io/summary/new_code?id=italoag_bloco-wallet)
+[![Duplicated Lines (%)](https://sonarcloud.io/api/project_badges/measure?project=italoag_bloco-wallet&metric=duplicated_lines_density)](https://sonarcloud.io/summary/new_code?id=italoag_bloco-wallet)
+[![Lines of Code](https://sonarcloud.io/api/project_badges/measure?project=italoag_bloco-wallet&metric=ncloc)](https://sonarcloud.io/summary/new_code?id=italoag_bloco-wallet)
+[![Reliability Rating](https://sonarcloud.io/api/project_badges/measure?project=italoag_bloco-wallet&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=italoag_bloco-wallet)
+[![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=italoag_bloco-wallet&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=italoag_bloco-wallet)
+[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=italoag_bloco-wallet&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=italoag_bloco-wallet)
+[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=italoag_bloco-wallet&metric=bugs)](https://sonarcloud.io/summary/new_code?id=italoag_bloco-wallet)
+[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=italoag_bloco-wallet&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=italoag_bloco-wallet)
+[![Technical Debt](https://sonarcloud.io/api/project_badges/measure?project=italoag_bloco-wallet&metric=sqale_index)](https://sonarcloud.io/summary/new_code?id=italoag_bloco-wallet)
+[![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=italoag_bloco-wallet&metric=vulnerabilities)](https://sonarcloud.io/summary/new_code?id=italoag_bloco-wallet)
 
 ### Table of Contents
 - [Introduction](#introduction)
