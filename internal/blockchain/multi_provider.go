@@ -137,7 +137,6 @@ func (mp *MultiProvider) RefreshProviders(cfg *config.Config) {
 				DefaultTimeout,
 				network.Symbol,
 				18, // Most EVM chains use 18 decimals
-				network.Name,
 			)
 			if err != nil {
 				// If we can't connect, use a mock provider

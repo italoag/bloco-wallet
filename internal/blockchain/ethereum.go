@@ -12,26 +12,24 @@ import (
 
 // Ethereum implements wallet.BalanceProvider for Ethereum blockchain
 type Ethereum struct {
-	client    *ethclient.Client
-	timeout   time.Duration
-	symbol    string
-	decimals  int
-	chainName string
+	client   *ethclient.Client
+	timeout  time.Duration
+	symbol   string
+	decimals int
 }
 
 // NewEthereum creates a new Ethereum balance provider
-func NewEthereum(rpcURL string, timeout time.Duration, symbol string, decimals int, chainName string) (*Ethereum, error) {
+func NewEthereum(rpcURL string, timeout time.Duration, symbol string, decimals int) (*Ethereum, error) {
 	client, err := ethclient.Dial(rpcURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to Ethereum node: %w", err)
 	}
 
 	return &Ethereum{
-		client:    client,
-		timeout:   timeout,
-		symbol:    symbol,
-		decimals:  decimals,
-		chainName: chainName,
+		client:   client,
+		timeout:  timeout,
+		symbol:   symbol,
+		decimals: decimals,
 	}, nil
 }
 
@@ -67,11 +65,6 @@ func (e *Ethereum) GetNetworkSymbol() string {
 // GetNetworkDecimals returns the number of decimals for the network's native currency
 func (e *Ethereum) GetNetworkDecimals() int {
 	return e.decimals
-}
-
-// GetChainName returns the name of the blockchain
-func (e *Ethereum) GetChainName() string {
-	return e.chainName
 }
 
 // Mock implementation for testing/development

@@ -34,36 +34,6 @@ type zapLogger struct {
 	logger *zap.Logger
 }
 
-// NewLogger initializes a new stdout/stderr logger based on the provided log level.
-// Kept for backward compatibility; prefer NewFileLogger for the application.
-func NewLogger(level string) (Logger, error) {
-	var cfg zap.Config
-
-	switch level {
-	case "debug":
-		cfg = zap.NewDevelopmentConfig()
-	case "info":
-		cfg = zap.NewProductionConfig()
-		cfg.Level = zap.NewAtomicLevelAt(zapcore.InfoLevel)
-	case "warn":
-		cfg = zap.NewProductionConfig()
-		cfg.Level = zap.NewAtomicLevelAt(zapcore.WarnLevel)
-	case "error":
-		cfg = zap.NewProductionConfig()
-		cfg.Level = zap.NewAtomicLevelAt(zapcore.ErrorLevel)
-	default:
-		cfg = zap.NewProductionConfig()
-		cfg.Level = zap.NewAtomicLevelAt(zapcore.InfoLevel)
-	}
-
-	logger, err := cfg.Build()
-	if err != nil {
-		return nil, err
-	}
-
-	return &zapLogger{logger: logger}, nil
-}
-
 // NewFileLogger configures a zap logger to write to rotating log files only (no stderr)
 func NewFileLogger(c LoggingConfig) (Logger, error) {
 	if c.LogDir == "" {
@@ -182,10 +152,6 @@ func String(key, val string) zap.Field {
 
 func Int(key string, val int) zap.Field {
 	return zap.Int(key, val)
-}
-
-func Any(key string, val interface{}) zap.Field {
-	return zap.Any(key, val)
 }
 
 // internal helpers
