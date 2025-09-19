@@ -154,18 +154,6 @@ The component includes comprehensive tests covering:
 ```bash
 # Run completion component tests
 go test ./internal/ui/ -run "TestImportCompletion" -v
-
-# Run demo tests
-go test ./internal/ui/ -run "TestImportCompletionDemo" -v
-```
-
-### Demo Application
-
-A demo application is available to showcase the completion component:
-
-```go
-demo := NewImportCompletionDemo()
-// Use with BubbleTea program for interactive demonstration
 ```
 
 ## Styling

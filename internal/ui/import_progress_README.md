@@ -257,32 +257,7 @@ func (s *BatchImportService) ImportKeystores(files []string) error {
 Run the unit tests:
 
 ```bash
-go test ./internal/ui/ -run TestImportProgress
-```
-
-### Demo Application
-
-Run the interactive demo:
-
-```go
-package main
-
-import (
-    "log"
-    "your-project/internal/ui"
-)
-
-func main() {
-    if err := ui.RunImportProgressDemo(); err != nil {
-        log.Fatal(err)
-    }
-}
-```
-
-Or run the demo test:
-
-```bash
-go test ./internal/ui/ -run TestImportProgressDemo
+go test ./internal/ui/ -run ImportProgressModel
 ```
 
 ### Manual Testing
