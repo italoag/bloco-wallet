@@ -178,16 +178,13 @@ func TestPasswordFileErrorScenarios(t *testing.T) {
 		err := os.WriteFile(passwordPath, []byte("   \n\t  "), 0644)
 		require.NoError(t, err)
 
-		// Should require manual password due to empty content after trimming
+		// Whitespace is significant password data
 		requiresManual := pfm.RequiresManualPassword(keystorePath)
-		assert.True(t, requiresManual, "Should require manual password for whitespace-only file")
+		assert.False(t, requiresManual)
 
-		// Should fail to get password
+		// The exact password should be returned
 		password, err := pfm.GetPasswordForKeystore(keystorePath)
-		assert.Error(t, err)
-		assert.Empty(t, password)
-		var pwdErr *PasswordFileError
-		assert.ErrorAs(t, err, &pwdErr)
-		assert.Equal(t, PasswordFileEmpty, pwdErr.Type)
+		assert.NoError(t, err)
+		assert.Equal(t, "   \n\t  ", password)
 	})
 }

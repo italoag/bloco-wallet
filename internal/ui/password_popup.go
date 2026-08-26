@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"blocowallet/internal/constants"
+
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -17,6 +19,7 @@ type PasswordPopupModel struct {
 	retryCount   int
 	maxRetries   int
 	cancelled    bool
+	skipped      bool
 	confirmed    bool
 	width        int
 	height       int
@@ -34,7 +37,7 @@ func NewPasswordPopupModel(keystoreFile string, maxRetries int) PasswordPopupMod
 	ti := textinput.New()
 	ti.Placeholder = "Enter keystore password..."
 	ti.Focus()
-	ti.CharLimit = 256
+	ti.CharLimit = constants.PasswordCharLimit
 	ti.Width = 40
 	ti.EchoMode = textinput.EchoPassword
 	ti.EchoCharacter = '•'
@@ -62,16 +65,14 @@ func (m PasswordPopupModel) Update(msg tea.Msg) (PasswordPopupModel, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+c", "esc":
 			m.cancelled = true
-			return m, tea.Quit
+			return m, nil
 		case "enter":
-			if len(strings.TrimSpace(m.Value())) > 0 {
-				m.confirmed = true
-				return m, tea.Quit
-			}
+			m.confirmed = true
+			return m, nil
 		case "ctrl+s":
 			// Skip this file
-			m.cancelled = true
-			return m, tea.Quit
+			m.skipped = true
+			return m, nil
 		}
 	}
 
@@ -160,17 +161,16 @@ func (m *PasswordPopupModel) SetError(err string) {
 
 // GetResult returns the result of the popup interaction
 func (m PasswordPopupModel) GetResult() PasswordPopupResult {
+	if m.skipped {
+		return PasswordPopupResult{Skip: true}
+	}
+
 	if m.cancelled {
-		return PasswordPopupResult{
-			Cancelled: true,
-			Skip:      true,
-		}
+		return PasswordPopupResult{Cancelled: true}
 	}
 
 	if m.confirmed {
-		return PasswordPopupResult{
-			Password: strings.TrimSpace(m.Value()),
-		}
+		return PasswordPopupResult{Password: m.Value()}
 	}
 
 	return PasswordPopupResult{}
@@ -178,7 +178,7 @@ func (m PasswordPopupModel) GetResult() PasswordPopupResult {
 
 // IsCompleted returns true if the popup interaction is complete
 func (m PasswordPopupModel) IsCompleted() bool {
-	return m.cancelled || m.confirmed
+	return m.cancelled || m.skipped || m.confirmed
 }
 
 // HasExceededMaxRetries returns true if maximum retry attempts have been exceeded
@@ -192,6 +192,7 @@ func (m *PasswordPopupModel) Reset(keystoreFile string) {
 	m.errorMessage = ""
 	m.retryCount = 0
 	m.cancelled = false
+	m.skipped = false
 	m.confirmed = false
 	m.SetValue("")
 }

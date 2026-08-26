@@ -146,8 +146,8 @@ func TestIntegration_PrivateKeyImport_NoMnemonic(t *testing.T) {
 	assert.Equal(t, string(wallet.ImportMethodPrivateKey), saved[0].ImportMethod)
 }
 
-// TestIntegration_CoexistSameAddressDifferentMethods verifies that wallets with same address but different import methods can coexist
-func TestIntegration_CoexistSameAddressDifferentMethods(t *testing.T) {
+// TestSameAddressImportNeverOverwritesExistingWallet verifies that wallets with same address but different import methods can coexist
+func TestSameAddressImportNeverOverwritesExistingWallet(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "coexist-integration")
 	require.NoError(t, err)
 	defer func() {
@@ -181,6 +181,8 @@ func TestIntegration_CoexistSameAddressDifferentMethods(t *testing.T) {
 	}()
 
 	ks := keystore.NewKeyStore(keystoreDir, keystore.LightScryptN, keystore.LightScryptP)
+	_, err = ks.NewAccount("IsolationPass1!")
+	require.NoError(t, err)
 	ws := wallet.NewWalletService(repo, ks)
 
 	// Create a source keystore file
@@ -209,6 +211,14 @@ func TestIntegration_CoexistSameAddressDifferentMethods(t *testing.T) {
 	assert.Equal(t, addr1, addr2, "addresses should match")
 	assert.Equal(t, wallet.ImportMethodKeystore, kd.ImportMethod)
 	assert.Equal(t, wallet.ImportMethodPrivateKey, pd.ImportMethod)
+	assert.NotEqual(t, kd.Wallet.KeyStorePath, pd.Wallet.KeyStorePath, "wallet records must not share keystore files")
+
+	loadedKeystore, err := ws.LoadWallet(kd.Wallet, password)
+	require.NoError(t, err)
+	require.NotNil(t, loadedKeystore)
+	loadedPrivateKey, err := ws.LoadWallet(pd.Wallet, "pwd2")
+	require.NoError(t, err)
+	require.NotNil(t, loadedPrivateKey)
 
 	// Verify both persisted
 	if err := repo.Close(); err != nil {

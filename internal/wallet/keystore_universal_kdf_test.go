@@ -18,7 +18,7 @@ import (
 // TestImportWalletFromKeystoreV3WithUniversalKDF tests keystore import with Universal KDF support
 func TestImportWalletFromKeystoreV3WithUniversalKDF(t *testing.T) {
 	// Initialize crypto service for mnemonic encryption with mock config
-	mockConfig := CreateMockConfig()
+	mockConfig := CreateMockConfig(t)
 	InitCryptoService(mockConfig)
 
 	// Create temporary directory for test

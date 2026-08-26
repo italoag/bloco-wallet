@@ -1,10 +1,12 @@
 package ui
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -24,6 +26,8 @@ const (
 	PhaseComplete
 	PhaseCancelled
 )
+
+var nextImportOperationID atomic.Uint64
 
 // String returns a string representation of the import phase
 func (p ImportPhase) String() string {
@@ -48,7 +52,8 @@ type BatchImportServiceInterface interface {
 	CreateImportJobsFromFiles(files []string) ([]wallet.ImportJob, error)
 	CreateImportJobsFromDirectory(dir string) ([]wallet.ImportJob, error)
 	ValidateImportJobs(jobs []wallet.ImportJob) error
-	ImportBatch(
+	ImportBatchContext(
+		ctx context.Context,
 		jobs []wallet.ImportJob,
 		progressChan chan<- wallet.ImportProgress,
 		passwordRequestChan chan<- wallet.PasswordRequest,
@@ -91,6 +96,11 @@ type EnhancedImportState struct {
 
 	// State management
 	mu             sync.RWMutex
+	operationID    uint64
+	importCtx      context.Context
+	importControl  *wallet.ImportControl
+	workerDone     chan struct{}
+	workerResults  []wallet.ImportResult
 	startTime      time.Time
 	completed      bool
 	cancelled      bool
@@ -135,6 +145,12 @@ func (s *EnhancedImportState) GetCurrentPhase() ImportPhase {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.Phase
+}
+
+func (s *EnhancedImportState) GetOperationID() uint64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.operationID
 }
 
 // TransitionToPhase transitions to a new import phase with validation
@@ -192,15 +208,26 @@ func (s *EnhancedImportState) isValidTransition(from, to ImportPhase) bool {
 // setupFileSelectionPhase initializes the file selection phase
 func (s *EnhancedImportState) setupFileSelectionPhase() {
 	// Reset state for new import session
+	if s.importControl != nil {
+		s.importControl.Cancel()
+		s.importControl = nil
+		s.importCtx = nil
+	}
 	s.SelectedFiles = []string{}
 	s.SelectedDir = ""
 	s.ImportJobs = []wallet.ImportJob{}
 	s.Results = []wallet.ImportResult{}
+	s.workerDone = nil
+	s.workerResults = nil
 	s.completed = false
 	s.cancelled = false
 	s.errorMessage = ""
 	s.ShowingPopup = false
 	s.PendingPassword = nil
+	s.PasswordPopup = nil
+	s.progressChan = make(chan wallet.ImportProgress, 500)
+	s.passwordRequestChan = make(chan wallet.PasswordRequest, 1)
+	s.passwordResponseChan = make(chan wallet.PasswordResponse, 1)
 
 	// Reset file picker
 	if s.FilePicker != nil {
@@ -311,6 +338,14 @@ func (s *EnhancedImportState) StartImport() error {
 	}
 
 	s.ImportJobs = jobs
+	s.operationID = nextImportOperationID.Add(1)
+	s.workerDone = make(chan struct{})
+	s.workerResults = nil
+	if s.importControl != nil {
+		s.importControl.Cancel()
+	}
+	s.importControl = wallet.NewImportControl(context.Background())
+	s.importCtx = s.importControl.Context()
 
 	// Transition to importing phase (call internal method to avoid double lock)
 	return s.transitionToPhaseInternal(PhaseImporting)
@@ -344,16 +379,41 @@ func (s *EnhancedImportState) transitionToPhaseInternal(newPhase ImportPhase) er
 
 // ProcessImportBatch processes the import jobs in a separate goroutine
 func (s *EnhancedImportState) ProcessImportBatch() tea.Cmd {
-	return func() tea.Msg {
-		// Process the batch import
-		results := s.BatchService.ImportBatch(
-			s.ImportJobs,
-			s.progressChan,
-			s.passwordRequestChan,
-			s.passwordResponseChan,
-		)
+	resultChan := make(chan tea.Msg, 1)
+	go func() {
+		s.mu.RLock()
+		ctx := s.importCtx
+		operationID := s.operationID
+		workerDone := s.workerDone
+		jobs := append([]wallet.ImportJob(nil), s.ImportJobs...)
+		progressChan := s.progressChan
+		passwordRequestChan := s.passwordRequestChan
+		passwordResponseChan := s.passwordResponseChan
+		service := s.BatchService
+		s.mu.RUnlock()
+		if ctx == nil {
+			ctx = context.Background()
+		}
 
-		return ImportBatchCompleteMsg{Results: results}
+		// Process the batch import
+		var results []wallet.ImportResult
+		defer func() {
+			if recover() != nil {
+				results = []wallet.ImportResult{{Error: fmt.Errorf("batch import failed")}}
+			}
+			s.mu.Lock()
+			s.workerResults = append([]wallet.ImportResult(nil), results...)
+			if workerDone != nil && s.workerDone == workerDone {
+				close(workerDone)
+				s.workerDone = nil
+			}
+			s.mu.Unlock()
+			resultChan <- ImportBatchCompleteMsg{OperationID: operationID, Results: results}
+		}()
+		results = service.ImportBatchContext(ctx, jobs, progressChan, passwordRequestChan, passwordResponseChan)
+	}()
+	return func() tea.Msg {
+		return <-resultChan
 	}
 }
 
@@ -464,8 +524,21 @@ func (s *EnhancedImportState) CompleteImport(results []wallet.ImportResult) erro
 // CancelImport cancels the entire import process
 func (s *EnhancedImportState) CancelImport() error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	control := s.importControl
+	workerDone := s.workerDone
+	s.mu.Unlock()
 
+	if control != nil {
+		control.Cancel()
+	}
+	if workerDone != nil {
+		<-workerDone
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.Results = append([]wallet.ImportResult(nil), s.workerResults...)
+	s.operationID = nextImportOperationID.Add(1)
 	return s.transitionToPhaseInternal(PhaseCancelled)
 }
 
@@ -839,19 +912,28 @@ func (si StateInfo) String() string {
 
 // Custom messages for the BubbleTea update loop
 type ImportBatchCompleteMsg struct {
-	Results []wallet.ImportResult
+	OperationID uint64
+	Results     []wallet.ImportResult
 }
 
 type ImportProgressUpdateMsg struct {
-	Progress wallet.ImportProgress
+	OperationID uint64
+	Progress    wallet.ImportProgress
 }
 
 type PasswordRequestMsg struct {
-	Request wallet.PasswordRequest
+	OperationID uint64
+	Request     wallet.PasswordRequest
 }
 
 // ContinueListeningMsg indicates that listening should continue
-type ContinueListeningMsg struct{}
+type ContinueListeningMsg struct {
+	OperationID uint64
+}
+
+type ContinuePasswordListeningMsg struct {
+	OperationID uint64
+}
 
 // Completion phase messages
 type CompletionUpdateMsg struct {
@@ -903,6 +985,25 @@ func (s *EnhancedImportState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if s.ShowingPopup && s.PasswordPopup != nil {
 			var cmd tea.Cmd
 			*s.PasswordPopup, cmd = s.PasswordPopup.Update(msg)
+			if !s.PasswordPopup.IsCompleted() {
+				return s, cmd
+			}
+
+			result := s.PasswordPopup.GetResult()
+			var err error
+			switch {
+			case result.Skip:
+				err = s.SkipPasswordInput()
+			case result.Cancelled:
+				err = s.CancelPasswordInput()
+			default:
+				err = s.SubmitPassword(result.Password)
+			}
+			if err != nil {
+				s.errorMessage = err.Error()
+				return s, cmd
+			}
+			s.PasswordPopup = nil
 			return s, cmd
 		}
 

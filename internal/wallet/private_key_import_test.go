@@ -13,7 +13,7 @@ import (
 
 // TestImportWalletFromPrivateKey_InvalidFormat ensures invalid private key format is rejected early
 func TestImportWalletFromPrivateKey_InvalidFormat(t *testing.T) {
-	cfg := CreateMockConfig()
+	cfg := CreateMockConfig(t)
 	InitCryptoService(cfg)
 
 	mockRepo := new(MockWalletRepository)
@@ -41,7 +41,7 @@ func TestImportWalletFromPrivateKey_InvalidFormat(t *testing.T) {
 
 // TestImportWalletFromPrivateKey_Duplicate ensures duplicate detection is based on source hash
 func TestImportWalletFromPrivateKey_Duplicate(t *testing.T) {
-	cfg := CreateMockConfig()
+	cfg := CreateMockConfig(t)
 	InitCryptoService(cfg)
 
 	// Generate a valid private key hex
@@ -77,7 +77,7 @@ func TestImportWalletFromPrivateKey_Duplicate(t *testing.T) {
 
 // TestImportWalletFromPrivateKey_Success ensures success path does not create a mnemonic
 func TestImportWalletFromPrivateKey_Success(t *testing.T) {
-	cfg := CreateMockConfig()
+	cfg := CreateMockConfig(t)
 	InitCryptoService(cfg)
 
 	key, err := crypto.GenerateKey()

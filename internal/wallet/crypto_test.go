@@ -4,6 +4,7 @@ import (
 	"blocowallet/pkg/config"
 	"blocowallet/pkg/localization"
 	"encoding/base64"
+	"os"
 	"strings"
 	"testing"
 )
@@ -304,4 +305,54 @@ func TestConfigParamsEffect(t *testing.T) {
 	if err1 == nil && err2 == nil {
 		t.Fatal("Expected at least one decryption to fail with different parameters")
 	}
+}
+
+func TestCryptoHelpersNeverInitializeFromHome(t *testing.T) {
+	previous := defaultCryptoService
+	defaultCryptoService = nil
+	t.Cleanup(func() {
+		defaultCryptoService = previous
+	})
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	_, encryptErr := EncryptMnemonic("mnemonic", "password")
+	_, decryptErr := DecryptMnemonic("ciphertext", "password")
+
+	if encryptErr == nil || decryptErr == nil {
+		t.Fatal("uninitialized crypto helpers must fail closed")
+	}
+	entries, err := os.ReadDir(homeDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatal("crypto helpers wrote to the user home")
+	}
+}
+
+func FuzzDecryptMnemonic(f *testing.F) {
+	localization.InitCryptoMessagesForTesting()
+	service := NewCryptoService(&config.Config{Security: config.SecurityConfig{
+		Argon2Time:    1,
+		Argon2Memory:  8,
+		Argon2Threads: 1,
+		Argon2KeyLen:  32,
+		SaltLength:    16,
+	}})
+	f.Add("", "")
+	f.Add("not-base64", "password")
+	f.Add(base64.StdEncoding.EncodeToString(make([]byte, 48)), "password")
+
+	f.Fuzz(func(t *testing.T, encrypted, password string) {
+		if len(encrypted) > 4096 || len(password) > 1024 {
+			return
+		}
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				t.Fatalf("decrypt panicked: %v", recovered)
+			}
+		}()
+		_, _ = service.DecryptMnemonic(encrypted, password)
+	})
 }

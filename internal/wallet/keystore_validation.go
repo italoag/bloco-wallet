@@ -1,8 +1,10 @@
 package wallet
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math"
 	"regexp"
 	"strings"
 )
@@ -133,6 +135,15 @@ func (kv *KeystoreValidator) ValidateStructure(keystore *KeystoreV3) error {
 		return err
 	}
 
+	if matched, _ := regexp.MatchString(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$`, keystore.ID); !matched {
+		return NewKeystoreImportErrorWithField(
+			ErrorInvalidKeystore,
+			"Invalid or missing keystore id",
+			"id",
+			nil,
+		)
+	}
+
 	// Check address
 	if err := kv.ValidateAddress(keystore.Address); err != nil {
 		return err
@@ -209,6 +220,14 @@ func (kv *KeystoreValidator) ValidateCrypto(crypto *KeystoreV3Crypto) error {
 			nil,
 		)
 	}
+	if crypto.Cipher != "aes-128-ctr" {
+		return NewKeystoreImportErrorWithField(
+			ErrorInvalidKeystore,
+			"Unsupported cipher algorithm",
+			"crypto.cipher",
+			nil,
+		)
+	}
 
 	if crypto.CipherText == "" {
 		return NewKeystoreImportErrorWithField(
@@ -254,9 +273,18 @@ func (kv *KeystoreValidator) ValidateCrypto(crypto *KeystoreV3Crypto) error {
 			nil,
 		)
 	}
+	if err := validateHexLength(crypto.CipherText, 32); err != nil {
+		return NewKeystoreImportErrorWithField(ErrorInvalidKeystore, "Invalid ciphertext", "crypto.ciphertext", err)
+	}
+	if err := validateHexLength(crypto.CipherParams.IV, 16); err != nil {
+		return NewKeystoreImportErrorWithField(ErrorInvalidKeystore, "Invalid cipher IV", "crypto.cipherparams.iv", err)
+	}
+	if err := validateHexLength(crypto.MAC, 32); err != nil {
+		return NewKeystoreImportErrorWithField(ErrorInvalidKeystore, "Invalid MAC", "crypto.mac", err)
+	}
 
 	// Validate KDF parameters based on KDF type
-	switch strings.ToLower(crypto.KDF) {
+	switch crypto.KDF {
 	case "scrypt":
 		return kv.validateScryptParams(crypto.KDFParams)
 	case "pbkdf2":
@@ -296,7 +324,28 @@ func (kv *KeystoreValidator) validateScryptParams(params any) error {
 			)
 		}
 	}
-
+	dklen, err := strictJSONInteger(paramsMap, "dklen")
+	if err != nil || dklen != 32 {
+		return NewKeystoreImportErrorWithField(ErrorInvalidKeystore, "Invalid scrypt dklen", "crypto.kdfparams.dklen", err)
+	}
+	n, err := strictJSONInteger(paramsMap, "n")
+	if err != nil || n < 1024 || n&(n-1) != 0 {
+		return NewKeystoreImportErrorWithField(ErrorInvalidKeystore, "Invalid scrypt n", "crypto.kdfparams.n", err)
+	}
+	r, err := strictJSONInteger(paramsMap, "r")
+	if err != nil || r < 1 || r > 32 {
+		return NewKeystoreImportErrorWithField(ErrorInvalidKeystore, "Invalid scrypt r", "crypto.kdfparams.r", err)
+	}
+	p, err := strictJSONInteger(paramsMap, "p")
+	if err != nil || p < 1 || p > 16 {
+		return NewKeystoreImportErrorWithField(ErrorInvalidKeystore, "Invalid scrypt p", "crypto.kdfparams.p", err)
+	}
+	if int64(128)*n*r > 256*1024*1024 {
+		return NewKeystoreImportErrorWithField(ErrorInvalidKeystore, "Scrypt memory cost exceeds limit", "crypto.kdfparams", nil)
+	}
+	if err := validateSalt(paramsMap["salt"]); err != nil {
+		return NewKeystoreImportErrorWithField(ErrorInvalidKeystore, "Invalid scrypt salt", "crypto.kdfparams.salt", err)
+	}
 	return nil
 }
 
@@ -325,7 +374,55 @@ func (kv *KeystoreValidator) validatePBKDF2Params(params any) error {
 			)
 		}
 	}
+	dklen, err := strictJSONInteger(paramsMap, "dklen")
+	if err != nil || dklen != 32 {
+		return NewKeystoreImportErrorWithField(ErrorInvalidKeystore, "Invalid PBKDF2 dklen", "crypto.kdfparams.dklen", err)
+	}
+	iterations, err := strictJSONInteger(paramsMap, "c")
+	if err != nil || iterations < 1000 || iterations > 2000000 {
+		return NewKeystoreImportErrorWithField(ErrorInvalidKeystore, "Invalid PBKDF2 iterations", "crypto.kdfparams.c", err)
+	}
+	prf, ok := paramsMap["prf"].(string)
+	if !ok || prf != "hmac-sha256" {
+		return NewKeystoreImportErrorWithField(ErrorInvalidKeystore, "Invalid PBKDF2 PRF", "crypto.kdfparams.prf", nil)
+	}
+	if err := validateSalt(paramsMap["salt"]); err != nil {
+		return NewKeystoreImportErrorWithField(ErrorInvalidKeystore, "Invalid PBKDF2 salt", "crypto.kdfparams.salt", err)
+	}
+	return nil
+}
 
+func strictJSONInteger(params map[string]any, field string) (int64, error) {
+	value, ok := params[field].(float64)
+	if !ok || math.IsNaN(value) || math.IsInf(value, 0) || value != math.Trunc(value) || value > 1<<53 || value < 0 {
+		return 0, fmt.Errorf("%s must be a non-negative JSON integer", field)
+	}
+	return int64(value), nil
+}
+
+func validateHexLength(value string, expectedBytes int) error {
+	decoded, err := hex.DecodeString(value)
+	if err != nil {
+		return err
+	}
+	if len(decoded) != expectedBytes {
+		return fmt.Errorf("expected %d bytes, got %d", expectedBytes, len(decoded))
+	}
+	return nil
+}
+
+func validateSalt(value any) error {
+	salt, ok := value.(string)
+	if !ok {
+		return fmt.Errorf("salt must be a hex string")
+	}
+	decoded, err := hex.DecodeString(salt)
+	if err != nil {
+		return err
+	}
+	if len(decoded) < 16 || len(decoded) > 64 {
+		return fmt.Errorf("salt length must be between 16 and 64 bytes")
+	}
 	return nil
 }
 

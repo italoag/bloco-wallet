@@ -1,9 +1,13 @@
 package wallet
 
 import (
+	"crypto/rand"
+	"encoding/json"
 	"testing"
 
+	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestValidateKeystoreV3(t *testing.T) {
@@ -19,12 +23,12 @@ func TestValidateKeystoreV3(t *testing.T) {
 			json: `{
 				"version": 3,
 				"id": "f06e0f8e-7d91-4b09-8f5a-3c2c1a9b2b88",
-				"address": "0x5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d",
+				"address": "0x00112233445566778899aabbccddeeff7a6b5c4d",
 				"crypto": {
 					"cipher": "aes-128-ctr",
-					"ciphertext": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d3e2f1g0h9i8j7k6l5m4n3o2p1",
+					"ciphertext": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 					"cipherparams": {
-						"iv": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f"
+						"iv": "00112233445566778899aabbccddeeff"
 					},
 					"kdf": "scrypt",
 					"kdfparams": {
@@ -32,9 +36,9 @@ func TestValidateKeystoreV3(t *testing.T) {
 						"n": 262144,
 						"p": 1,
 						"r": 8,
-						"salt": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d3e2f1g0h9i8j7k6l5m4n3o2p1"
+						"salt": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 					},
-					"mac": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d3e2f1g0h9i8j7k6l5m4n3o2p1"
+					"mac": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 				}
 			}`,
 			expectedError: -1, // No error expected
@@ -44,12 +48,12 @@ func TestValidateKeystoreV3(t *testing.T) {
 			json: `{
 				"version": 3,
 				"id": "f06e0f8e-7d91-4b09-8f5a-3c2c1a9b2b88",
-				"address": "0x5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d",
+				"address": "0x00112233445566778899aabbccddeeff7a6b5c4d",
 				"crypto": {
 					"cipher": "aes-128-ctr",
-					"ciphertext": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d3e2f1g0h9i8j7k6l5m4n3o2p1",
+					"ciphertext": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 					"cipherparams": {
-						"iv": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f"
+						"iv": "00112233445566778899aabbccddeeff"
 					},
 					"kdf": "scrypt",
 					"kdfparams": {
@@ -57,9 +61,9 @@ func TestValidateKeystoreV3(t *testing.T) {
 						"n": 262144,
 						"p": 1,
 						"r": 8,
-						"salt": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d3e2f1g0h9i8j7k6l5m4n3o2p1"
+						"salt": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 					},
-					"mac": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d3e2f1g0h9i8j7k6l5m4n3o2p1"
+					"mac": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 				}
 			`,
 			expectedError: ErrorInvalidJSON,
@@ -69,12 +73,12 @@ func TestValidateKeystoreV3(t *testing.T) {
 			json: `{
 				"version": 2,
 				"id": "f06e0f8e-7d91-4b09-8f5a-3c2c1a9b2b88",
-				"address": "0x5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d",
+				"address": "0x00112233445566778899aabbccddeeff7a6b5c4d",
 				"crypto": {
 					"cipher": "aes-128-ctr",
-					"ciphertext": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d3e2f1g0h9i8j7k6l5m4n3o2p1",
+					"ciphertext": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 					"cipherparams": {
-						"iv": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f"
+						"iv": "00112233445566778899aabbccddeeff"
 					},
 					"kdf": "scrypt",
 					"kdfparams": {
@@ -82,9 +86,9 @@ func TestValidateKeystoreV3(t *testing.T) {
 						"n": 262144,
 						"p": 1,
 						"r": 8,
-						"salt": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d3e2f1g0h9i8j7k6l5m4n3o2p1"
+						"salt": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 					},
-					"mac": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d3e2f1g0h9i8j7k6l5m4n3o2p1"
+					"mac": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 				}
 			}`,
 			expectedError: ErrorInvalidVersion,
@@ -96,9 +100,9 @@ func TestValidateKeystoreV3(t *testing.T) {
 				"id": "f06e0f8e-7d91-4b09-8f5a-3c2c1a9b2b88",
 				"crypto": {
 					"cipher": "aes-128-ctr",
-					"ciphertext": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d3e2f1g0h9i8j7k6l5m4n3o2p1",
+					"ciphertext": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 					"cipherparams": {
-						"iv": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f"
+						"iv": "00112233445566778899aabbccddeeff"
 					},
 					"kdf": "scrypt",
 					"kdfparams": {
@@ -106,9 +110,9 @@ func TestValidateKeystoreV3(t *testing.T) {
 						"n": 262144,
 						"p": 1,
 						"r": 8,
-						"salt": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d3e2f1g0h9i8j7k6l5m4n3o2p1"
+						"salt": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 					},
-					"mac": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d3e2f1g0h9i8j7k6l5m4n3o2p1"
+					"mac": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 				}
 			}`,
 			expectedError: ErrorMissingRequiredFields,
@@ -121,9 +125,9 @@ func TestValidateKeystoreV3(t *testing.T) {
 				"address": "not-a-valid-address",
 				"crypto": {
 					"cipher": "aes-128-ctr",
-					"ciphertext": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d3e2f1g0h9i8j7k6l5m4n3o2p1",
+					"ciphertext": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 					"cipherparams": {
-						"iv": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f"
+						"iv": "00112233445566778899aabbccddeeff"
 					},
 					"kdf": "scrypt",
 					"kdfparams": {
@@ -131,9 +135,9 @@ func TestValidateKeystoreV3(t *testing.T) {
 						"n": 262144,
 						"p": 1,
 						"r": 8,
-						"salt": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d3e2f1g0h9i8j7k6l5m4n3o2p1"
+						"salt": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 					},
-					"mac": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d3e2f1g0h9i8j7k6l5m4n3o2p1"
+					"mac": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 				}
 			}`,
 			expectedError: ErrorInvalidAddress,
@@ -143,11 +147,11 @@ func TestValidateKeystoreV3(t *testing.T) {
 			json: `{
 				"version": 3,
 				"id": "f06e0f8e-7d91-4b09-8f5a-3c2c1a9b2b88",
-				"address": "0x5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d",
+				"address": "0x00112233445566778899aabbccddeeff7a6b5c4d",
 				"crypto": {
-					"ciphertext": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d3e2f1g0h9i8j7k6l5m4n3o2p1",
+					"ciphertext": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 					"cipherparams": {
-						"iv": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f"
+						"iv": "00112233445566778899aabbccddeeff"
 					},
 					"kdf": "scrypt",
 					"kdfparams": {
@@ -155,9 +159,9 @@ func TestValidateKeystoreV3(t *testing.T) {
 						"n": 262144,
 						"p": 1,
 						"r": 8,
-						"salt": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d3e2f1g0h9i8j7k6l5m4n3o2p1"
+						"salt": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 					},
-					"mac": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d3e2f1g0h9i8j7k6l5m4n3o2p1"
+					"mac": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 				}
 			}`,
 			expectedError: ErrorMissingRequiredFields,
@@ -167,11 +171,11 @@ func TestValidateKeystoreV3(t *testing.T) {
 			json: `{
 				"version": 3,
 				"id": "f06e0f8e-7d91-4b09-8f5a-3c2c1a9b2b88",
-				"address": "0x5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d",
+				"address": "0x00112233445566778899aabbccddeeff7a6b5c4d",
 				"crypto": {
 					"cipher": "aes-128-ctr",
 					"cipherparams": {
-						"iv": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f"
+						"iv": "00112233445566778899aabbccddeeff"
 					},
 					"kdf": "scrypt",
 					"kdfparams": {
@@ -179,9 +183,9 @@ func TestValidateKeystoreV3(t *testing.T) {
 						"n": 262144,
 						"p": 1,
 						"r": 8,
-						"salt": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d3e2f1g0h9i8j7k6l5m4n3o2p1"
+						"salt": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 					},
-					"mac": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d3e2f1g0h9i8j7k6l5m4n3o2p1"
+					"mac": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 				}
 			}`,
 			expectedError: ErrorMissingRequiredFields,
@@ -191,10 +195,10 @@ func TestValidateKeystoreV3(t *testing.T) {
 			json: `{
 				"version": 3,
 				"id": "f06e0f8e-7d91-4b09-8f5a-3c2c1a9b2b88",
-				"address": "0x5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d",
+				"address": "0x00112233445566778899aabbccddeeff7a6b5c4d",
 				"crypto": {
 					"cipher": "aes-128-ctr",
-					"ciphertext": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d3e2f1g0h9i8j7k6l5m4n3o2p1",
+					"ciphertext": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 					"cipherparams": {},
 					"kdf": "scrypt",
 					"kdfparams": {
@@ -202,9 +206,9 @@ func TestValidateKeystoreV3(t *testing.T) {
 						"n": 262144,
 						"p": 1,
 						"r": 8,
-						"salt": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d3e2f1g0h9i8j7k6l5m4n3o2p1"
+						"salt": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 					},
-					"mac": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d3e2f1g0h9i8j7k6l5m4n3o2p1"
+					"mac": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 				}
 			}`,
 			expectedError: ErrorMissingRequiredFields,
@@ -214,21 +218,21 @@ func TestValidateKeystoreV3(t *testing.T) {
 			json: `{
 				"version": 3,
 				"id": "f06e0f8e-7d91-4b09-8f5a-3c2c1a9b2b88",
-				"address": "0x5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d",
+				"address": "0x00112233445566778899aabbccddeeff7a6b5c4d",
 				"crypto": {
 					"cipher": "aes-128-ctr",
-					"ciphertext": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d3e2f1g0h9i8j7k6l5m4n3o2p1",
+					"ciphertext": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 					"cipherparams": {
-						"iv": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f"
+						"iv": "00112233445566778899aabbccddeeff"
 					},
 					"kdfparams": {
 						"dklen": 32,
 						"n": 262144,
 						"p": 1,
 						"r": 8,
-						"salt": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d3e2f1g0h9i8j7k6l5m4n3o2p1"
+						"salt": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 					},
-					"mac": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d3e2f1g0h9i8j7k6l5m4n3o2p1"
+					"mac": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 				}
 			}`,
 			expectedError: ErrorMissingRequiredFields,
@@ -238,15 +242,15 @@ func TestValidateKeystoreV3(t *testing.T) {
 			json: `{
 				"version": 3,
 				"id": "f06e0f8e-7d91-4b09-8f5a-3c2c1a9b2b88",
-				"address": "0x5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d",
+				"address": "0x00112233445566778899aabbccddeeff7a6b5c4d",
 				"crypto": {
 					"cipher": "aes-128-ctr",
-					"ciphertext": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d3e2f1g0h9i8j7k6l5m4n3o2p1",
+					"ciphertext": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 					"cipherparams": {
-						"iv": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f"
+						"iv": "00112233445566778899aabbccddeeff"
 					},
 					"kdf": "scrypt",
-					"mac": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d3e2f1g0h9i8j7k6l5m4n3o2p1"
+					"mac": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 				}
 			}`,
 			expectedError: ErrorMissingRequiredFields,
@@ -256,12 +260,12 @@ func TestValidateKeystoreV3(t *testing.T) {
 			json: `{
 				"version": 3,
 				"id": "f06e0f8e-7d91-4b09-8f5a-3c2c1a9b2b88",
-				"address": "0x5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d",
+				"address": "0x00112233445566778899aabbccddeeff7a6b5c4d",
 				"crypto": {
 					"cipher": "aes-128-ctr",
-					"ciphertext": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d3e2f1g0h9i8j7k6l5m4n3o2p1",
+					"ciphertext": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 					"cipherparams": {
-						"iv": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f"
+						"iv": "00112233445566778899aabbccddeeff"
 					},
 					"kdf": "scrypt",
 					"kdfparams": {
@@ -269,7 +273,7 @@ func TestValidateKeystoreV3(t *testing.T) {
 						"n": 262144,
 						"p": 1,
 						"r": 8,
-						"salt": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d3e2f1g0h9i8j7k6l5m4n3o2p1"
+						"salt": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 					}
 				}
 			}`,
@@ -280,21 +284,21 @@ func TestValidateKeystoreV3(t *testing.T) {
 			json: `{
 				"version": 3,
 				"id": "f06e0f8e-7d91-4b09-8f5a-3c2c1a9b2b88",
-				"address": "0x5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d",
+				"address": "0x00112233445566778899aabbccddeeff7a6b5c4d",
 				"crypto": {
 					"cipher": "aes-128-ctr",
-					"ciphertext": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d3e2f1g0h9i8j7k6l5m4n3o2p1",
+					"ciphertext": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 					"cipherparams": {
-						"iv": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f"
+						"iv": "00112233445566778899aabbccddeeff"
 					},
 					"kdf": "pbkdf2",
 					"kdfparams": {
 						"dklen": 32,
 						"c": 10240,
 						"prf": "hmac-sha256",
-						"salt": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d3e2f1g0h9i8j7k6l5m4n3o2p1"
+						"salt": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 					},
-					"mac": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d3e2f1g0h9i8j7k6l5m4n3o2p1"
+					"mac": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 				}
 			}`,
 			expectedError: -1, // No error expected
@@ -304,20 +308,20 @@ func TestValidateKeystoreV3(t *testing.T) {
 			json: `{
 				"version": 3,
 				"id": "f06e0f8e-7d91-4b09-8f5a-3c2c1a9b2b88",
-				"address": "0x5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d",
+				"address": "0x00112233445566778899aabbccddeeff7a6b5c4d",
 				"crypto": {
 					"cipher": "aes-128-ctr",
-					"ciphertext": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d3e2f1g0h9i8j7k6l5m4n3o2p1",
+					"ciphertext": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 					"cipherparams": {
-						"iv": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f"
+						"iv": "00112233445566778899aabbccddeeff"
 					},
 					"kdf": "pbkdf2",
 					"kdfparams": {
 						"c": 10240,
 						"prf": "hmac-sha256",
-						"salt": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d3e2f1g0h9i8j7k6l5m4n3o2p1"
+						"salt": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 					},
-					"mac": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d3e2f1g0h9i8j7k6l5m4n3o2p1"
+					"mac": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 				}
 			}`,
 			expectedError: ErrorMissingRequiredFields,
@@ -327,21 +331,21 @@ func TestValidateKeystoreV3(t *testing.T) {
 			json: `{
 				"version": 3,
 				"id": "f06e0f8e-7d91-4b09-8f5a-3c2c1a9b2b88",
-				"address": "0x5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d",
+				"address": "0x00112233445566778899aabbccddeeff7a6b5c4d",
 				"crypto": {
 					"cipher": "aes-128-ctr",
-					"ciphertext": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d3e2f1g0h9i8j7k6l5m4n3o2p1",
+					"ciphertext": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 					"cipherparams": {
-						"iv": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f"
+						"iv": "00112233445566778899aabbccddeeff"
 					},
 					"kdf": "scrypt",
 					"kdfparams": {
 						"n": 262144,
 						"p": 1,
 						"r": 8,
-						"salt": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d3e2f1g0h9i8j7k6l5m4n3o2p1"
+						"salt": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 					},
-					"mac": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d3e2f1g0h9i8j7k6l5m4n3o2p1"
+					"mac": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 				}
 			}`,
 			expectedError: ErrorMissingRequiredFields,
@@ -351,12 +355,12 @@ func TestValidateKeystoreV3(t *testing.T) {
 			json: `{
 				"version": 3,
 				"id": "f06e0f8e-7d91-4b09-8f5a-3c2c1a9b2b88",
-				"address": "0x5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d",
+				"address": "0x00112233445566778899aabbccddeeff7a6b5c4d",
 				"crypto": {
 					"cipher": "aes-128-ctr",
-					"ciphertext": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d3e2f1g0h9i8j7k6l5m4n3o2p1",
+					"ciphertext": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 					"cipherparams": {
-						"iv": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f"
+						"iv": "00112233445566778899aabbccddeeff"
 					},
 					"kdf": "unsupported-kdf",
 					"kdfparams": {
@@ -364,9 +368,9 @@ func TestValidateKeystoreV3(t *testing.T) {
 						"n": 262144,
 						"p": 1,
 						"r": 8,
-						"salt": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d3e2f1g0h9i8j7k6l5m4n3o2p1"
+						"salt": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 					},
-					"mac": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d3e2f1g0h9i8j7k6l5m4n3o2p1"
+					"mac": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 				}
 			}`,
 			expectedError: ErrorInvalidKeystore,
@@ -402,6 +406,42 @@ func TestValidateKeystoreV3(t *testing.T) {
 	}
 }
 
+func TestStrictKeystoreValidationRejectsUnsafeParameters(t *testing.T) {
+	key := keystore.NewKeyForDirectICAP(rand.Reader)
+	keyJSON, err := keystore.EncryptKey(key, "password", TestScryptN, TestScryptP)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name      string
+		transform func(map[string]interface{})
+	}{
+		{"dklen below 32", func(data map[string]interface{}) {
+			data["crypto"].(map[string]interface{})["kdfparams"].(map[string]interface{})["dklen"] = float64(16)
+		}},
+		{"numeric string", func(data map[string]interface{}) {
+			data["crypto"].(map[string]interface{})["kdfparams"].(map[string]interface{})["n"] = "4096"
+		}},
+		{"short iv", func(data map[string]interface{}) {
+			data["crypto"].(map[string]interface{})["cipherparams"].(map[string]interface{})["iv"] = "00"
+		}},
+		{"short mac", func(data map[string]interface{}) { data["crypto"].(map[string]interface{})["mac"] = "00" }},
+		{"non canonical cipher", func(data map[string]interface{}) { data["crypto"].(map[string]interface{})["cipher"] = "aes-128-cbc" }},
+		{"missing id", func(data map[string]interface{}) { delete(data, "id") }},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var data map[string]interface{}
+			require.NoError(t, json.Unmarshal(keyJSON, &data))
+			tt.transform(data)
+			modified, marshalErr := json.Marshal(data)
+			require.NoError(t, marshalErr)
+			_, validationErr := (&KeystoreValidator{}).ValidateKeystoreV3(modified)
+			assert.Error(t, validationErr)
+		})
+	}
+}
+
 func TestValidateAddress(t *testing.T) {
 	validator := &KeystoreValidator{}
 
@@ -412,12 +452,12 @@ func TestValidateAddress(t *testing.T) {
 	}{
 		{
 			name:          "Valid address with 0x prefix",
-			address:       "0x5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d",
+			address:       "0x00112233445566778899aabbccddeeff7a6b5c4d",
 			expectedError: -1, // No error expected
 		},
 		{
 			name:          "Valid address without 0x prefix",
-			address:       "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d",
+			address:       "00112233445566778899aabbccddeeff7a6b5c4d",
 			expectedError: -1, // No error expected
 		},
 		{
@@ -427,17 +467,17 @@ func TestValidateAddress(t *testing.T) {
 		},
 		{
 			name:          "Invalid address - too short",
-			address:       "0x5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f",
+			address:       "0x00112233445566778899aabbccddeeff",
 			expectedError: ErrorInvalidAddress,
 		},
 		{
 			name:          "Invalid address - too long",
-			address:       "0x5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d3e2f",
+			address:       "0x00112233445566778899aabbccddeeff7a6b5c4d3e2f",
 			expectedError: ErrorInvalidAddress,
 		},
 		{
 			name:          "Invalid address - non-hex characters",
-			address:       "0x5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4z",
+			address:       "0x00112233445566778899aabbccddeeff7a6b5c4z",
 			expectedError: ErrorInvalidAddress,
 		},
 	}
@@ -515,6 +555,42 @@ func TestKeystoreErrorTypeString(t *testing.T) {
 			assert.Equal(t, tt.expected, tt.errorType.String())
 		})
 	}
+}
+
+func FuzzValidateKeystoreV3(f *testing.F) {
+	f.Add([]byte(`{"version":3}`))
+	f.Add([]byte(`not-json`))
+	f.Add([]byte{})
+
+	validator := &KeystoreValidator{}
+	f.Fuzz(func(t *testing.T, data []byte) {
+		if len(data) > 1<<20 {
+			return
+		}
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				t.Fatalf("validator panicked: %v", recovered)
+			}
+		}()
+		_, _ = validator.ValidateKeystoreV3(data)
+	})
+}
+
+func FuzzDecryptKeySafely(f *testing.F) {
+	f.Add([]byte(`{"version":3}`), "password")
+	f.Add([]byte(`{"version":3,"id":"00000000-0000-4000-8000-000000000000","address":"0000000000000000000000000000000000000000","crypto":{"cipher":"aes-128-ctr","ciphertext":"00","cipherparams":{"iv":"00"},"kdf":"scrypt","kdfparams":{"dklen":"32","n":"262144","r":"8","p":"1","salt":"00"},"mac":"00"}}`), "password")
+
+	f.Fuzz(func(t *testing.T, data []byte, password string) {
+		if len(data) > 1<<20 || len(password) > 1024 {
+			return
+		}
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				t.Fatalf("safe decrypt panicked: %v", recovered)
+			}
+		}()
+		_, _ = decryptKeySafely(data, password)
+	})
 }
 
 // TestKeystoreErrorTypeGetLocalizationKey tests the GetLocalizationKey() method of KeystoreErrorType

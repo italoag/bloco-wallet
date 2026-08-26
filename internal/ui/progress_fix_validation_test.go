@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"sync"
 	"testing"
 	"time"
@@ -27,6 +28,19 @@ func (m *TestBatchImportService) CreateImportJobsFromDirectory(dir string) ([]wa
 
 func (m *TestBatchImportService) ValidateImportJobs(jobs []wallet.ImportJob) error {
 	return nil
+}
+
+func (m *TestBatchImportService) ImportBatchContext(
+	ctx context.Context,
+	jobs []wallet.ImportJob,
+	progressChan chan<- wallet.ImportProgress,
+	passwordRequestChan chan<- wallet.PasswordRequest,
+	passwordResponseChan <-chan wallet.PasswordResponse,
+) []wallet.ImportResult {
+	if ctx.Err() != nil {
+		return []wallet.ImportResult{{Error: ctx.Err()}}
+	}
+	return m.ImportBatch(jobs, progressChan, passwordRequestChan, passwordResponseChan)
 }
 
 func (m *TestBatchImportService) ImportBatch(
@@ -144,7 +158,8 @@ func TestProgressChannelCommunication(t *testing.T) {
 		}()
 
 		// Start the import process
-		results := state.BatchService.ImportBatch(
+		results := state.BatchService.ImportBatchContext(
+			context.Background(),
 			state.ImportJobs,
 			progressChan,
 			passwordRequestChan,

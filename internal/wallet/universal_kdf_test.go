@@ -361,9 +361,9 @@ func TestKDFCompatibilityAnalyzer(t *testing.T) {
 					},
 				},
 			},
-			expectCompatible: true,
-			expectedSecurity: "High",
-			description:      "Should handle high security configurations",
+			expectCompatible: false,
+			expectedSecurity: "",
+			description:      "Should reject configurations above the memory limit",
 		},
 		{
 			name: "Unsupported KDF",

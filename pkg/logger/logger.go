@@ -41,9 +41,12 @@ func NewFileLogger(c LoggingConfig) (Logger, error) {
 	}
 
 	// Ensure log directory exists
-	if err := os.MkdirAll(c.LogDir, 0750); err != nil {
+	if err := os.MkdirAll(c.LogDir, 0700); err != nil {
 		// Fall back to a no-op logger if we cannot create directory
 		return &zapLogger{logger: zap.NewNop()}, nil
+	}
+	if err := os.Chmod(c.LogDir, 0700); err != nil {
+		return nil, err
 	}
 
 	appPath := filepath.Join(c.LogDir, "app.log")
@@ -55,6 +58,12 @@ func NewFileLogger(c LoggingConfig) (Logger, error) {
 	}
 	if f, err := os.OpenFile(errPath, os.O_CREATE|os.O_APPEND, 0600); err == nil {
 		_ = f.Close()
+	}
+	if err := os.Chmod(appPath, 0600); err != nil {
+		return nil, err
+	}
+	if err := os.Chmod(errPath, 0600); err != nil {
+		return nil, err
 	}
 
 	appWriter := zapcore.AddSync(&lumberjack.Logger{

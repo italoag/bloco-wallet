@@ -149,6 +149,16 @@ func TestProgressListeningCommands(t *testing.T) {
 		assert.NotNil(t, cmd)
 	})
 
+	t.Run("password listener reschedules after timeout", func(t *testing.T) {
+		model := &CLIModel{
+			enhancedImportState: NewEnhancedImportState(&MockBatchImportService{}, Styles{}),
+		}
+
+		msg := model.listenForPasswordRequests()()
+		_, ok := msg.(ContinuePasswordListeningMsg)
+		assert.True(t, ok)
+	})
+
 	t.Run("Commands return nil when import state is nil", func(t *testing.T) {
 		model := &CLIModel{
 			enhancedImportState: nil,

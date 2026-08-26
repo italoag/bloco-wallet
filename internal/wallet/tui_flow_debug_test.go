@@ -25,7 +25,7 @@ func TestTUIFlowDebug(t *testing.T) {
 	require.NoError(t, err)
 
 	// Initialize crypto service (this is what was missing!)
-	cfg := CreateMockConfig()
+	cfg := CreateMockConfig(t)
 	InitCryptoService(cfg)
 
 	// Create keystore with test-optimized parameters
@@ -47,7 +47,6 @@ func TestTUIFlowDebug(t *testing.T) {
 
 	fmt.Printf("=== TUI Flow Debug Test ===\n")
 	fmt.Printf("Keystore Path: %s\n", keystorePath)
-	fmt.Printf("Password: %s\n", password)
 	fmt.Printf("Name: %s\n", name)
 
 	// Step 1: Check if file exists (like TUI does)
@@ -133,7 +132,7 @@ func TestTUIFlowWithDifferentKeystores(t *testing.T) {
 	require.NoError(t, err)
 
 	// Initialize crypto service
-	cfg := CreateMockConfig()
+	cfg := CreateMockConfig(t)
 	InitCryptoService(cfg)
 
 	// Create keystore with test-optimized parameters

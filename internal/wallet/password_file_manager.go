@@ -165,10 +165,7 @@ func (pfm *PasswordFileManager) ReadPasswordFile(passwordPath string) (string, e
 		)
 	}
 
-	// Trim whitespace (including newlines)
-	password = strings.TrimSpace(password)
-
-	// Check if password is empty after trimming
+	// Check if password is empty
 	if password == "" {
 		return "", NewPasswordFileErrorWithRecovery(
 			PasswordFileEmpty,

@@ -2,6 +2,7 @@
 NAME            := bloco-wallet
 VERSION         ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "v0.1.0")
 PACKAGE         := blocowallet
+GO              ?= go
 OUTPUT_BIN      ?= build/${NAME}
 GO_FLAGS        ?=
 GO_TAGS         ?= netgo
@@ -28,6 +29,8 @@ DATE            ?= $(shell TZ=UTC date -j -f "%s" ${SOURCE_DATE_EPOCH} +"%Y-%m-%
 else
 DATE            ?= $(shell date -u -d @${SOURCE_DATE_EPOCH} +"%Y-%m-%dT%H:%M:%SZ")
 endif
+
+RUN_GO_ISOLATED = TEST_GOPATH="$$($(GO) env GOPATH)"; TEST_HOME="$$(mktemp -d)"; trap '[ ! -d "$$TEST_HOME" ] || chmod -R u+w "$$TEST_HOME" 2>/dev/null; rm -rf "$$TEST_HOME"' EXIT; export HOME="$$TEST_HOME" XDG_CONFIG_HOME="$$TEST_HOME/.config" XDG_CACHE_HOME="$$TEST_HOME/.cache" APPDATA="$$TEST_HOME/AppData/Roaming" LOCALAPPDATA="$$TEST_HOME/AppData/Local" USERPROFILE="$$TEST_HOME" GOPATH="$$TEST_GOPATH";
 
 # Build matrix for cross-compilation
 PLATFORMS       := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64
@@ -115,15 +118,15 @@ build-windows: ## Build for Windows platform (amd64)
 .PHONY: test
 test: ## Run all tests with optimized parameters
 	@echo "$(CYAN)Running tests with fast parameters...$(RESET)"
-	@go clean --testcache 
-	@CGO_LDFLAGS="$(CGO_LDFLAGS)" go test ./... -v -race
+	@$(GO) clean --testcache
+	@$(RUN_GO_ISOLATED) CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GO) test ./... -v -race -count=1 -shuffle=on
 	@echo "$(GREEN)✓ Tests complete$(RESET)"
 
 .PHONY: test-fast
 test-fast: ## Run tests with fastest parameters (development)
 	@echo "$(CYAN)Running fast tests for development...$(RESET)"
-	@go clean --testcache
-	@CGO_LDFLAGS="$(CGO_LDFLAGS)" go test ./... -short -v
+	@$(GO) clean --testcache
+	@$(RUN_GO_ISOLATED) CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GO) test ./... -short -v -count=1 -shuffle=on
 	@echo "$(GREEN)✓ Fast tests complete$(RESET)"
 
 # Alias for common development workflow
@@ -134,47 +137,47 @@ t: test-fast ## Alias for test-fast (quick development testing)
 test-production: ## Run tests with production-grade security parameters
 	@echo "$(CYAN)Running tests with production parameters...$(RESET)"
 	@echo "$(YELLOW)⚠️  This will take longer due to secure scrypt parameters$(RESET)"
-	@go clean --testcache
-	@CGO_LDFLAGS="$(CGO_LDFLAGS)" go test ./... -v -race -tags=production
+	@$(GO) clean --testcache
+	@$(RUN_GO_ISOLATED) CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GO) test ./... -v -race -count=1 -shuffle=on -tags=production
 	@echo "$(GREEN)✓ Production tests complete$(RESET)"
 
 .PHONY: test-quiet
 test-quiet: ## Run tests suppressing CGO linker warnings
 	@echo "$(CYAN)Running tests (quiet mode)...$(RESET)"
-	@CGO_LDFLAGS="$(CGO_LDFLAGS)" go test ./... -v -race 2>/dev/null || \
-		CGO_LDFLAGS="$(CGO_LDFLAGS)" go test ./... -v -race
+	@$(RUN_GO_ISOLATED) CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GO) test ./... -v -race -count=1 -shuffle=on 2>/dev/null || \
+		CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GO) test ./... -v -race -count=1 -shuffle=on
 	@echo "$(GREEN)✓ Tests complete$(RESET)"
 
 .PHONY: cover
 cover: ## Run test coverage suite
 	@echo "$(CYAN)Generating test coverage...$(RESET)"
-	@CGO_LDFLAGS="$(CGO_LDFLAGS)" go test ./... --coverprofile=coverage.out
-	@go tool cover --html=coverage.out -o coverage.html
+	@$(RUN_GO_ISOLATED) CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GO) test ./... -count=1 -shuffle=on --coverprofile=coverage.out
+	@$(GO) tool cover --html=coverage.out -o coverage.html
 	@echo "$(GREEN)✓ Coverage report generated: coverage.html$(RESET)"
 
 .PHONY: cover-production
 cover-production: ## Run test coverage with production parameters
 	@echo "$(CYAN)Generating test coverage with production parameters...$(RESET)"
-	@CGO_LDFLAGS="$(CGO_LDFLAGS)" go test ./... --coverprofile=coverage.out -tags=production
-	@go tool cover --html=coverage.out -o coverage.html
+	@$(RUN_GO_ISOLATED) CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GO) test ./... -count=1 -shuffle=on --coverprofile=coverage.out -tags=production
+	@$(GO) tool cover --html=coverage.out -o coverage.html
 	@echo "$(GREEN)✓ Production coverage report generated: coverage.html$(RESET)"
 
 .PHONY: bench
 bench: ## Run benchmarks
 	@echo "$(CYAN)Running benchmarks...$(RESET)"
-	@CGO_LDFLAGS="$(CGO_LDFLAGS)" go test ./... -bench=. -benchmem
+	@$(RUN_GO_ISOLATED) CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GO) test ./... -bench=. -benchmem
 	@echo "$(GREEN)✓ Benchmarks complete$(RESET)"
 
 .PHONY: test-wallet
 test-wallet: ## Run only wallet package tests (fastest)
 	@echo "$(CYAN)Running wallet package tests...$(RESET)"
-	@CGO_LDFLAGS="$(CGO_LDFLAGS)" go test ./internal/wallet/... -v
+	@$(RUN_GO_ISOLATED) CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GO) test ./internal/wallet/... -v -count=1 -shuffle=on
 	@echo "$(GREEN)✓ Wallet tests complete$(RESET)"
 
 .PHONY: test-ui
 test-ui: ## Run only UI package tests
 	@echo "$(CYAN)Running UI package tests...$(RESET)"
-	@CGO_LDFLAGS="$(CGO_LDFLAGS)" go test ./internal/ui/... -v
+	@$(RUN_GO_ISOLATED) CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GO) test ./internal/ui/... -v -count=1 -shuffle=on
 	@echo "$(GREEN)✓ UI tests complete$(RESET)"
 
 ##@ Code Quality Targets

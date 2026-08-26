@@ -3,6 +3,8 @@ package ui
 import (
 	"testing"
 
+	"blocowallet/internal/constants"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
 )
@@ -17,6 +19,7 @@ func TestNewPasswordPopupModel(t *testing.T) {
 	assert.Equal(t, maxRetries, model.maxRetries)
 	assert.Equal(t, 0, model.retryCount)
 	assert.False(t, model.cancelled)
+	assert.False(t, model.skipped)
 	assert.False(t, model.confirmed)
 	assert.Empty(t, model.errorMessage)
 	assert.Equal(t, 60, model.width)
@@ -34,7 +37,7 @@ func TestPasswordPopupModel_Update_EnterKey(t *testing.T) {
 
 	assert.True(t, updatedModel.confirmed)
 	assert.False(t, updatedModel.cancelled)
-	assert.NotNil(t, cmd)
+	assert.Nil(t, cmd)
 }
 
 func TestPasswordPopupModel_Update_EnterKeyEmptyPassword(t *testing.T) {
@@ -43,10 +46,11 @@ func TestPasswordPopupModel_Update_EnterKeyEmptyPassword(t *testing.T) {
 	// Don't set any password value (empty)
 
 	// Send enter key
-	updatedModel, _ := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	updatedModel, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
 
-	assert.False(t, updatedModel.confirmed)
+	assert.True(t, updatedModel.confirmed)
 	assert.False(t, updatedModel.cancelled)
+	assert.Nil(t, cmd)
 	// Should not quit with empty password
 }
 
@@ -58,7 +62,7 @@ func TestPasswordPopupModel_Update_EscapeKey(t *testing.T) {
 
 	assert.True(t, updatedModel.cancelled)
 	assert.False(t, updatedModel.confirmed)
-	assert.NotNil(t, cmd)
+	assert.Nil(t, cmd)
 }
 
 func TestPasswordPopupModel_Update_CtrlC(t *testing.T) {
@@ -69,7 +73,7 @@ func TestPasswordPopupModel_Update_CtrlC(t *testing.T) {
 
 	assert.True(t, updatedModel.cancelled)
 	assert.False(t, updatedModel.confirmed)
-	assert.NotNil(t, cmd)
+	assert.Nil(t, cmd)
 }
 
 func TestPasswordPopupModel_Update_CtrlS_Skip(t *testing.T) {
@@ -78,9 +82,10 @@ func TestPasswordPopupModel_Update_CtrlS_Skip(t *testing.T) {
 	// Send Ctrl+S (skip file)
 	updatedModel, cmd := model.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
 
-	assert.True(t, updatedModel.cancelled)
+	assert.False(t, updatedModel.cancelled)
+	assert.True(t, updatedModel.skipped)
 	assert.False(t, updatedModel.confirmed)
-	assert.NotNil(t, cmd)
+	assert.Nil(t, cmd)
 }
 
 func TestPasswordPopupModel_SetError(t *testing.T) {
@@ -107,6 +112,26 @@ func TestPasswordPopupModel_GetResult_Confirmed(t *testing.T) {
 	assert.False(t, result.Skip)
 }
 
+func TestPasswordPopupModel_GetResult_PreservesWhitespace(t *testing.T) {
+	model := NewPasswordPopupModel("test.json", 3)
+	model.SetValue("  exact password  ")
+	model.confirmed = true
+
+	result := model.GetResult()
+
+	assert.Equal(t, "  exact password  ", result.Password)
+}
+
+func TestPasswordPopupModel_GetResult_Skipped(t *testing.T) {
+	model := NewPasswordPopupModel("test.json", 3)
+	model.skipped = true
+
+	result := model.GetResult()
+
+	assert.False(t, result.Cancelled)
+	assert.True(t, result.Skip)
+}
+
 func TestPasswordPopupModel_GetResult_Cancelled(t *testing.T) {
 	model := NewPasswordPopupModel("test.json", 3)
 	model.cancelled = true
@@ -115,7 +140,7 @@ func TestPasswordPopupModel_GetResult_Cancelled(t *testing.T) {
 
 	assert.Empty(t, result.Password)
 	assert.True(t, result.Cancelled)
-	assert.True(t, result.Skip)
+	assert.False(t, result.Skip)
 }
 
 func TestPasswordPopupModel_GetResult_NotCompleted(t *testing.T) {
@@ -176,6 +201,7 @@ func TestPasswordPopupModel_Reset(t *testing.T) {
 	model.SetValue("password")
 	model.SetError("some error")
 	model.cancelled = true
+	model.skipped = true
 	model.confirmed = true
 
 	// Reset with new file
@@ -186,6 +212,7 @@ func TestPasswordPopupModel_Reset(t *testing.T) {
 	assert.Empty(t, model.errorMessage)
 	assert.Equal(t, 0, model.retryCount)
 	assert.False(t, model.cancelled)
+	assert.False(t, model.skipped)
 	assert.False(t, model.confirmed)
 	assert.Empty(t, model.Value())
 }
@@ -235,7 +262,7 @@ func TestPasswordPopupModel_CharacterLimit(t *testing.T) {
 	model := NewPasswordPopupModel("test.json", 3)
 
 	// Verify character limit is set
-	assert.Equal(t, 256, model.CharLimit)
+	assert.Equal(t, constants.PasswordCharLimit, model.CharLimit)
 }
 
 func TestPasswordPopupModel_Integration_FullFlow(t *testing.T) {
@@ -275,5 +302,5 @@ func TestPasswordPopupModel_Integration_CancelFlow(t *testing.T) {
 	result := model.GetResult()
 	assert.Empty(t, result.Password)
 	assert.True(t, result.Cancelled)
-	assert.True(t, result.Skip)
+	assert.False(t, result.Skip)
 }

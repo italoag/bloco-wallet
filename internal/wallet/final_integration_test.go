@@ -8,6 +8,7 @@ package wallet
 import (
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/accounts/keystore"
@@ -19,7 +20,7 @@ import (
 // TestFinalIntegrationComplexPassword tests the complete integration with the complex password keystore
 func TestFinalIntegrationComplexPassword(t *testing.T) {
 	// Initialize crypto service for mnemonic encryption with mock config
-	mockConfig := CreateMockConfig()
+	mockConfig := CreateMockConfig(t)
 	InitCryptoService(mockConfig)
 
 	// Create temporary directory for test
@@ -49,10 +50,8 @@ func TestFinalIntegrationComplexPassword(t *testing.T) {
 		return
 	}
 
-	t.Logf("🧪 Testing final integration with complex password keystore")
-	t.Logf("   File: %s", keystorePath)
-	t.Logf("   Password: %s", password)
-	t.Logf("   Expected Address: %s", expectedAddress)
+	t.Logf("Testing final integration fixture %s", filepath.Base(keystorePath))
+	t.Logf("Expected address: %s", expectedAddress)
 
 	// Test 1: Import using ImportWalletFromKeystoreV3 (direct method)
 	t.Run("Direct ImportWalletFromKeystoreV3", func(t *testing.T) {

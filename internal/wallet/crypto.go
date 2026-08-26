@@ -9,8 +9,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 
 	"golang.org/x/crypto/argon2"
 )
@@ -179,7 +177,7 @@ func ValidatePassword(password string) (PasswordValidationError, bool) {
 	var err PasswordValidationError
 
 	// Verificar tamanho mínimo
-	if len(password) < 8 {
+	if len(password) < 15 {
 		err.TooShort = true
 		return err, false
 	}
@@ -220,38 +218,14 @@ func InitCryptoService(cfg *config.Config) {
 // Funções auxiliares para compatibilidade com código existente
 func EncryptMnemonic(mnemonic, password string) (string, error) {
 	if defaultCryptoService == nil {
-		// Try to initialize with default config as fallback
-		homeDir, err := os.UserHomeDir()
-		if err == nil {
-			appDir := filepath.Join(homeDir, ".wallets")
-			if cfg, err := config.LoadConfig(appDir); err == nil {
-				InitCryptoService(cfg)
-			}
-		}
-
-		// If still not initialized, return error
-		if defaultCryptoService == nil {
-			return "", errors.New(localization.Get("error_crypto_service_not_initialized"))
-		}
+		return "", errors.New(localization.Get("error_crypto_service_not_initialized"))
 	}
 	return defaultCryptoService.EncryptMnemonic(mnemonic, password)
 }
 
 func DecryptMnemonic(encryptedMnemonic, password string) (string, error) {
 	if defaultCryptoService == nil {
-		// Try to initialize with default config as fallback
-		homeDir, err := os.UserHomeDir()
-		if err == nil {
-			appDir := filepath.Join(homeDir, ".wallets")
-			if cfg, err := config.LoadConfig(appDir); err == nil {
-				InitCryptoService(cfg)
-			}
-		}
-
-		// If still not initialized, return error
-		if defaultCryptoService == nil {
-			return "", errors.New(localization.Get("error_crypto_service_not_initialized"))
-		}
+		return "", errors.New(localization.Get("error_crypto_service_not_initialized"))
 	}
 	return defaultCryptoService.DecryptMnemonic(encryptedMnemonic, password)
 }

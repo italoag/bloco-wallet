@@ -107,7 +107,7 @@ func TestPasswordFileManager_ReadPasswordFile(t *testing.T) {
 		{
 			name:          "Password with whitespace",
 			content:       []byte("  testpassword  \n"),
-			expectedPwd:   "testpassword",
+			expectedPwd:   "  testpassword  \n",
 			shouldSucceed: true,
 		},
 		{
@@ -119,8 +119,8 @@ func TestPasswordFileManager_ReadPasswordFile(t *testing.T) {
 		{
 			name:          "Only whitespace",
 			content:       []byte("   \n\t  "),
-			expectedError: PasswordFileEmpty,
-			shouldSucceed: false,
+			expectedPwd:   "   \n\t  ",
+			shouldSucceed: true,
 		},
 		{
 			name:          "Complex password",

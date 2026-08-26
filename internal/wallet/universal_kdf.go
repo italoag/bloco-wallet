@@ -195,8 +195,8 @@ func (sh *ScryptHandler) ValidateParams(params map[string]interface{}) error {
 
 	// Valida dklen
 	dklen := sh.getIntParam(params, []string{"dklen", "dkLen", "keylen"}, 32)
-	if dklen < 16 || dklen > 128 {
-		return fmt.Errorf("parâmetro dklen inválido: %d (range: 16-128)", dklen)
+	if dklen != 32 {
+		return fmt.Errorf("parâmetro dklen inválido: %d (esperado: 32)", dklen)
 	}
 
 	// Verifica se salt existe
@@ -205,9 +205,9 @@ func (sh *ScryptHandler) ValidateParams(params map[string]interface{}) error {
 	}
 
 	// Calcula uso de memória e valida
-	memoryUsage := int64(128 * n * r)
-	if memoryUsage > 2*1024*1024*1024 { // 2GB limit
-		return fmt.Errorf("uso de memória muito alto: %d bytes (máximo: 2GB)", memoryUsage)
+	memoryUsage := int64(128) * int64(n) * int64(r)
+	if memoryUsage > 256*1024*1024 {
+		return fmt.Errorf("uso de memória muito alto: %d bytes (máximo: 256MB)", memoryUsage)
 	}
 
 	return nil
@@ -343,14 +343,14 @@ func (ph *PBKDF2Handler) ValidateParams(params map[string]interface{}) error {
 	if iterations < 1000 {
 		return fmt.Errorf("iterações muito baixas: %d (mínimo: 1000)", iterations)
 	}
-	if iterations > 10000000 {
-		return fmt.Errorf("iterações muito altas: %d (máximo: 10000000)", iterations)
+	if iterations > 2000000 {
+		return fmt.Errorf("iterações muito altas: %d (máximo: 2000000)", iterations)
 	}
 
 	// Valida dklen
 	dklen := ph.getIntParam(params, []string{"dklen", "dkLen"}, 32)
-	if dklen < 16 || dklen > 128 {
-		return fmt.Errorf("dklen inválido: %d (range: 16-128)", dklen)
+	if dklen != 32 {
+		return fmt.Errorf("dklen inválido: %d (esperado: 32)", dklen)
 	}
 
 	// Verifica salt

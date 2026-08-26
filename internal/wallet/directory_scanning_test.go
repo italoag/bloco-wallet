@@ -31,7 +31,7 @@ func TestScanDirectoryForKeystores(t *testing.T) {
   "id": "f8b74b19-9a13-4b11-92a7-4c2a4c4e2e2d",
   "address": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d",
   "crypto": {
-    "ciphertext": "7a0f7e6d5c4b3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f",
+    "ciphertext": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
     "cipherparams": {
       "iv": "6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d"
     },
@@ -39,12 +39,12 @@ func TestScanDirectoryForKeystores(t *testing.T) {
     "kdf": "scrypt",
     "kdfparams": {
       "dklen": 32,
-      "salt": "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f",
+      "salt": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
       "n": 8192,
       "r": 8,
       "p": 1
     },
-    "mac": "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f"
+    "mac": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
   }
 }`
 
@@ -153,7 +153,7 @@ func TestGetKeystoreDiscoveryReport(t *testing.T) {
   "id": "f8b74b19-9a13-4b11-92a7-4c2a4c4e2e2d",
   "address": "5d8c5d3a5e6f6d6c5b4a3a2b1c0d9e8f7a6b5c4d",
   "crypto": {
-    "ciphertext": "7a0f7e6d5c4b3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f",
+    "ciphertext": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
     "cipherparams": {
       "iv": "6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d"
     },
@@ -161,12 +161,12 @@ func TestGetKeystoreDiscoveryReport(t *testing.T) {
     "kdf": "scrypt",
     "kdfparams": {
       "dklen": 32,
-      "salt": "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f",
+      "salt": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
       "n": 8192,
       "r": 8,
       "p": 1
     },
-    "mac": "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f"
+    "mac": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
   }
 }`
 

@@ -79,6 +79,9 @@ func (cm *ConfigurationManager) SaveConfiguration(cfg *Config) error {
 	if err := cm.viper.WriteConfigAs(cm.configPath); err != nil {
 		return fmt.Errorf("failed to write config file: %w", err)
 	}
+	if err := os.Chmod(cm.configPath, 0600); err != nil {
+		return fmt.Errorf("failed to secure config file: %w", err)
+	}
 
 	return nil
 }
@@ -125,7 +128,7 @@ func (cm *ConfigurationManager) resolveAppDirectory() (string, error) {
 // ensureConfigFile ensures the config file exists, creating it from default if needed
 func (cm *ConfigurationManager) ensureConfigFile() error {
 	// Create directory if it doesn't exist
-	if err := os.MkdirAll(cm.appDir, os.ModePerm); err != nil {
+	if err := os.MkdirAll(cm.appDir, 0700); err != nil {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
 
@@ -138,9 +141,15 @@ func (cm *ConfigurationManager) ensureConfigFile() error {
 		}
 
 		// Write default config to file
-		if err := os.WriteFile(cm.configPath, defaultConfigData, 0644); err != nil {
+		if err := os.WriteFile(cm.configPath, defaultConfigData, 0600); err != nil {
 			return fmt.Errorf("failed to write default config: %w", err)
 		}
+	}
+	if err := os.Chmod(cm.appDir, 0700); err != nil {
+		return fmt.Errorf("failed to secure config directory: %w", err)
+	}
+	if err := os.Chmod(cm.configPath, 0600); err != nil {
+		return fmt.Errorf("failed to secure config file: %w", err)
 	}
 
 	return nil

@@ -17,7 +17,7 @@ func TestTUIDebugWithLogging(t *testing.T) {
 	fmt.Printf("=== TUI Debug with Detailed Logging ===\n")
 
 	// Initialize crypto service
-	cfg := CreateMockConfig()
+	cfg := CreateMockConfig(t)
 	InitCryptoService(cfg)
 	fmt.Printf("✅ CryptoService initialized\n")
 
@@ -57,7 +57,6 @@ func TestTUIDebugWithLogging(t *testing.T) {
 	for _, test := range testFiles {
 		fmt.Printf("\n--- Testing %s ---\n", test.name)
 		fmt.Printf("File: %s\n", test.path)
-		fmt.Printf("Password: %s\n", test.password)
 
 		// Check if file exists
 		if _, err := os.Stat(test.path); os.IsNotExist(err) {
@@ -111,8 +110,6 @@ func TestTUIDebugWithLogging(t *testing.T) {
 
 // TestCreateValidKeystoreFiles cria arquivos keystore válidos para teste
 func TestCreateValidKeystoreFiles(t *testing.T) {
-	t.Skip("Only run when needed to create test files")
-
 	tempDir := t.TempDir()
 	ks := keystore.NewKeyStore(tempDir, keystore.StandardScryptN, keystore.StandardScryptP)
 
@@ -124,13 +121,9 @@ func TestCreateValidKeystoreFiles(t *testing.T) {
 	require.NoError(t, err)
 
 	// Save to test it directory
-	err = os.WriteFile("testdata/keystores/real_keystore_v3_simple_password.json", keyJSON1, 0644)
+	exportedPath := filepath.Join(tempDir, "exported.json")
+	err = os.WriteFile(exportedPath, keyJSON1, 0600)
 	require.NoError(t, err)
-
-	fmt.Printf("Created simple password keystore:\n")
-	fmt.Printf("Address: %s\n", account1.Address.Hex())
-	fmt.Printf("Password: password123\n")
-	fmt.Printf("Content: %s\n", string(keyJSON1))
 
 	// Test decryption
 	key1, err := keystore.DecryptKey(keyJSON1, "password123")
@@ -180,7 +173,7 @@ func TestDebugSpecificError(t *testing.T) {
 
 	// Test 2: With CryptoService initialized
 	fmt.Printf("\n--- Test 2: With CryptoService ---\n")
-	cfg := CreateMockConfig()
+	cfg := CreateMockConfig(t)
 	InitCryptoService(cfg)
 	fmt.Printf("✅ CryptoService initialized\n")
 

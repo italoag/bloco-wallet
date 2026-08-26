@@ -115,6 +115,9 @@ func (eks *EnhancedKeyStoreService) analyzeCompatibility(keystoreData map[string
 
 // verifyMAC versão melhorada da verificação MAC
 func (eks *EnhancedKeyStoreService) verifyMAC(derivedKey []byte, cryptoParams *CryptoParams) error {
+	if len(derivedKey) != 32 {
+		return fmt.Errorf("derived key must be exactly 32 bytes")
+	}
 	// Usa os últimos 16 bytes da chave derivada para MAC
 	macKey := derivedKey[16:32]
 
@@ -166,6 +169,9 @@ func (eks *EnhancedKeyStoreService) decryptAESCTR(derivedKey []byte, cryptoParam
 	if err != nil {
 		return nil, fmt.Errorf("erro ao decodificar IV: %w", err)
 	}
+	if len(iv) != aes.BlockSize {
+		return nil, fmt.Errorf("IV deve ter %d bytes", aes.BlockSize)
+	}
 
 	cipherText, err := hex.DecodeString(cryptoParams.CipherText)
 	if err != nil {
@@ -205,6 +211,9 @@ func (eks *EnhancedKeyStoreService) decryptAESCBC(derivedKey []byte, cryptoParam
 	iv, err := hex.DecodeString(ivStr)
 	if err != nil {
 		return nil, fmt.Errorf("erro ao decodificar IV: %w", err)
+	}
+	if len(iv) != aes.BlockSize {
+		return nil, fmt.Errorf("IV deve ter %d bytes", aes.BlockSize)
 	}
 
 	cipherText, err := hex.DecodeString(cryptoParams.CipherText)

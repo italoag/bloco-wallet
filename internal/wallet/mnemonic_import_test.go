@@ -12,7 +12,7 @@ import (
 // TestImportWallet_MnemonicDuplicateDetection ensures duplicate detection is based on mnemonic source hash
 func TestImportWallet_MnemonicDuplicateDetection(t *testing.T) {
 	// Initialize crypto service for mnemonic encryption
-	cfg := CreateMockConfig()
+	cfg := CreateMockConfig(t)
 	InitCryptoService(cfg)
 
 	mnemonic := "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
@@ -51,7 +51,7 @@ func TestImportWallet_MnemonicDuplicateDetection(t *testing.T) {
 // TestImportWallet_MnemonicSuccess ensures different mnemonics import successfully and store proper fields
 func TestImportWallet_MnemonicSuccess(t *testing.T) {
 	// Initialize crypto service
-	cfg := CreateMockConfig()
+	cfg := CreateMockConfig(t)
 	InitCryptoService(cfg)
 
 	mnemonic := "legal winner thank year wave sausage worth useful legal winner thank yellow"
@@ -90,7 +90,7 @@ func TestImportWallet_MnemonicSuccess(t *testing.T) {
 
 // TestImportWallet_InvalidMnemonic ensures invalid mnemonic is rejected before processing
 func TestImportWallet_InvalidMnemonic(t *testing.T) {
-	cfg := CreateMockConfig()
+	cfg := CreateMockConfig(t)
 	InitCryptoService(cfg)
 
 	invalid := "not a valid mnemonic phrase"

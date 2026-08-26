@@ -1,12 +1,15 @@
 package ui
 
 import (
+	"context"
 	"testing"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"blocowallet/internal/constants"
 	"blocowallet/internal/wallet"
 )
 
@@ -36,6 +39,19 @@ func (m *MockBatchImportService) CreateImportJobsFromDirectory(dir string) ([]wa
 
 func (m *MockBatchImportService) ValidateImportJobs(jobs []wallet.ImportJob) error {
 	return m.err
+}
+
+func (m *MockBatchImportService) ImportBatchContext(
+	ctx context.Context,
+	jobs []wallet.ImportJob,
+	progressChan chan<- wallet.ImportProgress,
+	passwordRequestChan chan<- wallet.PasswordRequest,
+	passwordResponseChan <-chan wallet.PasswordResponse,
+) []wallet.ImportResult {
+	if ctx.Err() != nil {
+		return []wallet.ImportResult{{Error: ctx.Err()}}
+	}
+	return m.ImportBatch(jobs, progressChan, passwordRequestChan, passwordResponseChan)
 }
 
 func (m *MockBatchImportService) ImportBatch(
@@ -75,6 +91,41 @@ func (m *MockBatchImportService) ImportBatch(
 	}
 
 	return m.results
+}
+
+type contextAwareBatchImportService struct {
+	MockBatchImportService
+	cancelled chan struct{}
+}
+
+type partialResultBatchImportService struct {
+	MockBatchImportService
+	started chan struct{}
+	release chan struct{}
+}
+
+func (m *contextAwareBatchImportService) ImportBatchContext(
+	ctx context.Context,
+	jobs []wallet.ImportJob,
+	progressChan chan<- wallet.ImportProgress,
+	passwordRequestChan chan<- wallet.PasswordRequest,
+	passwordResponseChan <-chan wallet.PasswordResponse,
+) []wallet.ImportResult {
+	<-ctx.Done()
+	close(m.cancelled)
+	return []wallet.ImportResult{{Job: jobs[0], Error: ctx.Err()}}
+}
+
+func (m *partialResultBatchImportService) ImportBatchContext(
+	ctx context.Context,
+	jobs []wallet.ImportJob,
+	progressChan chan<- wallet.ImportProgress,
+	passwordRequestChan chan<- wallet.PasswordRequest,
+	passwordResponseChan <-chan wallet.PasswordResponse,
+) []wallet.ImportResult {
+	close(m.started)
+	<-m.release
+	return []wallet.ImportResult{{Job: jobs[0], Success: true}}
 }
 
 func (m *MockBatchImportService) GetImportSummary(results []wallet.ImportResult) wallet.ImportSummary {
@@ -280,6 +331,187 @@ func TestPasswordHandling(t *testing.T) {
 		assert.False(t, testState.ShowingPopup)
 		assert.Nil(t, testState.PendingPassword)
 	})
+}
+
+func TestPasswordPopupSubmitsResponse(t *testing.T) {
+	state := NewEnhancedImportState(&MockBatchImportService{}, createStyles())
+	state.Phase = PhaseImporting
+	require.NoError(t, state.HandlePasswordRequest(wallet.PasswordRequest{KeystoreFile: "test.json"}))
+	require.NotNil(t, state.PasswordPopup)
+	state.PasswordPopup.SetValue("  exact password  ")
+
+	_, cmd := state.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	assert.Nil(t, cmd)
+	assert.Equal(t, PhaseImporting, state.GetCurrentPhase())
+	select {
+	case response := <-state.passwordResponseChan:
+		assert.Equal(t, "  exact password  ", response.Password)
+		assert.False(t, response.Cancelled)
+		assert.False(t, response.Skip)
+	default:
+		t.Fatal("password response was not submitted")
+	}
+}
+
+func TestPasswordPopupSubmitsSkip(t *testing.T) {
+	state := NewEnhancedImportState(&MockBatchImportService{}, createStyles())
+	state.Phase = PhaseImporting
+	require.NoError(t, state.HandlePasswordRequest(wallet.PasswordRequest{KeystoreFile: "test.json"}))
+
+	_, cmd := state.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+
+	assert.Nil(t, cmd)
+	select {
+	case response := <-state.passwordResponseChan:
+		assert.False(t, response.Cancelled)
+		assert.True(t, response.Skip)
+	default:
+		t.Fatal("skip response was not submitted")
+	}
+}
+
+func TestFileSelectionRecreatesClosedChannels(t *testing.T) {
+	state := NewEnhancedImportState(&MockBatchImportService{}, createStyles())
+	oldProgress := state.progressChan
+	oldRequests := state.passwordRequestChan
+	oldResponses := state.passwordResponseChan
+	close(oldProgress)
+	close(oldRequests)
+	close(oldResponses)
+	state.Phase = PhaseComplete
+
+	require.NoError(t, state.TransitionToPhase(PhaseFileSelection))
+
+	require.NotEqual(t, oldProgress, state.progressChan)
+	require.NotEqual(t, oldRequests, state.passwordRequestChan)
+	require.NotEqual(t, oldResponses, state.passwordResponseChan)
+}
+
+func TestCancelImportCancelsWorker(t *testing.T) {
+	service := &contextAwareBatchImportService{
+		MockBatchImportService: MockBatchImportService{
+			jobs: []wallet.ImportJob{{KeystorePath: "test.json"}},
+		},
+		cancelled: make(chan struct{}),
+	}
+	state := NewEnhancedImportState(service, createStyles())
+	state.SelectedFiles = []string{"test.json"}
+	require.NoError(t, state.StartImport())
+	cmd := state.ProcessImportBatch()
+	cancelDone := make(chan error, 1)
+	go func() {
+		cancelDone <- state.CancelImport()
+	}()
+
+	select {
+	case err := <-cancelDone:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("immediate cancellation deadlocked")
+	}
+	select {
+	case <-service.cancelled:
+	case <-time.After(time.Second):
+		t.Fatal("import worker did not observe cancellation")
+	}
+	msg := cmd()
+	_, ok := msg.(ImportBatchCompleteMsg)
+	assert.True(t, ok)
+}
+
+func TestCancelWaitsAndReportsCompletedResults(t *testing.T) {
+	service := &partialResultBatchImportService{
+		MockBatchImportService: MockBatchImportService{jobs: []wallet.ImportJob{{KeystorePath: "test.json"}}},
+		started:                make(chan struct{}),
+		release:                make(chan struct{}),
+	}
+	state := NewEnhancedImportState(service, createStyles())
+	state.SelectedFiles = []string{"test.json"}
+	require.NoError(t, state.StartImport())
+	workerResult := make(chan tea.Msg, 1)
+	go func() {
+		workerResult <- state.ProcessImportBatch()()
+	}()
+	<-service.started
+	cancelDone := make(chan error, 1)
+	go func() {
+		cancelDone <- state.CancelImport()
+	}()
+	select {
+	case <-cancelDone:
+		t.Fatal("cancellation returned before worker termination")
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(service.release)
+
+	require.NoError(t, <-cancelDone)
+	<-workerResult
+	results := state.GetResults()
+	require.Len(t, results, 1)
+	assert.True(t, results[0].Success)
+	assert.Equal(t, PhaseCancelled, state.GetCurrentPhase())
+}
+
+func TestGlobalEscapeCancelsEnhancedImport(t *testing.T) {
+	state := NewEnhancedImportState(&MockBatchImportService{}, createStyles())
+	state.Phase = PhaseImporting
+	state.importControl = wallet.NewImportControl(context.Background())
+	state.importCtx = state.importControl.Context()
+	model := &CLIModel{currentView: constants.EnhancedImportView, enhancedImportState: state}
+
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+
+	assert.Equal(t, PhaseCancelled, state.GetCurrentPhase())
+	assert.ErrorIs(t, state.importCtx.Err(), context.Canceled)
+}
+
+func TestCancelledStateIgnoresLateBatchCompletion(t *testing.T) {
+	state := NewEnhancedImportState(&MockBatchImportService{}, createStyles())
+	state.Phase = PhaseCancelled
+	model := &CLIModel{enhancedImportState: state}
+
+	_, cmd := model.updateEnhancedImport(ImportBatchCompleteMsg{})
+
+	assert.Nil(t, cmd)
+	assert.NoError(t, model.err)
+	assert.Equal(t, PhaseCancelled, state.GetCurrentPhase())
+}
+
+func TestOperationIDsAreUniqueAcrossStates(t *testing.T) {
+	firstService := &MockBatchImportService{jobs: []wallet.ImportJob{{KeystorePath: "first.json"}}}
+	secondService := &MockBatchImportService{jobs: []wallet.ImportJob{{KeystorePath: "second.json"}}}
+	first := NewEnhancedImportState(firstService, createStyles())
+	second := NewEnhancedImportState(secondService, createStyles())
+	first.SelectedFiles = []string{"first.json"}
+	second.SelectedFiles = []string{"second.json"}
+	require.NoError(t, first.StartImport())
+	require.NoError(t, second.StartImport())
+
+	assert.NotEqual(t, first.GetOperationID(), second.GetOperationID())
+	first.importControl.Cancel()
+	second.importControl.Cancel()
+}
+
+func TestStaleImportMessagesAreIgnored(t *testing.T) {
+	state := NewEnhancedImportState(&MockBatchImportService{}, createStyles())
+	state.operationID = 2
+	state.Phase = PhaseImporting
+	model := &CLIModel{enhancedImportState: state}
+
+	_, _ = model.updateEnhancedImport(ImportProgressUpdateMsg{
+		OperationID: 1,
+		Progress:    wallet.ImportProgress{ProcessedFiles: 1, TotalFiles: 1, Percentage: 100},
+	})
+	_, _ = model.updateEnhancedImport(PasswordRequestMsg{
+		OperationID: 1,
+		Request:     wallet.PasswordRequest{KeystoreFile: "stale.json"},
+	})
+	_, _ = model.updateEnhancedImport(ImportBatchCompleteMsg{OperationID: 1})
+
+	assert.Equal(t, PhaseImporting, state.GetCurrentPhase())
+	assert.Zero(t, state.CurrentProgress.ProcessedFiles)
+	assert.Nil(t, state.PendingPassword)
 }
 
 func TestImportCompletion(t *testing.T) {

@@ -1,15 +1,12 @@
 package ui
 
 import (
-	"blocowallet/internal/blockchain"
 	"blocowallet/internal/constants"
 	"blocowallet/internal/wallet"
 	"blocowallet/pkg/localization"
 	"bytes"
-	"context"
 	"fmt"
 	"log"
-	"math/big"
 	"os"
 	"strings"
 	"time"
@@ -17,7 +14,6 @@ import (
 	"github.com/arsham/figurine/figurine"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/digitallyserviced/tdfgo/tdf"
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/go-errors/errors"
 )
 
@@ -37,6 +33,25 @@ func (m *CLIModel) viewCreateWalletName() string {
 	return view.String()
 }
 
+func (m *CLIModel) viewCreateWalletBackup() string {
+	if localization.Labels == nil {
+		return "Localization labels not initialized."
+	}
+
+	var view strings.Builder
+	view.WriteString(
+		lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FF00")).Render(localization.Labels["mnemonic_phrase"]) + "\n\n" +
+			fmt.Sprintf("%s\n\n", m.mnemonic) +
+			localization.Labels["confirm_mnemonic"] + "\n\n" +
+			m.backupConfirmationInput.View() + "\n\n",
+	)
+	if m.backupError != "" {
+		view.WriteString(m.styles.ErrorStyle.Render(m.backupError) + "\n\n")
+	}
+	view.WriteString(localization.Labels["press_enter"])
+	return view.String()
+}
+
 // renderPasswordValidation renders the password validation status
 func (m *CLIModel) renderPasswordValidation(password string) string {
 	validationErr, _ := wallet.ValidatePassword(password)
@@ -49,10 +64,10 @@ func (m *CLIModel) renderPasswordValidation(password string) string {
 		builder.WriteString(" required\n")
 	} else if validationErr.TooShort {
 		builder.WriteString(m.styles.RedCross.Render("✗"))
-		builder.WriteString(" has 8 characters or more\n")
+		builder.WriteString(" has 15 characters or more\n")
 	} else {
 		builder.WriteString(m.styles.GreenCheck.Render("✓"))
-		builder.WriteString(" has 8 characters or more\n")
+		builder.WriteString(" has 15 characters or more\n")
 	}
 
 	// Check for lowercase letter
@@ -93,9 +108,7 @@ func (m *CLIModel) viewCreateWalletPassword() string {
 
 	var view strings.Builder
 	view.WriteString(
-		lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FF00")).Render(localization.Labels["mnemonic_phrase"]) + "\n\n" +
-			fmt.Sprintf("%s\n\n", m.mnemonic) +
-			localization.Labels["enter_password"] + "\n\n" +
+		lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FF00")).Render(localization.Labels["enter_password"]) + "\n\n" +
 			m.passwordInput.View() + "\n\n" +
 			m.renderPasswordValidation(m.passwordInput.Value()) + "\n\n" +
 			localization.Labels["press_enter"],
@@ -163,6 +176,7 @@ func (m *CLIModel) renderStatusBar() string {
 		constants.DefaultView:               localization.Labels["main_menu_title"],
 		constants.SplashView:                "Splash",
 		constants.CreateWalletNameView:      localization.Labels["create_new_wallet"],
+		constants.CreateWalletBackupView:    localization.Labels["create_new_wallet"],
 		constants.CreateWalletView:          localization.Labels["create_new_wallet"],
 		constants.ImportWalletView:          localization.Labels["import_wallet"],
 		constants.ImportWalletPasswordView:  localization.Labels["import_wallet"],
@@ -325,7 +339,7 @@ func (m *CLIModel) viewImportWallet() string {
 			view.WriteString(activeStyle.Render(paddedLabel) + " " + ti.View() + "\n\n")
 		} else {
 			// Campos inativos
-			view.WriteString(inactiveStyle.Render(paddedLabel) + " " + ti.Value() + "\n")
+			view.WriteString(inactiveStyle.Render(paddedLabel) + " " + ti.View() + "\n")
 		}
 	}
 
@@ -628,7 +642,7 @@ func (m *CLIModel) viewWalletDetails() string {
 		// Determine mnemonic text based on import method
 		mnemonicText := ""
 		if m.walletDetails.HasMnemonic && m.walletDetails.Mnemonic != nil && *m.walletDetails.Mnemonic != "" {
-			mnemonicText = *m.walletDetails.Mnemonic
+			mnemonicText = localization.GetWalletImportMessage("sensitive_data_hidden")
 		} else {
 			// Use specific message based on import method
 			switch m.walletDetails.ImportMethod {
@@ -644,86 +658,15 @@ func (m *CLIModel) viewWalletDetails() string {
 		view.WriteString(
 			lipgloss.NewStyle().Bold(true).Render(localization.Labels["wallet_details_title"]+"\n\n") +
 				fmt.Sprintf("%-*s %s\n", 20, localization.Labels["ethereum_address"], m.walletDetails.Wallet.Address) +
-				fmt.Sprintf("%-*s 0x%x\n", 20, localization.Labels["private_key"], crypto.FromECDSA(m.walletDetails.PrivateKey)) +
-				fmt.Sprintf("%-*s %x\n", 20, localization.Labels["public_key"], crypto.FromECDSAPub(m.walletDetails.PublicKey)) +
+				fmt.Sprintf("%-*s %s\n", 20, localization.Labels["private_key"], localization.GetWalletImportMessage("sensitive_data_hidden")) +
 				fmt.Sprintf("%-*s %s\n", 20, methodLabel+":", methodName) +
 				fmt.Sprintf("%-*s %s\n\n", 20, localization.Labels["mnemonic_phrase_label"], mnemonicText),
 		)
-
-		// Add balance information
-		view.WriteString(m.renderWalletBalances())
 
 		view.WriteString("\n" + localization.Labels["press_esc"])
 		return view.String()
 	}
 	return localization.Labels["select_wallet_prompt"]
-}
-
-// renderWalletBalances renders balance information for the wallet
-func (m *CLIModel) renderWalletBalances() string {
-	if m.walletDetails == nil {
-		return ""
-	}
-
-	var balanceView strings.Builder
-	balanceView.WriteString(lipgloss.NewStyle().Bold(true).Render("Balance Information:\n"))
-
-	// Create a simple provider for Ethereum mainnet
-	ethProvider, err := blockchain.NewEthereum("https://eth.llamarpc.com", 5*time.Second, "ETH", 18)
-	if err != nil {
-		balanceView.WriteString("❌ Failed to connect to Ethereum network\n")
-		return balanceView.String()
-	}
-	defer ethProvider.Close()
-
-	// Get balance
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	balance, err := ethProvider.GetBalance(ctx, m.walletDetails.Wallet.Address)
-	if err != nil {
-		balanceView.WriteString("❌ Failed to fetch balance: " + err.Error() + "\n")
-		return balanceView.String()
-	}
-
-	// Convert Wei to ETH
-	ethBalance := new(big.Float)
-	ethBalance.SetString(balance.String())
-	ethBalance.Quo(ethBalance, big.NewFloat(1e18))
-
-	balanceView.WriteString(fmt.Sprintf("🔹 Ethereum Mainnet: %s ETH\n", ethBalance.Text('f', 6)))
-
-	// Add other networks if available
-	if m.currentConfig != nil && m.currentConfig.Networks != nil {
-		for _, network := range m.currentConfig.Networks {
-			if !network.IsActive || network.RPCEndpoint == "" {
-				continue
-			}
-
-			provider, err := blockchain.NewEthereum(network.RPCEndpoint, 10*time.Second, network.Symbol, 18)
-			if err != nil {
-				balanceView.WriteString(fmt.Sprintf("❌ %s: Connection failed\n", network.Name))
-				continue
-			}
-
-			balance, err := provider.GetBalance(ctx, m.walletDetails.Wallet.Address)
-			provider.Close()
-
-			if err != nil {
-				balanceView.WriteString(fmt.Sprintf("❌ %s: %s\n", network.Name, err.Error()))
-				continue
-			}
-
-			// Convert to human readable format
-			tokenBalance := new(big.Float)
-			tokenBalance.SetString(balance.String())
-			tokenBalance.Quo(tokenBalance, big.NewFloat(1e18))
-
-			balanceView.WriteString(fmt.Sprintf("🔹 %s: %s %s\n", network.Name, tokenBalance.Text('f', 6), network.Symbol))
-		}
-	}
-
-	return balanceView.String()
 }
 
 // viewLanguageSelection renderiza a visualização de seleção de idioma

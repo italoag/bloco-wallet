@@ -190,6 +190,8 @@ func getEnglishMessages() map[string]string {
 	return map[string]string{
 		"welcome_message":            "Welcome to the BLOCO Wallet!\n\nSelect an option from the menu.",
 		"mnemonic_phrase":            "Mnemonic Phrase (Keep it Safe!):",
+		"confirm_mnemonic":           "Re-enter the full mnemonic phrase to confirm your backup:",
+		"mnemonic_mismatch":          "The confirmation does not match the generated mnemonic phrase.",
 		"enter_password":             "Enter a password to encrypt the wallet:",
 		"press_enter":                "Press Enter to continue.",
 		"import_wallet_title":        "Import an existing Wallet",
@@ -268,6 +270,8 @@ func getPortugueseMessages() map[string]string {
 	return map[string]string{
 		"welcome_message":            "Bem-vindo ao Gerenciador de Carteiras BLOCO!\n\nSelecione uma opção do menu.",
 		"mnemonic_phrase":            "Frase Mnemônica (Mantenha-a Segura!):",
+		"confirm_mnemonic":           "Digite novamente a frase mnemônica completa para confirmar o backup:",
+		"mnemonic_mismatch":          "A confirmação não corresponde à frase mnemônica gerada.",
 		"enter_password":             "Digite uma senha para criptografar a carteira:",
 		"press_enter":                "Pressione Enter para continuar.",
 		"import_wallet_title":        "Importar uma Carteira existente",
@@ -346,6 +350,8 @@ func getSpanishMessages() map[string]string {
 	return map[string]string{
 		"welcome_message":            "¡Bienvenido al Administrador de Carteras BLOCO!\n\nSeleccione una opción del menú.",
 		"mnemonic_phrase":            "Frase Mnemónica (¡Manténgala Segura!):",
+		"confirm_mnemonic":           "Vuelva a ingresar la frase mnemónica completa para confirmar la copia:",
+		"mnemonic_mismatch":          "La confirmación no coincide con la frase mnemónica generada.",
 		"enter_password":             "Ingrese una contraseña para cifrar la cartera:",
 		"press_enter":                "Presione Enter para continuar.",
 		"import_wallet_title":        "Importar una Cartera existente",

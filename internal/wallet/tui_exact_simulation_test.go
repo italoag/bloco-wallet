@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/accounts/keystore"
@@ -18,7 +17,7 @@ func TestTUIExactSimulation(t *testing.T) {
 	fmt.Printf("=== TUI Exact Simulation Test ===\n")
 
 	// Step 1: Initialize crypto service like main.go does
-	cfg := CreateMockConfig()
+	cfg := CreateMockConfig(t)
 	InitCryptoService(cfg)
 	fmt.Printf("✅ CryptoService initialized\n")
 
@@ -64,8 +63,7 @@ func TestTUIExactSimulation(t *testing.T) {
 	fmt.Printf("✅ Keystore path stored in mnemonic field: %s\n", mnemonic)
 
 	// Step 6: Simulate updateImportWalletPassword
-	password := strings.TrimSpace("ComplexPassword123!@#")
-	fmt.Printf("✅ Password trimmed: '%s'\n", password)
+	password := "ComplexPassword123!@#"
 
 	// Validate password (like TUI does)
 	validationErr, isValid := ValidatePassword(password)
@@ -130,14 +128,13 @@ func TestTUIWithRealApplication(t *testing.T) {
 	fmt.Printf("=== TUI Real Application Test ===\n")
 
 	// Use the same setup as the real application
-	homeDir, err := os.UserHomeDir()
-	require.NoError(t, err)
+	homeDir := t.TempDir()
 
 	appDir := filepath.Join(homeDir, ".wallets")
 	keystoreDir := filepath.Join(appDir, "keystore")
 
 	// Ensure directories exist
-	err = os.MkdirAll(keystoreDir, 0700)
+	err := os.MkdirAll(keystoreDir, 0700)
 	require.NoError(t, err)
 
 	fmt.Printf("✅ Using real application directories:\n")
@@ -145,7 +142,7 @@ func TestTUIWithRealApplication(t *testing.T) {
 	fmt.Printf("   Keystore Dir: %s\n", keystoreDir)
 
 	// Load real config (or create mock that matches real config structure)
-	cfg := CreateMockConfig()
+	cfg := CreateMockConfig(t)
 	cfg.AppDir = appDir
 	InitCryptoService(cfg)
 	fmt.Printf("✅ CryptoService initialized with real config\n")

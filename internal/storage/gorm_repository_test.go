@@ -3,7 +3,10 @@ package storage
 import (
 	"blocowallet/internal/wallet"
 	"blocowallet/pkg/config"
+	"net/url"
 	"os"
+	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -217,9 +220,69 @@ func TestGORMRepository_SQLiteConfigurations(t *testing.T) {
 					err := repo.Close()
 					assert.NoError(t, err)
 				}
+				if tc.dsn == "" && runtime.GOOS != "windows" {
+					info, statErr := os.Stat(cfg.DatabasePath)
+					require.NoError(t, statErr)
+					assert.Equal(t, os.FileMode(0600), info.Mode().Perm())
+				}
 			}
 		})
 	}
+}
+
+func TestGORMRepository_FileURIPermissions(t *testing.T) {
+	tempDir := t.TempDir()
+	if runtime.GOOS != "windows" {
+		require.NoError(t, os.Chmod(tempDir, 0755))
+	}
+	databasePath := filepath.Join(tempDir, "uri.db")
+	dsn := (&url.URL{Scheme: "file", Path: databasePath}).String()
+	cfg := &config.Config{
+		AppDir:       tempDir,
+		DatabasePath: databasePath,
+		Database:     config.DatabaseConfig{Type: "sqlite", DSN: dsn},
+	}
+
+	repo, err := NewWalletRepository(cfg)
+	require.NoError(t, err)
+	require.NoError(t, repo.Close())
+
+	assert.FileExists(t, databasePath)
+	if runtime.GOOS != "windows" {
+		dirInfo, statErr := os.Stat(tempDir)
+		require.NoError(t, statErr)
+		assert.Equal(t, os.FileMode(0700), dirInfo.Mode().Perm())
+		fileInfo, statErr := os.Stat(databasePath)
+		require.NoError(t, statErr)
+		assert.Equal(t, os.FileMode(0600), fileInfo.Mode().Perm())
+	}
+}
+
+func TestGORMRepository_RejectsInsecureExternalDirectory(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix permission semantics")
+	}
+	appDir := t.TempDir()
+	externalDir := t.TempDir()
+	require.NoError(t, os.Chmod(externalDir, 0755))
+	databasePath := filepath.Join(externalDir, "external.db")
+	cfg := &config.Config{
+		AppDir:       appDir,
+		DatabasePath: databasePath,
+		Database: config.DatabaseConfig{
+			Type: "sqlite",
+			DSN:  (&url.URL{Scheme: "file", Path: databasePath}).String(),
+		},
+	}
+
+	repo, err := NewWalletRepository(cfg)
+
+	assert.Error(t, err)
+	assert.Nil(t, repo)
+	info, statErr := os.Stat(externalDir)
+	require.NoError(t, statErr)
+	assert.Equal(t, os.FileMode(0755), info.Mode().Perm())
+	assert.NoFileExists(t, databasePath)
 }
 
 func TestGORMRepository_FindBySourceHash_And_AddressQueries(t *testing.T) {

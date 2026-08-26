@@ -74,7 +74,7 @@ func LoadConfig(appDir string) (*Config, error) {
 	// Check if a config file exists
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		// Create a config directory if it doesn't exist
-		if err := os.MkdirAll(appDir, os.ModePerm); err != nil {
+		if err := os.MkdirAll(appDir, 0700); err != nil {
 			return nil, fmt.Errorf("failed to create config directory: %w", err)
 		}
 
@@ -85,9 +85,16 @@ func LoadConfig(appDir string) (*Config, error) {
 		}
 
 		// Write default config to file
-		if err := os.WriteFile(configPath, defaultConfigData, 0644); err != nil {
+		if err := os.WriteFile(configPath, defaultConfigData, 0600); err != nil {
 			return nil, fmt.Errorf("failed to write default config: %w", err)
 		}
+	}
+
+	if err := os.Chmod(appDir, 0700); err != nil {
+		return nil, fmt.Errorf("failed to secure config directory: %w", err)
+	}
+	if err := os.Chmod(configPath, 0600); err != nil {
+		return nil, fmt.Errorf("failed to secure config file: %w", err)
 	}
 
 	// Read the config file

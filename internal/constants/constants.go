@@ -3,12 +3,13 @@ package constants
 import "time"
 
 const (
-	PasswordCharLimit         = 64
+	PasswordCharLimit         = 1024
 	PasswordWidth             = 30
-	PasswordMinLength         = 8
+	PasswordMinLength         = 15
 	DefaultView               = "menu"
 	SplashView                = "splash"
 	CreateWalletNameView      = "create_wallet_name"
+	CreateWalletBackupView    = "create_wallet_backup"
 	CreateWalletView          = "create_wallet_password"
 	ImportWalletView          = "import_wallet"
 	ImportWalletPasswordView  = "import_wallet_password"

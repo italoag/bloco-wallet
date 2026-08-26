@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/accounts/keystore"
@@ -114,8 +115,9 @@ func assertWalletImportSuccess(t *testing.T, walletDetails *wallet.WalletDetails
 	assert.NoError(t, err, "Keystore file should exist at the specified path")
 
 	// Verify filename format
-	expectedFilename := expectedAddress.Hex() + ".json"
-	assert.Equal(t, expectedFilename, filepath.Base(walletDetails.Wallet.KeyStorePath))
+	filename := filepath.Base(walletDetails.Wallet.KeyStorePath)
+	assert.True(t, strings.HasPrefix(filename, expectedAddress.Hex()+"-"))
+	assert.Equal(t, ".json", filepath.Ext(filename))
 }
 
 // assertKeystoreImportError verifies that a keystore import error occurred with expected properties
@@ -577,10 +579,8 @@ func TestKeystoreImportWithComplexPasswords(t *testing.T) {
 	}
 }
 
-// TestDeterministicMnemonicConsistency tests that
-// the deterministic mnemonic generation is consistent across multiple imports
-// of the same keystore file
-func TestDeterministicMnemonicConsistency(t *testing.T) {
+// TestDuplicateKeystoreImportRejectedWithoutDeletion verifies duplicate source protection
+func TestDuplicateKeystoreImportRejectedWithoutDeletion(t *testing.T) {
 	// Create temporary directories for the test
 	tempDir, err := os.MkdirTemp("", "keystore-import-integration-deterministic")
 	require.NoError(t, err)
@@ -641,20 +641,14 @@ func TestDeterministicMnemonicConsistency(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, walletDetails1)
 
-	// Delete the first wallet to avoid address conflict
-	err = walletService.DeleteWallet(walletDetails1.Wallet)
-	require.NoError(t, err)
-
 	// Import the same keystore again
 	walletDetails2, err := walletService.ImportWalletFromKeystoreV3("Test 2", sourceKeystorePath, password)
-	require.NoError(t, err)
-	require.NotNil(t, walletDetails2)
+	assert.Error(t, err)
+	assert.Nil(t, walletDetails2)
 
 	// Verify that keystore imports don't have mnemonics
 	assert.Nil(t, walletDetails1.Mnemonic, "Keystore imports should not have mnemonics")
-	assert.Nil(t, walletDetails2.Mnemonic, "Keystore imports should not have mnemonics")
 	assert.False(t, walletDetails1.HasMnemonic, "Keystore imports should not have mnemonics")
-	assert.False(t, walletDetails2.HasMnemonic, "Keystore imports should not have mnemonics")
 }
 
 // TestCompleteImportFlow tests the complete import flow
@@ -735,9 +729,9 @@ func TestCompleteImportFlow(t *testing.T) {
 	assert.NoError(t, err, "Keystore file should exist at the specified path")
 
 	// Verify the filename format
-	expectedFilename := address.Hex() + ".json"
-	assert.Equal(t, expectedFilename, filepath.Base(walletDetails.Wallet.KeyStorePath),
-		"Keystore filename should match the wallet address")
+	filename := filepath.Base(walletDetails.Wallet.KeyStorePath)
+	assert.True(t, strings.HasPrefix(filename, address.Hex()+"-"))
+	assert.Equal(t, ".json", filepath.Ext(filename))
 
 	// Verify that keystore imports don't have mnemonics
 	assert.Nil(t, walletDetails.Mnemonic, "Keystore imports should not have mnemonics")

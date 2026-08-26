@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"blocowallet/internal/storage"
 	"blocowallet/internal/ui"
@@ -56,7 +57,7 @@ func main() {
 	})
 	if err != nil {
 		// Fall back silently; continue without crashing per requirements
-		lgr = nil
+		lgr, _ = logger.NewFileLogger(logger.LoggingConfig{})
 	}
 	// Provide UI package with file-based logger for debug-only input logs
 	ui.SetLogger(lgr)
@@ -90,16 +91,16 @@ func main() {
 	}()
 
 	// Create keystore
-	keystoreDir := filepath.Join(cfg.WalletsDir, "keystore")
-	if err := os.MkdirAll(keystoreDir, 0755); err != nil {
-		log.Printf("Failed to create keystore directory: %v", err)
+	keystoreDir := cfg.WalletsDir
+	if err := ensurePrivateDirectory(keystoreDir, cfg.AppDir); err != nil {
+		log.Printf("Failed to secure keystore directory: %v", err)
 		os.Exit(1)
 	}
 
 	ks := keystore.NewKeyStore(keystoreDir, keystore.StandardScryptN, keystore.StandardScryptP)
 
 	// Initialize wallet service
-	walletService := wallet.NewWalletService(repo, ks)
+	walletService := wallet.NewWalletService(repo, ks, keystoreDir)
 	lgr.Info("Wallet service initialized")
 
 	// Initialize and start the TUI application
@@ -111,4 +112,36 @@ func main() {
 		log.Printf("Application error: %v", err)
 		os.Exit(1)
 	}
+}
+
+func ensurePrivateDirectory(path, appDir string) error {
+	info, err := os.Lstat(path)
+	if os.IsNotExist(err) {
+		if err := os.MkdirAll(path, 0700); err != nil {
+			return err
+		}
+		return os.Chmod(path, 0700)
+	}
+	if err != nil {
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return fmt.Errorf("path must be a regular directory")
+	}
+	if info.Mode().Perm()&0077 == 0 {
+		return nil
+	}
+	root, err := filepath.Abs(appDir)
+	if err != nil || appDir == "" {
+		return fmt.Errorf("external directory is not private")
+	}
+	target, err := filepath.Abs(path)
+	if err != nil {
+		return err
+	}
+	relative, err := filepath.Rel(root, target)
+	if err != nil || filepath.IsAbs(relative) || relative == ".." || strings.HasPrefix(relative, ".."+string(os.PathSeparator)) {
+		return fmt.Errorf("external directory is not private")
+	}
+	return os.Chmod(target, 0700)
 }

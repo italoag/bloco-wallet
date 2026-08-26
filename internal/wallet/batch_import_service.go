@@ -1,6 +1,7 @@
 package wallet
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -8,8 +9,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/ethereum/go-ethereum/accounts/keystore"
 )
 
 // ImportJob represents a single keystore import job
@@ -253,7 +252,7 @@ func (bis *BatchImportService) ScanDirectoryForKeystores(dirPath string) ([]stri
 // isValidKeystoreFile performs comprehensive validation to check if a JSON file is a valid keystore
 func (bis *BatchImportService) isValidKeystoreFile(filePath string) bool {
 	// Read the entire file for proper validation
-	data, err := os.ReadFile(filePath)
+	data, err := readRegularFile(filePath, 1024*1024)
 	if err != nil {
 		return false
 	}
@@ -341,11 +340,26 @@ func (bis *BatchImportService) ImportBatch(
 	passwordRequestChan chan<- PasswordRequest,
 	passwordResponseChan <-chan PasswordResponse,
 ) []ImportResult {
+	return bis.ImportBatchContext(context.Background(), jobs, progressChan, passwordRequestChan, passwordResponseChan)
+}
+
+func (bis *BatchImportService) ImportBatchContext(
+	ctx context.Context,
+	jobs []ImportJob,
+	progressChan chan<- ImportProgress,
+	passwordRequestChan chan<- PasswordRequest,
+	passwordResponseChan <-chan PasswordResponse,
+) []ImportResult {
 	bis.mu.Lock()
 	defer bis.mu.Unlock()
+	if ctx == nil {
+		ctx = context.Background()
+	}
 
 	if len(jobs) == 0 {
-		close(progressChan)
+		if progressChan != nil {
+			close(progressChan)
+		}
 		return []ImportResult{}
 	}
 
@@ -373,6 +387,15 @@ func (bis *BatchImportService) ImportBatch(
 
 	// Process each job
 	for i, job := range jobs {
+		if err := ctx.Err(); err != nil {
+			results = append(results, ImportResult{
+				Job:     job,
+				Success: false,
+				Error:   NewKeystoreImportError(ErrorImportInterrupted, "import cancelled", err),
+			})
+			break
+		}
+
 		// Update progress for current file
 		progress.CurrentFile = filepath.Base(job.KeystorePath)
 		progress.ProcessedFiles = i
@@ -382,7 +405,7 @@ func (bis *BatchImportService) ImportBatch(
 		bis.sendProgressUpdate(progress, progressChan)
 
 		// Process the import job
-		result := bis.processImportJob(job, passwordRequestChan, passwordResponseChan, &progress, progressChan)
+		result := bis.processImportJob(ctx, job, passwordRequestChan, passwordResponseChan, &progress, progressChan)
 		results = append(results, result)
 
 		// Track errors and skipped files using error aggregator
@@ -415,12 +438,15 @@ func (bis *BatchImportService) ImportBatch(
 
 	bis.sendProgressUpdate(progress, progressChan)
 
-	close(progressChan)
+	if progressChan != nil {
+		close(progressChan)
+	}
 	return results
 }
 
 // processImportJob processes a single import job with enhanced error handling
 func (bis *BatchImportService) processImportJob(
+	ctx context.Context,
 	job ImportJob,
 	passwordRequestChan chan<- PasswordRequest,
 	passwordResponseChan <-chan PasswordResponse,
@@ -428,7 +454,14 @@ func (bis *BatchImportService) processImportJob(
 	progressChan chan<- ImportProgress,
 ) ImportResult {
 	var password string
+	passwordAvailable := false
 	var err error
+	if err := ctx.Err(); err != nil {
+		return ImportResult{
+			Job:   job,
+			Error: NewKeystoreImportError(ErrorImportInterrupted, "import cancelled", err),
+		}
+	}
 
 	// Try to get password from file first
 	if job.PasswordPath != "" {
@@ -437,12 +470,14 @@ func (bis *BatchImportService) processImportJob(
 			// Password file exists but can't be read, fall back to manual input
 			job.RequiresInput = true
 			password = "" // Clear any partial password
+		} else {
+			passwordAvailable = true
 		}
 	}
 
 	// If we need manual password input
-	if job.RequiresInput && password == "" {
-		password, err = bis.requestManualPassword(job.KeystorePath, passwordRequestChan, passwordResponseChan, progress, progressChan)
+	if job.RequiresInput && !passwordAvailable {
+		password, err = bis.requestManualPassword(ctx, job.KeystorePath, passwordRequestChan, passwordResponseChan, progress, progressChan)
 		if err != nil {
 			// Check if this is a password input error
 			if passwordErr, ok := err.(*PasswordInputError); ok {
@@ -464,15 +499,17 @@ func (bis *BatchImportService) processImportJob(
 				Skipped: false,
 			}
 		}
+		passwordAvailable = true
 	}
 
 	// Use manual password if provided in job (overrides file password)
 	if job.ManualPassword != "" {
 		password = job.ManualPassword
+		passwordAvailable = true
 	}
 
 	// Validate we have a password before attempting import
-	if password == "" {
+	if !passwordAvailable {
 		return ImportResult{
 			Job:     job,
 			Success: false,
@@ -483,7 +520,7 @@ func (bis *BatchImportService) processImportJob(
 	}
 
 	// Attempt the import with progress tracking
-	walletDetails, err := bis.walletService.ImportWalletFromKeystoreV3WithProgress(job.WalletName, job.KeystorePath, password, progressChan)
+	walletDetails, err := bis.walletService.ImportWalletFromKeystoreV3WithContext(ctx, job.WalletName, job.KeystorePath, password, progressChan)
 	if err != nil {
 		return ImportResult{
 			Job:     job,
@@ -505,6 +542,7 @@ func (bis *BatchImportService) processImportJob(
 
 // requestManualPassword requests manual password input from the user with retry mechanism
 func (bis *BatchImportService) requestManualPassword(
+	ctx context.Context,
 	keystoreFile string,
 	passwordRequestChan chan<- PasswordRequest,
 	passwordResponseChan <-chan PasswordResponse,
@@ -514,6 +552,14 @@ func (bis *BatchImportService) requestManualPassword(
 	const maxRetries = 3
 
 	for attempt := 1; attempt <= maxRetries; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return "", &PasswordInputError{
+				Type:    PasswordInputCancelled,
+				Message: "password input cancelled",
+				File:    keystoreFile,
+			}
+		}
+
 		// Update progress to show we're waiting for password
 		progress.PendingPassword = true
 		progress.PendingFile = filepath.Base(keystoreFile)
@@ -569,19 +615,7 @@ func (bis *BatchImportService) requestManualPassword(
 				}
 			}
 
-			// Validate password is not empty
-			if response.Password == "" {
-				if attempt < maxRetries {
-					continue // Try again with empty password error
-				}
-				return "", &PasswordInputError{
-					Type:    PasswordInputInvalid,
-					Message: "empty password provided",
-					File:    keystoreFile,
-				}
-			}
-
-			// Test the provided password
+			// Validate the exact password against the keystore
 			if bis.testKeystorePassword(keystoreFile, response.Password) {
 				return response.Password, nil
 			}
@@ -596,6 +630,16 @@ func (bis *BatchImportService) requestManualPassword(
 			return "", &PasswordInputError{
 				Type:    PasswordInputMaxAttemptsExceeded,
 				Message: fmt.Sprintf("incorrect password after %d attempts", maxRetries),
+				File:    keystoreFile,
+			}
+
+		case <-ctx.Done():
+			progress.PendingPassword = false
+			progress.PendingFile = ""
+			bis.sendProgressUpdate(*progress, progressChan)
+			return "", &PasswordInputError{
+				Type:    PasswordInputCancelled,
+				Message: "password input cancelled",
 				File:    keystoreFile,
 			}
 
@@ -624,14 +668,17 @@ func (bis *BatchImportService) requestManualPassword(
 // testKeystorePassword tests if a password can decrypt a keystore file
 func (bis *BatchImportService) testKeystorePassword(keystorePath, password string) bool {
 	// Read the keystore file
-	keyJSON, err := os.ReadFile(keystorePath)
+	keyJSON, err := readRegularFile(keystorePath, 1024*1024)
 	if err != nil {
 		return false
 	}
 
+	if _, err = (&KeystoreValidator{}).ValidateKeystoreV3(keyJSON); err != nil {
+		return false
+	}
 	// Try to decrypt using the go-ethereum keystore package directly
 	// This avoids creating a wallet in the database during testing
-	_, err = keystore.DecryptKey(keyJSON, password)
+	_, err = decryptKeySafely(keyJSON, password)
 	return err == nil
 }
 

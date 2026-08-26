@@ -1,10 +1,13 @@
 package wallet
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -27,19 +30,31 @@ type WalletDetails struct {
 }
 
 type WalletService struct {
-	Repo     WalletRepository
-	KeyStore *keystore.KeyStore
+	Repo        WalletRepository
+	KeyStore    *keystore.KeyStore
+	KeyStoreDir string
 }
 
-func NewWalletService(repo WalletRepository, ks *keystore.KeyStore) *WalletService {
+var ErrWalletDeletionDisabled = errors.New("wallet deletion is disabled until transactional deletion is available")
+
+func NewWalletService(repo WalletRepository, ks *keystore.KeyStore, keyStoreDir ...string) *WalletService {
 	// Verify that CryptoService is initialized
 	if defaultCryptoService == nil {
 		panic("CryptoService must be initialized before creating WalletService. Call wallet.InitCryptoService(cfg) first.")
 	}
 
+	dir := defaultCryptoService.config.WalletsDir
+	if len(keyStoreDir) > 0 {
+		dir = keyStoreDir[0]
+	}
+	if dir != "" {
+		dir = filepath.Clean(dir)
+	}
+
 	return &WalletService{
-		Repo:     repo,
-		KeyStore: ks,
+		Repo:        repo,
+		KeyStore:    ks,
+		KeyStoreDir: dir,
 	}
 }
 
@@ -47,6 +62,19 @@ func (ws *WalletService) CreateWallet(name, password string) (*WalletDetails, er
 	mnemonic, err := GenerateMnemonic()
 	if err != nil {
 		return nil, err
+	}
+	return ws.CreateWalletFromMnemonic(name, mnemonic, password)
+}
+
+func (ws *WalletService) CreateWalletFromMnemonic(name, mnemonic, password string) (*WalletDetails, error) {
+	if !bip39.IsMnemonicValid(mnemonic) {
+		return nil, NewInvalidImportDataError(string(ImportMethodMnemonic), "Invalid mnemonic phrase")
+	}
+	sourceHash := (&SourceHashGenerator{}).GenerateFromMnemonic(mnemonic)
+	if existingWallet, err := ws.Repo.FindBySourceHash(sourceHash); err != nil {
+		return nil, err
+	} else if existingWallet != nil {
+		return nil, NewDuplicateWalletError(string(ImportMethodMnemonic), existingWallet.Address, "A wallet with this mnemonic phrase already exists")
 	}
 
 	privateKeyHex, err := DerivePrivateKey(mnemonic)
@@ -63,33 +91,32 @@ func (ws *WalletService) CreateWallet(name, password string) (*WalletDetails, er
 	if err != nil {
 		return nil, err
 	}
-
-	originalPath := account.URL.Path
-	newFilename := fmt.Sprintf("%s.json", account.Address.Hex())
-	newPath := filepath.Join(filepath.Dir(originalPath), newFilename)
-	err = os.Rename(originalPath, newPath)
-	if err != nil {
-		return nil, fmt.Errorf("error renaming the wallet file: %v", err)
-	}
+	keepKeyStore := false
+	defer func() {
+		if !keepKeyStore {
+			_ = os.Remove(account.URL.Path)
+		}
+	}()
 
 	// Encrypt the mnemonic before storing
 	encryptedMnemonic, err := EncryptMnemonic(mnemonic, password)
 	if err != nil {
-		return nil, fmt.Errorf("failed to encrypt mnemonic: %v", err)
+		return nil, fmt.Errorf("failed to encrypt mnemonic: %w", err)
 	}
 
 	wallet := &Wallet{
 		Name:         name,
 		Address:      account.Address.Hex(),
-		KeyStorePath: newPath,
+		KeyStorePath: account.URL.Path,
 		Mnemonic:     &encryptedMnemonic, // Store the encrypted mnemonic
 		ImportMethod: string(ImportMethodMnemonic),
-		SourceHash:   (&SourceHashGenerator{}).GenerateFromMnemonic(mnemonic),
+		SourceHash:   sourceHash,
 	}
 
 	if err = ws.Repo.AddWallet(wallet); err != nil {
 		return nil, err
 	}
+	keepKeyStore = true
 
 	walletDetails := &WalletDetails{
 		Wallet:       wallet,
@@ -132,33 +159,32 @@ func (ws *WalletService) ImportWallet(name, mnemonic, password string) (*WalletD
 	if err != nil {
 		return nil, err
 	}
-
-	originalPath := account.URL.Path
-	newFilename := fmt.Sprintf("%s.json", account.Address.Hex())
-	newPath := filepath.Join(filepath.Dir(originalPath), newFilename)
-	err = os.Rename(originalPath, newPath)
-	if err != nil {
-		return nil, fmt.Errorf("error renaming the wallet file: %v", err)
-	}
+	keepKeyStore := false
+	defer func() {
+		if !keepKeyStore {
+			_ = os.Remove(account.URL.Path)
+		}
+	}()
 
 	// Encrypt the mnemonic before storing
 	encryptedMnemonic, err := EncryptMnemonic(mnemonic, password)
 	if err != nil {
-		return nil, fmt.Errorf("failed to encrypt mnemonic: %v", err)
+		return nil, fmt.Errorf("failed to encrypt mnemonic: %w", err)
 	}
 
 	wallet := &Wallet{
 		Name:         name,
 		Address:      account.Address.Hex(),
-		KeyStorePath: newPath,
+		KeyStorePath: account.URL.Path,
 		Mnemonic:     &encryptedMnemonic, // Store the encrypted mnemonic
 		ImportMethod: string(ImportMethodMnemonic),
-		SourceHash:   (&SourceHashGenerator{}).GenerateFromMnemonic(mnemonic),
+		SourceHash:   sourceHash,
 	}
 
 	if err = ws.Repo.AddWallet(wallet); err != nil {
 		return nil, err
 	}
+	keepKeyStore = true
 
 	walletDetails := &WalletDetails{
 		Wallet:       wallet,
@@ -209,12 +235,13 @@ func (ws *WalletService) ImportWalletFromPrivateKey(name, privateKeyHex, passwor
 	}
 
 	// Rename the keystore file to match Ethereum address
-	originalPath := account.URL.Path
-	newFilename := fmt.Sprintf("%s.json", account.Address.Hex())
-	newPath := filepath.Join(filepath.Dir(originalPath), newFilename)
-	if err = os.Rename(originalPath, newPath); err != nil {
-		return nil, fmt.Errorf("error renaming the wallet file: %v", err)
-	}
+	newPath := account.URL.Path
+	keepKeyStore := false
+	defer func() {
+		if !keepKeyStore {
+			_ = os.Remove(newPath)
+		}
+	}()
 
 	// 6.1 Mnemonic must be unavailable for private key imports
 	var nilMnemonic *string = nil
@@ -233,6 +260,7 @@ func (ws *WalletService) ImportWalletFromPrivateKey(name, privateKeyHex, passwor
 	if err = ws.Repo.AddWallet(wallet); err != nil {
 		return nil, err
 	}
+	keepKeyStore = true
 
 	// Return wallet details without mnemonic
 	walletDetails := &WalletDetails{
@@ -254,6 +282,17 @@ func (ws *WalletService) ImportWalletFromKeystoreV3(name, keystorePath, password
 
 // ImportWalletFromKeystoreV3WithProgress imports a wallet from a keystore v3 file with progress tracking
 func (ws *WalletService) ImportWalletFromKeystoreV3WithProgress(name, keystorePath, password string, progressChan chan<- ImportProgress) (*WalletDetails, error) {
+	return ws.ImportWalletFromKeystoreV3WithContext(context.Background(), name, keystorePath, password, progressChan)
+}
+
+func (ws *WalletService) ImportWalletFromKeystoreV3WithContext(ctx context.Context, name, keystorePath, password string, progressChan chan<- ImportProgress) (*WalletDetails, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, NewKeystoreImportError(ErrorImportInterrupted, "Import cancelled", err)
+	}
+
 	// Send initial progress update
 	ws.sendProgressUpdate(progressChan, ImportProgress{
 		CurrentFile:     keystorePath,
@@ -280,12 +319,8 @@ func (ws *WalletService) ImportWalletFromKeystoreV3WithProgress(name, keystorePa
 		ElapsedTime:     0,
 	})
 
-	if _, err := os.Stat(keystorePath); os.IsNotExist(err) {
-		return nil, NewKeystoreImportError(
-			ErrorFileNotFound,
-			"Keystore file not found at specified path",
-			err,
-		)
+	if err := ctx.Err(); err != nil {
+		return nil, NewKeystoreImportError(ErrorImportInterrupted, "Import cancelled", err)
 	}
 
 	// Step 2: Read the keystore file
@@ -301,13 +336,22 @@ func (ws *WalletService) ImportWalletFromKeystoreV3WithProgress(name, keystorePa
 		ElapsedTime:     0,
 	})
 
-	keyJSON, err := os.ReadFile(keystorePath)
+	keyJSON, err := readRegularFile(keystorePath, 1024*1024)
 	if err != nil {
+		errorType := ErrorInvalidKeystore
+		message := "Error reading the keystore file"
+		if os.IsNotExist(err) {
+			errorType = ErrorFileNotFound
+			message = "Keystore file not found at specified path"
+		}
 		return nil, NewKeystoreImportError(
-			ErrorFileNotFound,
-			"Error reading the keystore file",
+			errorType,
+			message,
 			err,
 		)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, NewKeystoreImportError(ErrorImportInterrupted, "Import cancelled", err)
 	}
 
 	// Step 3: Generate source hash from keystore JSON content for duplicate detection
@@ -439,6 +483,9 @@ func (ws *WalletService) ImportWalletFromKeystoreV3WithProgress(name, keystorePa
 			err,
 		)
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, NewKeystoreImportError(ErrorImportInterrupted, "Import cancelled", err)
+	}
 
 	// Step 11: Use Enhanced KeyStore Service for decryption
 	enhancedService := NewEnhancedKeyStoreService()
@@ -505,33 +552,27 @@ func (ws *WalletService) ImportWalletFromKeystoreV3WithProgress(name, keystorePa
 
 	// Step 16: Create destination path
 	address := normalizedDerivedAddress
-	destFilename := fmt.Sprintf("%s.json", address)
-
-	var keystoreDir string
-	accounts := ws.KeyStore.Accounts()
-	if len(accounts) > 0 {
-		keystoreDir = filepath.Dir(accounts[0].URL.Path)
-	} else {
-		homeDir, err := os.UserHomeDir()
-		if err != nil {
-			return nil, NewKeystoreImportError(
-				ErrorFileNotFound,
-				"Error getting user home directory",
-				err,
-			)
-		}
-		keystoreDir = filepath.Join(homeDir, ".wallets", "keystore")
-
-		if err := os.MkdirAll(keystoreDir, 0700); err != nil {
-			return nil, NewKeystoreImportError(
-				ErrorFileNotFound,
-				"Error creating keystore directory",
-				err,
-			)
+	keystoreDir := ws.KeyStoreDir
+	if keystoreDir == "" {
+		accounts := ws.KeyStore.Accounts()
+		if len(accounts) > 0 {
+			keystoreDir = filepath.Dir(accounts[0].URL.Path)
 		}
 	}
-
-	destPath := filepath.Join(keystoreDir, destFilename)
+	if keystoreDir == "" {
+		return nil, NewKeystoreImportError(
+			ErrorFileNotFound,
+			"Managed keystore directory is not configured",
+			nil,
+		)
+	}
+	if err := os.MkdirAll(keystoreDir, 0700); err != nil {
+		return nil, NewKeystoreImportError(
+			ErrorFileNotFound,
+			"Error creating keystore directory",
+			err,
+		)
+	}
 
 	// Step 17: Copy keystore file to destination
 	ws.sendProgressUpdate(progressChan, ImportProgress{
@@ -546,7 +587,10 @@ func (ws *WalletService) ImportWalletFromKeystoreV3WithProgress(name, keystorePa
 		ElapsedTime:     0,
 	})
 
-	destFile, err := os.Create(destPath)
+	if err := ctx.Err(); err != nil {
+		return nil, NewKeystoreImportError(ErrorImportInterrupted, "Import cancelled", err)
+	}
+	destFile, err := os.CreateTemp(keystoreDir, address+"-*.json")
 	if err != nil {
 		return nil, NewKeystoreImportError(
 			ErrorFileNotFound,
@@ -554,21 +598,51 @@ func (ws *WalletService) ImportWalletFromKeystoreV3WithProgress(name, keystorePa
 			err,
 		)
 	}
+	destPath := destFile.Name()
+	keepDestination := false
 	defer func() {
-		if err := destFile.Close(); err != nil {
-			// Avoid printing to terminal; write to file logger if available
-			if svcLogger != nil {
-				svcLogger.Warn("Error closing destination file: " + err.Error())
-			}
+		if !keepDestination {
+			_ = os.Remove(destPath)
 		}
 	}()
 
 	if _, err = destFile.Write(keyJSON); err != nil {
+		_ = destFile.Close()
 		return nil, NewKeystoreImportError(
 			ErrorFileNotFound,
 			"Error writing to destination file",
 			err,
 		)
+	}
+	if err = destFile.Sync(); err != nil {
+		_ = destFile.Close()
+		return nil, NewKeystoreImportError(
+			ErrorFileNotFound,
+			"Error syncing destination file",
+			err,
+		)
+	}
+	if err = destFile.Close(); err != nil {
+		// Avoid printing to terminal; write to file logger if available
+		if svcLogger != nil {
+			svcLogger.Warn("Error closing destination file: " + err.Error())
+		}
+		return nil, NewKeystoreImportError(
+			ErrorFileNotFound,
+			"Error closing destination file",
+			err,
+		)
+	}
+	storedJSON, err := os.ReadFile(destPath)
+	if err != nil {
+		return nil, NewKeystoreImportError(ErrorCorruptedFile, "Failed to verify stored keystore", err)
+	}
+	reloadedKey, err := decryptKeySafely(storedJSON, password)
+	if err != nil {
+		return nil, NewKeystoreImportError(ErrorInvalidKeystore, "Keystore is not supported for persistent use", err)
+	}
+	if reloadedKey.Address.Hex() != address || reloadedKey.PrivateKey.D.Cmp(privateKey.D) != 0 {
+		return nil, NewKeystoreImportError(ErrorAddressMismatch, "Stored keystore identity mismatch", nil)
 	}
 
 	// Step 18: Create wallet entry with import method and source hash (no mnemonic)
@@ -594,13 +668,28 @@ func (ws *WalletService) ImportWalletFromKeystoreV3WithProgress(name, keystorePa
 		ElapsedTime:     0,
 	})
 
-	if err = ws.Repo.AddWallet(wallet); err != nil {
+	commit := func() error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		return ws.Repo.AddWallet(wallet)
+	}
+	if control := importControlFromContext(ctx); control != nil {
+		err = control.commit(commit)
+	} else {
+		err = commit()
+	}
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, NewKeystoreImportError(ErrorImportInterrupted, "Import cancelled", ctx.Err())
+		}
 		return nil, NewKeystoreImportError(
 			ErrorCorruptedFile,
 			"Failed to add wallet to repository",
 			err,
 		)
 	}
+	keepDestination = true
 
 	// Step 20: Create KDF information for wallet details
 	kdfInfo := &KDFInfo{
@@ -666,7 +755,7 @@ func (ws *WalletService) LoadWallet(wallet *Wallet, password string) (*WalletDet
 	if err != nil {
 		return nil, fmt.Errorf("error reading the wallet file: %v", err)
 	}
-	key, err := keystore.DecryptKey(keyJSON, password)
+	key, err := decryptKeySafely(keyJSON, password)
 	if err != nil {
 		return nil, fmt.Errorf("incorrect password")
 	}
@@ -697,16 +786,57 @@ func (ws *WalletService) GetAllWallets() ([]Wallet, error) {
 }
 
 func (ws *WalletService) DeleteWallet(wallet *Wallet) error {
-	// Remove o arquivo keystore do sistema
-	err := os.Remove(wallet.KeyStorePath)
-	if err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("failed to remove keystore file: %v", err)
-	}
-	// Remove do banco de dados
-	return ws.Repo.DeleteWallet(wallet.ID)
+	return ErrWalletDeletionDisabled
 }
 
 // Helper functions
+
+func readRegularFile(path string, maxBytes int64) (data []byte, err error) {
+	linkInfo, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if linkInfo.Mode()&os.ModeSymlink != 0 || !linkInfo.Mode().IsRegular() {
+		return nil, fmt.Errorf("path is not a regular file")
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if closeErr := file.Close(); closeErr != nil && err == nil {
+			err = closeErr
+		}
+	}()
+	info, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() || info.Size() > maxBytes {
+		return nil, fmt.Errorf("file exceeds the allowed size or is not regular")
+	}
+	data, err = io.ReadAll(io.LimitReader(file, maxBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > maxBytes {
+		return nil, fmt.Errorf("file exceeds the allowed size")
+	}
+	return data, nil
+}
+
+func decryptKeySafely(keyJSON []byte, password string) (key *keystore.Key, err error) {
+	if _, err := (&KeystoreValidator{}).ValidateKeystoreV3(keyJSON); err != nil {
+		return nil, err
+	}
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			key = nil
+			err = fmt.Errorf("invalid keystore parameters")
+		}
+	}()
+	return keystore.DecryptKey(keyJSON, password)
+}
 
 func GenerateMnemonic() (string, error) {
 	entropy, err := bip39.NewEntropy(128)

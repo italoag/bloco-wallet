@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -19,6 +20,9 @@ func TestConfigurationManager_LoadConfiguration(t *testing.T) {
 	// Create a temporary directory for testing
 	tempDir, err := os.MkdirTemp("", "bloco_config_test")
 	require.NoError(t, err)
+	if runtime.GOOS != "windows" {
+		require.NoError(t, os.Chmod(tempDir, 0755))
+	}
 	defer func() {
 		if err := os.RemoveAll(tempDir); err != nil {
 			t.Logf("Warning: could not remove temp dir: %v", err)
@@ -57,6 +61,14 @@ func TestConfigurationManager_LoadConfiguration(t *testing.T) {
 	// Verify config file was created
 	configPath := filepath.Join(tempDir, "config.toml")
 	assert.FileExists(t, configPath)
+	if runtime.GOOS != "windows" {
+		dirInfo, statErr := os.Stat(tempDir)
+		require.NoError(t, statErr)
+		assert.Equal(t, os.FileMode(0700), dirInfo.Mode().Perm())
+		fileInfo, statErr := os.Stat(configPath)
+		require.NoError(t, statErr)
+		assert.Equal(t, os.FileMode(0600), fileInfo.Mode().Perm())
+	}
 }
 
 func TestConfigurationManager_SaveConfiguration(t *testing.T) {

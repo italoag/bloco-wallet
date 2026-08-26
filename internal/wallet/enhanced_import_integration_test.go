@@ -38,15 +38,15 @@ func TestEnhancedImportIntegration(t *testing.T) {
 		// Create a valid keystore file (minimal structure)
 		validKeystore := `{
 			"version": 3,
-			"id": "test-id",
+			"id": "f8b74b19-9a13-4b11-92a7-4c2a4c4e2e2d",
 			"address": "0x1234567890123456789012345678901234567890",
 			"crypto": {
 				"cipher": "aes-128-ctr",
-				"ciphertext": "test",
-				"cipherparams": {"iv": "test"},
+				"ciphertext": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+				"cipherparams": {"iv": "00112233445566778899aabbccddeeff"},
 				"kdf": "scrypt",
-				"kdfparams": {"dklen": 32, "n": 262144, "r": 8, "p": 1, "salt": "test"},
-				"mac": "test"
+				"kdfparams": {"dklen": 32, "n": 8192, "r": 8, "p": 1, "salt": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"},
+				"mac": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
 			}
 		}`
 		err = os.WriteFile(validKeystorePath, []byte(validKeystore), 0644)
@@ -375,15 +375,15 @@ func TestBatchImportServiceWithErrorAggregation(t *testing.T) {
 		// Create a valid keystore file
 		validKeystore := `{
 			"version": 3,
-			"id": "test-id",
+			"id": "f8b74b19-9a13-4b11-92a7-4c2a4c4e2e2d",
 			"address": "0x1234567890123456789012345678901234567890",
 			"crypto": {
 				"cipher": "aes-128-ctr",
-				"ciphertext": "test",
-				"cipherparams": {"iv": "test"},
+				"ciphertext": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+				"cipherparams": {"iv": "00112233445566778899aabbccddeeff"},
 				"kdf": "scrypt",
-				"kdfparams": {"dklen": 32, "n": 262144, "r": 8, "p": 1, "salt": "test"},
-				"mac": "test"
+				"kdfparams": {"dklen": 32, "n": 8192, "r": 8, "p": 1, "salt": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"},
+				"mac": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
 			}
 		}`
 		err = os.WriteFile(validKeystorePath, []byte(validKeystore), 0644)

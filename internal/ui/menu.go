@@ -42,7 +42,6 @@ func NewImportMenu() []menuItem {
 	return []menuItem{
 		{title: localization.Labels["import_mnemonic"], description: localization.Labels["import_mnemonic_desc"]},
 		{title: localization.Labels["import_private_key"], description: localization.Labels["import_private_key_desc"]},
-		{title: localization.Labels["import_keystore"], description: localization.Labels["import_keystore_desc"]},
 		{title: localization.Labels["back_to_menu"], description: localization.Labels["back_to_menu_desc"]},
 	}
 }
