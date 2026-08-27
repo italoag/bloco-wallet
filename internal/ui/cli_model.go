@@ -11,31 +11,46 @@ import (
 )
 
 type CLIModel struct {
-	Service                 *wallet.WalletService
-	currentView             string
-	menuItems               []menuItem
-	selectedMenu            int
-	importWords             []string
-	importStage             int
-	textInputs              []textinput.Model
-	wallets                 []wallet.Wallet
-	walletCount             int
-	selectedWallet          *wallet.Wallet
-	deletingWallet          *wallet.Wallet
-	err                     error
-	nameInput               textinput.Model
-	passwordInput           textinput.Model
-	backupConfirmationInput textinput.Model
-	backupError             string
-	privateKeyInput         textinput.Model
-	pendingImportMethod     wallet.ImportMethod
-	keystorePath            string
-	mnemonic                string
-	walletTable             table.Model
-	width                   int
-	height                  int
-	walletDetails           *wallet.WalletDetails
-	styles                  Styles
+	Service                         *wallet.WalletService
+	Vault                           *wallet.WalletVault
+	currentView                     string
+	menuItems                       []menuItem
+	selectedMenu                    int
+	importWords                     []string
+	importStage                     int
+	textInputs                      []textinput.Model
+	wallets                         []wallet.Wallet
+	accounts                        []wallet.AccountSummary
+	walletCount                     int
+	selectedWallet                  *wallet.Wallet
+	selectedAccount                 *wallet.AccountSummary
+	deletingWallet                  *wallet.Wallet
+	err                             error
+	nameInput                       textinput.Model
+	passwordInput                   textinput.Model
+	createPasswordConfirmationInput textinput.Model
+	createPasswordStage             int
+	createPasswordError             string
+	backupConfirmationInput         textinput.Model
+	backupError                     string
+	backupChallenge                 *wallet.BackupChallenge
+	pendingAccount                  *wallet.AccountSummary
+	resumeBackupAccountID           string
+	privateKeyInput                 textinput.Model
+	currentPasswordInput            textinput.Model
+	newPasswordInput                textinput.Model
+	confirmPasswordInput            textinput.Model
+	exportDestinationInput          textinput.Model
+	vaultActionStage                int
+	vaultActionError                string
+	pendingImportMethod             wallet.ImportMethod
+	keystorePath                    string
+	mnemonic                        string
+	walletTable                     table.Model
+	width                           int
+	height                          int
+	walletDetails                   *wallet.WalletDetails
+	styles                          Styles
 	// fontsList         []string         // Lista de nomes de fontes carregadas do arquivo externo - currently unused
 	selectedFont      *tdf.TheDrawFont // Fonte selecionada aleatoriamente
 	fontInfo          *tdf.FontInfo    // Informação da fonte selecionada

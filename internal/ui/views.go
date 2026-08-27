@@ -38,11 +38,22 @@ func (m *CLIModel) viewCreateWalletBackup() string {
 		return "Localization labels not initialized."
 	}
 
+	backupWords := m.mnemonic
+	confirmationLabel := localization.Labels["confirm_mnemonic"]
+	if m.Vault != nil && m.backupChallenge != nil {
+		backupWords = strings.Join(m.backupChallenge.Words, " ")
+		indices := make([]string, 0, len(m.backupChallenge.RequiredWordIndices))
+		for _, index := range m.backupChallenge.RequiredWordIndices {
+			indices = append(indices, fmt.Sprintf("#%d", index+1))
+		}
+		confirmationLabel = fmt.Sprintf("Confirm the requested words in order (%s):", strings.Join(indices, ", "))
+	}
+
 	var view strings.Builder
 	view.WriteString(
 		lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FF00")).Render(localization.Labels["mnemonic_phrase"]) + "\n\n" +
-			fmt.Sprintf("%s\n\n", m.mnemonic) +
-			localization.Labels["confirm_mnemonic"] + "\n\n" +
+			fmt.Sprintf("%s\n\n", backupWords) +
+			confirmationLabel + "\n\n" +
 			m.backupConfirmationInput.View() + "\n\n",
 	)
 	if m.backupError != "" {
@@ -107,12 +118,16 @@ func (m *CLIModel) viewCreateWalletPassword() string {
 	}
 
 	var view strings.Builder
-	view.WriteString(
-		lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FF00")).Render(localization.Labels["enter_password"]) + "\n\n" +
-			m.passwordInput.View() + "\n\n" +
-			m.renderPasswordValidation(m.passwordInput.Value()) + "\n\n" +
-			localization.Labels["press_enter"],
-	)
+	view.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FF00")).Render(localization.Labels["enter_password"]) + "\n\n")
+	view.WriteString(m.passwordInput.View() + "\n\n")
+	view.WriteString(m.renderPasswordValidation(m.passwordInput.Value()) + "\n\n")
+	if m.Vault != nil {
+		view.WriteString("Confirm storage password:\n" + m.createPasswordConfirmationInput.View() + "\n\n")
+	}
+	if m.createPasswordError != "" {
+		view.WriteString(m.styles.ErrorStyle.Render(m.createPasswordError) + "\n\n")
+	}
+	view.WriteString(localization.Labels["press_enter"])
 	return view.String()
 }
 
@@ -483,7 +498,7 @@ func (m *CLIModel) viewListWallets() string {
 		view.WriteString(title + "\n")
 
 		// Verificar se há wallets para exibir
-		if len(m.wallets) == 0 {
+		if len(m.wallets) == 0 && len(m.accounts) == 0 {
 			// Exibir mensagem quando não há wallets
 			message := "No wallets found. Create a new wallet to get started."
 			if val, ok := localization.Labels["no_wallets_message"]; ok {
@@ -500,7 +515,7 @@ func (m *CLIModel) viewListWallets() string {
 			view.WriteString(tableView)
 
 			// Se houver espaço, adicionar instruções na parte inferior
-			if m.walletTable.Height() < len(m.wallets) {
+			if m.walletTable.Height() < len(m.wallets)+len(m.accounts) {
 				// Só mostra instruções de rolagem se houver mais itens que o espaço disponível
 				instructions := "\n" + lipgloss.NewStyle().
 					Foreground(lipgloss.Color("#5C5C5C")).
@@ -595,6 +610,26 @@ func (m *CLIModel) renderDeleteConfirmationDialog() string {
 	return strings.Join(tableLines, "\n")
 }
 
+func (m *CLIModel) viewVaultAction(export bool) string {
+	title := "Rotate storage password"
+	if export {
+		title = "Export encrypted account"
+	}
+	var view strings.Builder
+	view.WriteString(lipgloss.NewStyle().Bold(true).Render(title) + "\n\n")
+	view.WriteString("Current password:\n" + m.currentPasswordInput.View() + "\n\n")
+	view.WriteString("New password:\n" + m.newPasswordInput.View() + "\n\n")
+	view.WriteString("Confirm new password:\n" + m.confirmPasswordInput.View() + "\n\n")
+	if export {
+		view.WriteString("Destination:\n" + m.exportDestinationInput.View() + "\n\n")
+	}
+	if m.vaultActionError != "" {
+		view.WriteString(m.styles.ErrorStyle.Render(m.vaultActionError) + "\n\n")
+	}
+	view.WriteString("Press Enter to advance. Press Esc to cancel.")
+	return view.String()
+}
+
 // viewWalletPassword renderiza a visualização de entrada de senha para wallet selecionada
 func (m *CLIModel) viewWalletPassword() string {
 	if localization.Labels == nil {
@@ -615,6 +650,19 @@ func (m *CLIModel) viewWalletPassword() string {
 func (m *CLIModel) viewWalletDetails() string {
 	if localization.Labels == nil {
 		return "Localization labels not initialized."
+	}
+	if m.selectedAccount != nil {
+		account := m.selectedAccount
+		actions := "L: Lock account | R: Rotate password | E: Export encrypted account"
+		if account.State == wallet.AccountStatePendingBackup {
+			actions = "B: Resume backup confirmation"
+		}
+		return lipgloss.NewStyle().Bold(true).Render(localization.Labels["wallet_details_title"]+"\n\n") +
+			fmt.Sprintf("%-*s %s\n", 20, localization.Labels["ethereum_address"], account.Address) +
+			fmt.Sprintf("%-*s %s\n", 20, "Signer:", account.SignerKind) +
+			fmt.Sprintf("%-*s %s\n", 20, "State:", account.State) +
+			fmt.Sprintf("%-*s %s\n", 20, "Path:", account.DerivationPath) +
+			"\n" + actions + "\n" + localization.Labels["press_esc"]
 	}
 
 	if m.walletDetails != nil {

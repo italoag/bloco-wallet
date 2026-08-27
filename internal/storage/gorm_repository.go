@@ -3,6 +3,8 @@ package storage
 import (
 	"blocowallet/internal/wallet"
 	"blocowallet/pkg/config"
+	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -20,9 +22,18 @@ type GORMRepository struct {
 
 // Garantimos que GORMRepository implementa a interface WalletRepository
 var _ wallet.WalletRepository = &GORMRepository{}
+var _ wallet.AccountRepository = &GORMRepository{}
 
 // NewWalletRepository cria uma nova instância de GORMRepository com base na configuração
 func NewWalletRepository(cfg *config.Config) (*GORMRepository, error) {
+	return newRepository(cfg, true)
+}
+
+func NewVaultRepository(cfg *config.Config) (*GORMRepository, error) {
+	return newRepository(cfg, false)
+}
+
+func newRepository(cfg *config.Config, includeLegacy bool) (*GORMRepository, error) {
 	// Usar apenas SQLite para testes e desenvolvimento
 	dbPath := cfg.DatabasePath
 	if cfg.Database.DSN != "" {
@@ -60,11 +71,29 @@ func NewWalletRepository(cfg *config.Config) (*GORMRepository, error) {
 	if err != nil {
 		return nil, fmt.Errorf("falha ao conectar ao banco de dados: %w", err)
 	}
+	keepOpen := false
+	defer func() {
+		if !keepOpen {
+			if sqlDatabase, closeErr := db.DB(); closeErr == nil {
+				_ = sqlDatabase.Close()
+			}
+		}
+	}()
 
-	// Auto Migrate cria a tabela se não existir
-	err = db.AutoMigrate(&wallet.Wallet{})
-	if err != nil {
-		return nil, fmt.Errorf("falha ao migrar tabela de carteiras: %w", err)
+	if err := configureSQLite(db, isDisk); err != nil {
+		return nil, fmt.Errorf("falha ao configurar SQLite: %w", err)
+	}
+	if err := runMigrations(db, includeLegacy); err != nil {
+		return nil, fmt.Errorf("falha ao migrar banco de dados: %w", err)
+	}
+	if !includeLegacy && db.Migrator().HasTable(&wallet.Wallet{}) {
+		var legacyCount int64
+		if err := db.Model(&wallet.Wallet{}).Count(&legacyCount).Error; err != nil {
+			return nil, fmt.Errorf("falha ao verificar dados legados: %w", err)
+		}
+		if legacyCount > 0 {
+			return nil, fmt.Errorf("legacy wallet data requires explicit migration")
+		}
 	}
 	if isDisk {
 		for _, path := range []string{diskPath, diskPath + "-wal", diskPath + "-shm"} {
@@ -74,6 +103,7 @@ func NewWalletRepository(cfg *config.Config) (*GORMRepository, error) {
 		}
 	}
 
+	keepOpen = true
 	return &GORMRepository{db: db}, nil
 }
 
@@ -186,6 +216,112 @@ func (repo *GORMRepository) FindByAddressAndMethod(address, importMethod string)
 	var wallets []wallet.Wallet
 	result := repo.db.Where("address = ? AND import_method = ?", address, importMethod).Find(&wallets)
 	return wallets, result.Error
+}
+
+func (repo *GORMRepository) CreateAccount(ctx context.Context, account *wallet.Account) error {
+	if err := account.Validate(); err != nil {
+		return err
+	}
+	if account.Revision == 0 {
+		account.Revision = 1
+	}
+	result := repo.db.WithContext(ctx).Create(account)
+	return normalizeAccountError(result.Error)
+}
+
+func (repo *GORMRepository) GetAccount(ctx context.Context, accountID string) (*wallet.Account, error) {
+	var account wallet.Account
+	result := repo.db.WithContext(ctx).Where("account_id = ?", accountID).First(&account)
+	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		return nil, wallet.ErrAccountNotFound
+	}
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	return &account, nil
+}
+
+func (repo *GORMRepository) FindAccountBySourceIdentity(ctx context.Context, sourceIdentity string) (*wallet.Account, error) {
+	var account wallet.Account
+	result := repo.db.WithContext(ctx).Where("source_identity = ?", sourceIdentity).First(&account)
+	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		return nil, wallet.ErrAccountNotFound
+	}
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	return &account, nil
+}
+
+func (repo *GORMRepository) ListAccounts(ctx context.Context) ([]wallet.Account, error) {
+	var accounts []wallet.Account
+	result := repo.db.WithContext(ctx).Order("created_at ASC, account_id ASC").Find(&accounts)
+	return accounts, result.Error
+}
+
+func (repo *GORMRepository) UpdateAccount(ctx context.Context, account *wallet.Account) error {
+	if err := account.Validate(); err != nil {
+		return err
+	}
+	if account.Revision == 0 {
+		return wallet.ErrAccountRevisionConflict
+	}
+	nextRevision := account.Revision + 1
+	result := repo.db.WithContext(ctx).
+		Model(&wallet.Account{}).
+		Where("account_id = ? AND revision = ?", account.AccountID, account.Revision).
+		Updates(map[string]any{
+			"name":                account.Name,
+			"state":               account.State,
+			"secret_envelope":     append([]byte(nil), account.SecretEnvelope...),
+			"envelope_generation": account.EnvelopeGeneration,
+			"authorization_epoch": account.AuthorizationEpoch,
+			"backup_generation":   account.BackupGeneration,
+			"capabilities":        account.Capabilities,
+			"updated_at":          account.UpdatedAt,
+			"revision":            nextRevision,
+		})
+	if result.Error != nil {
+		return normalizeAccountError(result.Error)
+	}
+	if result.RowsAffected != 1 {
+		return wallet.ErrAccountRevisionConflict
+	}
+	account.Revision = nextRevision
+	return nil
+}
+
+func (repo *GORMRepository) DeletePendingAccount(ctx context.Context, accountID string, backupGeneration uint64) error {
+	result := repo.db.WithContext(ctx).
+		Where("account_id = ? AND state = ? AND backup_generation = ?", accountID, wallet.AccountStatePendingBackup, backupGeneration).
+		Delete(&wallet.Account{})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return wallet.ErrAccountNotFound
+	}
+	return nil
+}
+
+func (repo *GORMRepository) WithAccountTransaction(ctx context.Context, operation func(wallet.AccountRepository) error) error {
+	if operation == nil {
+		return fmt.Errorf("account transaction operation is required")
+	}
+	return repo.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return operation(&GORMRepository{db: tx})
+	})
+}
+
+func normalizeAccountError(err error) error {
+	if err == nil {
+		return nil
+	}
+	message := strings.ToLower(err.Error())
+	if errors.Is(err, gorm.ErrDuplicatedKey) || strings.Contains(message, "unique constraint") || strings.Contains(message, "duplicate") {
+		return fmt.Errorf("%w: %v", wallet.ErrAccountConflict, err)
+	}
+	return err
 }
 
 // Close fecha a conexão com o banco de dados

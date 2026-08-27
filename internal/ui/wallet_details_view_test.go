@@ -1,12 +1,15 @@
 package ui
 
 import (
+	"bytes"
+	"context"
 	"encoding/hex"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"blocowallet/internal/constants"
+	"blocowallet/internal/storage"
 	"blocowallet/internal/wallet"
 	"blocowallet/pkg/config"
 	"blocowallet/pkg/localization"
@@ -120,6 +123,121 @@ func TestDisplayedMnemonicControlsPersistedAccount(t *testing.T) {
 	loaded, err := restartedService.LoadWallet(model.walletDetails.Wallet, "StrongPassword1!")
 	require.NoError(t, err)
 	assert.Equal(t, model.walletDetails.Wallet.Address, loaded.Wallet.Address)
+}
+
+func TestNewCLIModelRequiresVault(t *testing.T) {
+	model, err := NewCLIModel(nil)
+	assert.Error(t, err)
+	assert.Nil(t, model)
+}
+
+func TestVaultBackedCreateFlowPersistsOnlyEncryptedSecret(t *testing.T) {
+	root := t.TempDir()
+	cfg := &config.Config{
+		AppDir:       root,
+		WalletsDir:   filepath.Join(root, "keystore"),
+		DatabasePath: filepath.Join(root, "vault.db"),
+		Database:     config.DatabaseConfig{Type: "sqlite"},
+		Security: config.SecurityConfig{
+			Argon2Time:    1,
+			Argon2Memory:  64,
+			Argon2Threads: 1,
+			Argon2KeyLen:  32,
+			SaltLength:    16,
+		},
+		Language:  "en",
+		LocaleDir: "../../pkg/localization/locales",
+	}
+	require.NoError(t, localization.InitLocalization(cfg))
+	repository, err := storage.NewVaultRepository(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, repository.Close()) })
+	codec, err := wallet.NewSecretEnvelopeCodec(wallet.Argon2idPolicy{
+		Time: 1, MemoryKiB: 64, Parallelism: 1, KeyLength: 32, SaltLength: 16,
+		MaxTime: 4, MaxMemoryKiB: 256 * 1024, MaxParallelism: 8, MaxKeyLength: 32, MaxSaltLength: 64,
+	})
+	require.NoError(t, err)
+	vault, err := wallet.NewWalletVault(repository, codec, wallet.VaultOptions{ChallengeWords: 3})
+	require.NoError(t, err)
+	model := &CLIModel{Vault: vault, styles: createStyles()}
+
+	model.initCreateWallet()
+	assert.Empty(t, model.mnemonic)
+	model.nameInput.SetValue("Vault UI")
+	_, _ = model.updateCreateWalletName(tea.KeyMsg{Type: tea.KeyEnter})
+	assert.Equal(t, constants.CreateWalletView, model.currentView)
+	model.passwordInput.SetValue("Strong vault password 1!")
+	_, _ = model.updateCreateWalletPassword(tea.KeyMsg{Type: tea.KeyEnter})
+	model.createPasswordConfirmationInput.SetValue("Strong vault password 1!")
+	_, _ = model.updateCreateWalletPassword(tea.KeyMsg{Type: tea.KeyEnter})
+	require.NotNil(t, model.backupChallenge)
+	mnemonic := strings.Join(model.backupChallenge.Words, " ")
+	answers := make([]string, 0, len(model.backupChallenge.RequiredWordIndices))
+	for _, index := range model.backupChallenge.RequiredWordIndices {
+		answers = append(answers, model.backupChallenge.Words[index])
+	}
+	model.backupConfirmationInput.SetValue(strings.Join(answers, " "))
+	_, _ = model.updateCreateWalletBackup(tea.KeyMsg{Type: tea.KeyEnter})
+
+	require.NotNil(t, model.selectedAccount)
+	assert.Equal(t, wallet.AccountStateActive, model.selectedAccount.State)
+	assert.Nil(t, model.walletDetails)
+	stored, err := repository.GetAccount(context.Background(), model.selectedAccount.AccountID)
+	require.NoError(t, err)
+	assert.False(t, bytes.Contains(stored.SecretEnvelope, []byte(mnemonic)))
+	assert.NotContains(t, model.viewWalletDetails(), mnemonic)
+	countMessage, ok := walletCountCmd(nil, vault)().(walletCountMsg)
+	require.True(t, ok)
+	assert.NoError(t, countMessage.err)
+	assert.Equal(t, 1, countMessage.count)
+
+	newStoragePassword := "Different vault password 2!"
+	model.initVaultAction(false)
+	model.currentPasswordInput.SetValue("Strong vault password 1!")
+	_, _ = model.updateVaultAction(tea.KeyMsg{Type: tea.KeyEnter}, false)
+	model.newPasswordInput.SetValue(newStoragePassword)
+	_, _ = model.updateVaultAction(tea.KeyMsg{Type: tea.KeyEnter}, false)
+	model.confirmPasswordInput.SetValue(newStoragePassword)
+	_, _ = model.updateVaultAction(tea.KeyMsg{Type: tea.KeyEnter}, false)
+	assert.Equal(t, constants.WalletDetailsView, model.currentView)
+	if _, err := vault.Unlock(context.Background(), model.selectedAccount.AccountID, []byte("Strong vault password 1!")); err == nil {
+		t.Fatal("old password unlocked after UI rotation")
+	}
+	handle, err := vault.Unlock(context.Background(), model.selectedAccount.AccountID, []byte(newStoragePassword))
+	require.NoError(t, err)
+	require.NoError(t, vault.Lock(handle))
+
+	exportPassword := "Strong export password 3!"
+	exportPath := filepath.Join(t.TempDir(), "account.bloco")
+	model.initVaultAction(true)
+	model.currentPasswordInput.SetValue(newStoragePassword)
+	_, _ = model.updateVaultAction(tea.KeyMsg{Type: tea.KeyEnter}, true)
+	model.newPasswordInput.SetValue(exportPassword)
+	_, _ = model.updateVaultAction(tea.KeyMsg{Type: tea.KeyEnter}, true)
+	model.confirmPasswordInput.SetValue(exportPassword)
+	_, _ = model.updateVaultAction(tea.KeyMsg{Type: tea.KeyEnter}, true)
+	model.exportDestinationInput.SetValue(exportPath)
+	_, _ = model.updateVaultAction(tea.KeyMsg{Type: tea.KeyEnter}, true)
+	assert.Equal(t, constants.WalletDetailsView, model.currentView)
+	assert.FileExists(t, exportPath)
+
+	pending, suspended, err := vault.Create(context.Background(), wallet.CreateAccountRequest{
+		Name:     "Resume UI",
+		Password: []byte(newStoragePassword),
+	})
+	require.NoError(t, err)
+	require.NoError(t, vault.SuspendBackup(suspended.ChallengeID))
+	model.selectedAccount = &pending
+	model.currentView = constants.WalletDetailsView
+	_, _ = model.updateWalletDetails(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'b'}})
+	assert.Equal(t, constants.CreateWalletView, model.currentView)
+	model.passwordInput.SetValue(newStoragePassword)
+	_, _ = model.updateCreateWalletPassword(tea.KeyMsg{Type: tea.KeyEnter})
+	require.NotNil(t, model.backupChallenge)
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	storedPending, err := repository.GetAccount(context.Background(), pending.AccountID)
+	require.NoError(t, err)
+	assert.Equal(t, wallet.AccountStatePendingBackup, storedPending.State)
 }
 
 func TestQIsAcceptedInSecretInput(t *testing.T) {

@@ -20,6 +20,8 @@ const (
 	ListWalletsView           = "list_wallets"
 	WalletPasswordView        = "wallet_password"
 	WalletDetailsView         = "wallet_details"
+	RotatePasswordView        = "rotate_password"
+	ExportAccountView         = "export_account"
 	ConfigurationView         = "configuration"
 	NetworkMenuView           = "network_menu"
 	LanguageSelectionView     = "language_selection"

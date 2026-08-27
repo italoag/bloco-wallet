@@ -16,7 +16,6 @@ import (
 	"blocowallet/pkg/logger"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/ethereum/go-ethereum/accounts/keystore"
 )
 
 var (
@@ -74,12 +73,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Initialize crypto service
-	wallet.InitCryptoService(cfg)
-	lgr.Info("Crypto service initialized")
+	if err := ensurePrivateDirectory(cfg.AppDir, cfg.AppDir); err != nil {
+		log.Printf("Failed to secure application directory: %v", err)
+		os.Exit(1)
+	}
 
 	// Create wallet repository
-	repo, err := storage.NewWalletRepository(cfg)
+	repo, err := storage.NewVaultRepository(cfg)
 	if err != nil {
 		log.Printf("Failed to create wallet repository: %v", err)
 		os.Exit(1)
@@ -90,21 +90,25 @@ func main() {
 		}
 	}()
 
-	// Create keystore
-	keystoreDir := cfg.WalletsDir
-	if err := ensurePrivateDirectory(keystoreDir, cfg.AppDir); err != nil {
-		log.Printf("Failed to secure keystore directory: %v", err)
+	codec, err := wallet.NewSecretEnvelopeCodec(wallet.ProductionArgon2idPolicy())
+	if err != nil {
+		log.Printf("Failed to initialize secret envelope: %v", err)
 		os.Exit(1)
 	}
-
-	ks := keystore.NewKeyStore(keystoreDir, keystore.StandardScryptN, keystore.StandardScryptP)
-
-	// Initialize wallet service
-	walletService := wallet.NewWalletService(repo, ks, keystoreDir)
-	lgr.Info("Wallet service initialized")
+	vault, err := wallet.NewWalletVault(repo, codec, wallet.VaultOptions{})
+	if err != nil {
+		log.Printf("Failed to initialize wallet vault: %v", err)
+		os.Exit(1)
+	}
+	defer vault.Close()
+	lgr.Info("Wallet vault initialized")
 
 	// Initialize and start the TUI application
-	app := ui.NewCLIModel(walletService)
+	app, err := ui.NewCLIModel(vault)
+	if err != nil {
+		log.Printf("Failed to initialize TUI: %v", err)
+		os.Exit(1)
+	}
 	p := tea.NewProgram(app, tea.WithAltScreen())
 
 	lgr.Info("Starting application")

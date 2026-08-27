@@ -30,7 +30,6 @@ func (i menuItem) FilterValue() string {
 func NewMenu() []menuItem {
 	return []menuItem{
 		{title: localization.Labels["create_new_wallet"], description: localization.Labels["create_new_wallet_desc"]},
-		{title: localization.Labels["import_wallet"], description: localization.Labels["import_wallet_desc"]},
 		{title: localization.Labels["list_wallets"], description: localization.Labels["list_wallets_desc"]},
 		{title: localization.Labels["configuration"], description: localization.Labels["configuration_desc"]},
 		{title: localization.Labels["exit"], description: localization.Labels["exit_desc"]},
