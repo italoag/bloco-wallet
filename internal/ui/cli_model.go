@@ -27,11 +27,21 @@ type CLIModel struct {
 	deletingWallet                  *wallet.Wallet
 	err                             error
 	nameInput                       textinput.Model
+	createWordCountInput            textinput.Model
+	createLanguageInput             textinput.Model
+	createPassphraseInput           textinput.Model
+	createDerivationPathInput       textinput.Model
+	createOptionsStage              int
 	passwordInput                   textinput.Model
 	createPasswordConfirmationInput textinput.Model
 	createPasswordStage             int
 	createPasswordError             string
 	backupConfirmationInput         textinput.Model
+	backupPathInput                 textinput.Model
+	backupLanguageInput             textinput.Model
+	backupPassphraseInput           textinput.Model
+	backupMaterialStage             int
+	backupWordAnswers               map[int]string
 	backupError                     string
 	backupChallenge                 *wallet.BackupChallenge
 	pendingAccount                  *wallet.AccountSummary
@@ -42,7 +52,12 @@ type CLIModel struct {
 	confirmPasswordInput            textinput.Model
 	exportDestinationInput          textinput.Model
 	vaultActionStage                int
+	vaultExportEncrypted            bool
+	vaultActionPreview              bool
 	vaultActionError                string
+	lastOperationNotice             string
+	canonicalImport                 *canonicalImportState
+	canonicalOperationID            uint64
 	pendingImportMethod             wallet.ImportMethod
 	keystorePath                    string
 	mnemonic                        string

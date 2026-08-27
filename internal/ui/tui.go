@@ -236,6 +236,19 @@ func loadFontsList(appDir string) ([]string, error) {
 	return cfg.GetFontsList(), nil
 }
 
+func validateStoragePasswordInput(value string) error {
+	if value == "" {
+		return nil
+	}
+	password := []byte(value)
+	err := wallet.ValidateStoragePassword(password)
+	clear(password)
+	if err != nil {
+		return fmt.Errorf("")
+	}
+	return nil
+}
+
 func selectRandomFont(fonts []string) (string, error) {
 	if len(fonts) == 0 {
 		return "", fmt.Errorf("lista de fontes está vazia")
@@ -268,6 +281,18 @@ func (m *CLIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if keyMsg, ok := msg.(tea.KeyMsg); ok {
 		switch keyMsg.String() {
 		case "esc":
+			if m.currentView == constants.CanonicalImportView {
+				if m.canonicalImport != nil && m.canonicalImport.busy {
+					if m.canonicalImport.cancel != nil {
+						m.canonicalImport.cancel()
+					}
+					m.canonicalImport.cancelling = true
+					return m, nil
+				}
+				m.clearCanonicalImport()
+				m.initImportMethodSelection()
+				return m, nil
+			}
 			if m.currentView == constants.RotatePasswordView || m.currentView == constants.ExportAccountView {
 				m.clearVaultActionInputs()
 				m.currentView = constants.WalletDetailsView
@@ -281,13 +306,14 @@ func (m *CLIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.currentView == constants.ListWalletsView && m.deletingWallet != nil {
 				// Não faz nada, deixa o handler específico tratar
 			} else if m.currentView != constants.DefaultView && m.currentView != constants.SplashView {
-				if m.currentView == constants.CreateWalletNameView || m.currentView == constants.CreateWalletBackupView || m.currentView == constants.CreateWalletView {
+				if m.currentView == constants.CreateWalletNameView || m.currentView == constants.CreateWalletOptionsView || m.currentView == constants.CreateWalletBackupView || m.currentView == constants.CreateWalletView {
 					if err := m.cancelPendingVaultBackup(); err != nil {
 						m.err = errors.Wrap(err, 0)
 						return m, nil
 					}
 					m.mnemonic = ""
 					m.passwordInput.SetValue("")
+					m.createPassphraseInput.SetValue("")
 					m.createPasswordConfirmationInput.SetValue("")
 					m.createPasswordStage = 0
 					m.createPasswordError = ""
@@ -313,6 +339,13 @@ func (m *CLIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		case "ctrl+q":
+			if m.currentView == constants.CanonicalImportView && m.canonicalImport != nil && m.canonicalImport.busy {
+				if m.canonicalImport.cancel != nil {
+					m.canonicalImport.cancel()
+				}
+				m.canonicalImport.cancelling = true
+				return m, nil
+			}
 			if m.enhancedImportState != nil {
 				phase := m.enhancedImportState.GetCurrentPhase()
 				if phase == PhaseImporting || phase == PhasePasswordInput {
@@ -325,15 +358,29 @@ func (m *CLIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.mnemonic = ""
 			m.passwordInput.SetValue("")
+			m.createPassphraseInput.SetValue("")
 			m.createPasswordConfirmationInput.SetValue("")
 			m.backupConfirmationInput.SetValue("")
 			m.clearImportSecrets()
+			m.clearCanonicalImport()
 			m.clearVaultActionInputs()
 			return m, tea.Quit
 		}
 	}
 
 	switch msg := msg.(type) {
+	case canonicalPreviewResultMsg:
+		if m.currentView == constants.CanonicalImportView && m.canonicalImport != nil {
+			return m.updateCanonicalImport(msg)
+		}
+		clear(msg.data)
+		clearCanonicalBatchItems(msg.batchItems)
+		return m, nil
+	case canonicalCommitResultMsg:
+		if m.currentView == constants.CanonicalImportView && m.canonicalImport != nil {
+			return m.updateCanonicalImport(msg)
+		}
+		return m, nil
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 
@@ -396,6 +443,8 @@ func (m *CLIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateMenu(msg)
 	case constants.CreateWalletNameView:
 		return m.updateCreateWalletName(msg)
+	case constants.CreateWalletOptionsView:
+		return m.updateCreateWalletOptions(msg)
 	case constants.CreateWalletBackupView:
 		return m.updateCreateWalletBackup(msg)
 	case constants.CreateWalletView:
@@ -410,6 +459,8 @@ func (m *CLIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateImportKeystore(msg)
 	case constants.EnhancedImportView:
 		return m.updateEnhancedImport(msg)
+	case constants.CanonicalImportView:
+		return m.updateCanonicalImport(msg)
 	case constants.ImportWalletPasswordView:
 		return m.updateImportWalletPassword(msg)
 	case constants.ListWalletsView:
@@ -568,6 +619,8 @@ func (m *CLIModel) getContentView() string {
 		return localization.Labels["welcome_message"]
 	case constants.CreateWalletNameView:
 		return m.viewCreateWalletName()
+	case constants.CreateWalletOptionsView:
+		return m.viewCreateWalletOptions()
 	case constants.CreateWalletBackupView:
 		return m.viewCreateWalletBackup()
 	case constants.CreateWalletView:
@@ -582,6 +635,8 @@ func (m *CLIModel) getContentView() string {
 		return m.viewImportKeystore()
 	case constants.EnhancedImportView:
 		return m.viewEnhancedImport()
+	case constants.CanonicalImportView:
+		return m.viewCanonicalImport()
 	case constants.ImportWalletPasswordView:
 		return m.viewImportWalletPassword()
 	case constants.ListWalletsView:
@@ -671,8 +726,8 @@ func (m *CLIModel) updateCreateWalletName(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			if m.Vault != nil {
-				m.passwordInput.Focus()
-				m.currentView = constants.CreateWalletView
+				m.createWordCountInput.Focus()
+				m.currentView = constants.CreateWalletOptionsView
 				return m, nil
 			}
 			// Proceed to backup confirmation
@@ -692,6 +747,57 @@ func (m *CLIModel) updateCreateWalletName(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m *CLIModel) updateCreateWalletOptions(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if key, ok := msg.(tea.KeyMsg); ok && key.String() == "enter" {
+		switch m.createOptionsStage {
+		case 0:
+			wordCount, err := strconv.Atoi(m.createWordCountInput.Value())
+			if err != nil || (wordCount != 12 && wordCount != 15 && wordCount != 18 && wordCount != 21 && wordCount != 24) {
+				m.createPasswordError = "Word count must be 12, 15, 18, 21, or 24"
+				return m, nil
+			}
+			m.createWordCountInput.Blur()
+			m.createLanguageInput.Focus()
+		case 1:
+			language := wallet.BIP39Language(strings.ToLower(strings.ReplaceAll(m.createLanguageInput.Value(), "-", "_")))
+			if !wallet.IsSupportedBIP39Language(language) {
+				m.createPasswordError = "Unsupported BIP39 language"
+				return m, nil
+			}
+			m.createLanguageInput.Blur()
+			m.createPassphraseInput.Focus()
+		case 2:
+			m.createPassphraseInput.Blur()
+			m.createDerivationPathInput.Focus()
+		case 3:
+			if _, err := wallet.ParseDerivationPath(m.createDerivationPathInput.Value()); err != nil {
+				m.createPasswordError = err.Error()
+				return m, nil
+			}
+			m.createDerivationPathInput.Blur()
+			m.passwordInput.Focus()
+			m.createPasswordError = ""
+			m.currentView = constants.CreateWalletView
+			return m, nil
+		}
+		m.createOptionsStage++
+		m.createPasswordError = ""
+		return m, nil
+	}
+	var command tea.Cmd
+	switch m.createOptionsStage {
+	case 0:
+		m.createWordCountInput, command = m.createWordCountInput.Update(msg)
+	case 1:
+		m.createLanguageInput, command = m.createLanguageInput.Update(msg)
+	case 2:
+		m.createPassphraseInput, command = m.createPassphraseInput.Update(msg)
+	case 3:
+		m.createDerivationPathInput, command = m.createDerivationPathInput.Update(msg)
+	}
+	return m, command
+}
+
 func (m *CLIModel) updateCreateWalletBackup(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
@@ -703,25 +809,70 @@ func (m *CLIModel) updateCreateWalletBackup(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.currentView = constants.DefaultView
 					return m, nil
 				}
-				provided := strings.Fields(m.backupConfirmationInput.Value())
-				if len(provided) != len(m.backupChallenge.RequiredWordIndices) {
-					m.backupError = localization.Labels["mnemonic_mismatch"]
-					m.backupConfirmationInput.SetValue("")
+				if m.backupMaterialStage == 0 {
+					provided := strings.Fields(m.backupConfirmationInput.Value())
+					if len(provided) != len(m.backupChallenge.RequiredWordIndices) {
+						m.backupError = localization.Labels["mnemonic_mismatch"]
+						m.backupConfirmationInput.SetValue("")
+						return m, nil
+					}
+					m.backupWordAnswers = make(map[int]string, len(provided))
+					for position, index := range m.backupChallenge.RequiredWordIndices {
+						m.backupWordAnswers[index] = provided[position]
+					}
+					if m.backupChallenge.RequiresMaterialConfirmation {
+						m.backupConfirmationInput.Blur()
+						m.backupPathInput.Focus()
+						m.backupMaterialStage = 1
+						m.backupError = ""
+						return m, nil
+					}
+				}
+				if m.backupMaterialStage == 1 {
+					if m.backupPathInput.Value() == "" {
+						m.backupError = "Derivation path re-entry is required"
+						return m, nil
+					}
+					m.backupPathInput.Blur()
+					m.backupLanguageInput.Focus()
+					m.backupMaterialStage = 2
 					return m, nil
 				}
-				answers := make(map[int]string, len(provided))
-				for position, index := range m.backupChallenge.RequiredWordIndices {
-					answers[index] = provided[position]
+				if m.backupMaterialStage == 2 {
+					if m.backupLanguageInput.Value() == "" {
+						m.backupError = "BIP39 language re-entry is required"
+						return m, nil
+					}
+					m.backupLanguageInput.Blur()
+					m.backupPassphraseInput.Focus()
+					m.backupMaterialStage = 3
+					return m, nil
 				}
-				active, err := m.Vault.ConfirmBackup(context.Background(), m.backupChallenge.ChallengeID, answers)
+				var active wallet.AccountSummary
+				var err error
+				if m.backupChallenge.RequiresMaterialConfirmation {
+					active, err = m.Vault.ConfirmBackupWithMaterial(context.Background(), m.backupChallenge.ChallengeID, wallet.BackupMaterialConfirmation{
+						WordAnswers:     m.backupWordAnswers,
+						BIP39Passphrase: m.backupPassphraseInput.Value(),
+						DerivationPath:  m.backupPathInput.Value(),
+						BIP39Language:   wallet.BIP39Language(strings.ToLower(strings.ReplaceAll(m.backupLanguageInput.Value(), "-", "_"))),
+					})
+				} else {
+					active, err = m.Vault.ConfirmBackup(context.Background(), m.backupChallenge.ChallengeID, m.backupWordAnswers)
+				}
 				if err != nil {
 					m.backupError = err.Error()
-					m.backupConfirmationInput.SetValue("")
+					m.backupPassphraseInput.SetValue("")
 					return m, nil
 				}
 				for index := range m.backupChallenge.Words {
 					m.backupChallenge.Words[index] = ""
 				}
+				m.backupPassphraseInput.SetValue("")
+				m.backupPathInput.SetValue("")
+				m.backupLanguageInput.SetValue("")
+				m.backupWordAnswers = nil
+				m.backupMaterialStage = 0
 				m.backupChallenge = nil
 				m.pendingAccount = nil
 				m.resumeBackupAccountID = ""
@@ -754,7 +905,16 @@ func (m *CLIModel) updateCreateWalletBackup(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		default:
 			var cmd tea.Cmd
-			m.backupConfirmationInput, cmd = m.backupConfirmationInput.Update(msg)
+			switch m.backupMaterialStage {
+			case 0:
+				m.backupConfirmationInput, cmd = m.backupConfirmationInput.Update(msg)
+			case 1:
+				m.backupPathInput, cmd = m.backupPathInput.Update(msg)
+			case 2:
+				m.backupLanguageInput, cmd = m.backupLanguageInput.Update(msg)
+			case 3:
+				m.backupPassphraseInput, cmd = m.backupPassphraseInput.Update(msg)
+			}
 			return m, cmd
 		}
 	}
@@ -767,12 +927,12 @@ func (m *CLIModel) updateCreateWalletPassword(msg tea.Msg) (tea.Model, tea.Cmd) 
 		switch msg.String() {
 		case "enter":
 			password := m.passwordInput.Value()
-
-			// Validar a complexidade da senha
-			validationErr, isValid := wallet.ValidatePassword(password)
-			if !isValid {
+			passwordValidation := []byte(password)
+			validationErr := wallet.ValidateStoragePassword(passwordValidation)
+			clear(passwordValidation)
+			if validationErr != nil {
 				m.passwordInput.SetValue("")
-				m.err = errors.Wrap(errors.New(validationErr.GetErrorMessage()), 0)
+				m.err = errors.Wrap(validationErr, 0)
 				log.Println(m.err.(*errors.Error).ErrorStack())
 				return m, nil
 			}
@@ -787,6 +947,7 @@ func (m *CLIModel) updateCreateWalletPassword(msg tea.Msg) (tea.Model, tea.Cmd) 
 				}
 				m.pendingAccount = &summary
 				m.backupChallenge = &challenge
+				m.initBackupMaterialInputs()
 				m.backupConfirmationInput.SetValue("")
 				m.backupConfirmationInput.Focus()
 				m.currentView = constants.CreateWalletBackupView
@@ -811,11 +972,17 @@ func (m *CLIModel) updateCreateWalletPassword(msg tea.Msg) (tea.Model, tea.Cmd) 
 			name := strings.TrimSpace(m.nameInput.Value())
 			if m.Vault != nil {
 				passwordBytes := []byte(password)
+				wordCount, _ := strconv.Atoi(m.createWordCountInput.Value())
 				summary, challenge, err := m.Vault.Create(context.Background(), wallet.CreateAccountRequest{
-					Name:     name,
-					Password: passwordBytes,
+					Name:            name,
+					Password:        passwordBytes,
+					WordCount:       wordCount,
+					BIP39Language:   wallet.BIP39Language(strings.ToLower(strings.ReplaceAll(m.createLanguageInput.Value(), "-", "_"))),
+					BIP39Passphrase: m.createPassphraseInput.Value(),
+					DerivationPath:  m.createDerivationPathInput.Value(),
 				})
 				clear(passwordBytes)
+				m.createPassphraseInput.SetValue("")
 				m.passwordInput.SetValue("")
 				m.createPasswordConfirmationInput.SetValue("")
 				m.createPasswordStage = 0
@@ -827,6 +994,7 @@ func (m *CLIModel) updateCreateWalletPassword(msg tea.Msg) (tea.Model, tea.Cmd) 
 				}
 				m.pendingAccount = &summary
 				m.backupChallenge = &challenge
+				m.initBackupMaterialInputs()
 				m.backupConfirmationInput.SetValue("")
 				m.backupConfirmationInput.Focus()
 				m.currentView = constants.CreateWalletBackupView
@@ -894,11 +1062,7 @@ func (m *CLIModel) updateImportWallet(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.passwordInput.EchoMode = textinput.EchoPassword
 				m.passwordInput.EchoCharacter = '•'
 				m.passwordInput.Validate = func(s string) error {
-					_, isValid := wallet.ValidatePassword(s)
-					if !isValid && s != "" {
-						return fmt.Errorf("")
-					}
-					return nil
+					return validateStoragePasswordInput(s)
 				}
 				m.passwordInput.Focus()
 				m.currentView = constants.ImportWalletPasswordView
@@ -1027,45 +1191,21 @@ func (m *CLIModel) updateImportMethodSelection(msg tea.Msg) (tea.Model, tea.Cmd)
 				m.selectedMenu++
 			}
 		case "enter":
-			// Usar o menu de importação para determinar a ação baseada na seleção
 			switch m.selectedMenu {
-			case 0: // Primeira opção: Importar por frase mnemônica
+			case 0:
+				m.initCanonicalImport(wallet.ImportMethodMnemonic)
+			case 1:
+				m.initCanonicalImport(wallet.ImportMethodPrivateKey)
+			case 2:
+				m.initCanonicalImport(wallet.ImportMethodKeystore)
+			case 3:
+				m.initCanonicalBatchImport()
+			case 4:
+				m.initCanonicalImport(canonicalEncryptedMethod)
+			case 5:
 				m.clearImportSecrets()
-				m.pendingImportMethod = wallet.ImportMethodMnemonic
-				// Preparar campos de entrada para as 12 palavras
-				m.textInputs = make([]textinput.Model, constants.MnemonicWordCount)
-				m.importWords = make([]string, constants.MnemonicWordCount)
-				for i := 0; i < constants.MnemonicWordCount; i++ {
-					ti := textinput.New()
-					ti.Placeholder = fmt.Sprintf("%s %d", localization.Labels["word"], i+1)
-					ti.CharLimit = 50
-					ti.Width = 30
-					ti.EchoMode = textinput.EchoPassword
-					ti.EchoCharacter = '•'
-					if i == 0 {
-						ti.Focus()
-					}
-					m.textInputs[i] = ti
-				}
-				m.importStage = 0
-				m.currentView = constants.ImportWalletView
-
-			case 1: // Segunda opção: Importar por chave privada
-				m.clearImportSecrets()
-				m.pendingImportMethod = wallet.ImportMethodPrivateKey
-				m.privateKeyInput = textinput.New()
-				m.privateKeyInput.Placeholder = localization.Labels["enter_private_key"]
-				m.privateKeyInput.CharLimit = 66 // 0x + 64 caracteres hexadecimais
-				m.privateKeyInput.Width = 66
-				m.privateKeyInput.EchoMode = textinput.EchoPassword
-				m.privateKeyInput.EchoCharacter = '•'
-				m.privateKeyInput.Focus()
-				m.currentView = constants.ImportPrivateKeyView
-
-			case 2: // Terceira opção: Voltar ao menu principal
-				m.clearImportSecrets()
-				m.menuItems = NewMenu() // Recarregar o menu principal
-				m.selectedMenu = 0      // Resetar a seleção
+				m.menuItems = NewMenu()
+				m.selectedMenu = 0
 				m.currentView = constants.DefaultView
 			}
 		case "esc":
@@ -1141,11 +1281,7 @@ func (m *CLIModel) updateImportPrivateKey(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.passwordInput.EchoMode = textinput.EchoPassword
 			m.passwordInput.EchoCharacter = '•'
 			m.passwordInput.Validate = func(s string) error {
-				_, isValid := wallet.ValidatePassword(s)
-				if !isValid && s != "" {
-					return fmt.Errorf("")
-				}
-				return nil
+				return validateStoragePasswordInput(s)
 			}
 			m.passwordInput.Focus()
 			m.currentView = constants.ImportWalletPasswordView
@@ -1283,11 +1419,7 @@ func (m *CLIModel) updateImportKeystore(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.passwordInput.EchoMode = textinput.EchoPassword
 			m.passwordInput.EchoCharacter = '•'
 			m.passwordInput.Validate = func(s string) error {
-				_, isValid := wallet.ValidatePassword(s)
-				if !isValid && s != "" {
-					return fmt.Errorf("")
-				}
-				return nil
+				return validateStoragePasswordInput(s)
 			}
 			m.passwordInput.Focus()
 			m.currentView = constants.ImportWalletPasswordView
@@ -1404,6 +1536,11 @@ func (m *CLIModel) cancelPendingVaultBackup() error {
 	}
 	m.backupChallenge = nil
 	m.pendingAccount = nil
+	m.backupPassphraseInput.SetValue("")
+	m.backupPathInput.SetValue("")
+	m.backupLanguageInput.SetValue("")
+	m.backupWordAnswers = nil
+	m.backupMaterialStage = 0
 	m.resumeBackupAccountID = ""
 	return nil
 }
@@ -1414,6 +1551,8 @@ func (m *CLIModel) clearVaultActionInputs() {
 	m.confirmPasswordInput.SetValue("")
 	m.exportDestinationInput.SetValue("")
 	m.vaultActionStage = 0
+	m.vaultExportEncrypted = false
+	m.vaultActionPreview = false
 	m.vaultActionError = ""
 }
 
@@ -1611,6 +1750,11 @@ func (m *CLIModel) updateWalletDetails(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.initVaultAction(true)
 				return m, nil
 			}
+		case "x":
+			if m.Vault != nil && m.selectedAccount != nil {
+				m.initEncryptedExportAction()
+				return m, nil
+			}
 		case "esc":
 			m.walletDetails = nil
 			m.selectedAccount = nil
@@ -1674,12 +1818,24 @@ func (m *CLIModel) updateVaultAction(msg tea.Msg, export bool) (tea.Model, tea.C
 			m.currentPasswordInput.Focus()
 			return m, nil
 		}
-		if validationErr, valid := wallet.ValidatePassword(newPassword); !valid {
-			m.vaultActionError = validationErr.GetErrorMessage()
+		newPasswordValidation := []byte(newPassword)
+		validationErr := wallet.ValidateStoragePassword(newPasswordValidation)
+		clear(newPasswordValidation)
+		if validationErr != nil {
+			m.vaultActionError = validationErr.Error()
 			m.newPasswordInput.SetValue("")
 			m.confirmPasswordInput.SetValue("")
 			m.vaultActionStage = 1
 			m.newPasswordInput.Focus()
+			return m, nil
+		}
+		if export && !m.vaultActionPreview {
+			if !filepath.IsAbs(m.exportDestinationInput.Value()) {
+				m.vaultActionError = "Export destination must be absolute"
+				return m, nil
+			}
+			m.vaultActionPreview = true
+			m.vaultActionError = ""
 			return m, nil
 		}
 		currentPasswordBytes := []byte(m.currentPasswordInput.Value())
@@ -1693,13 +1849,28 @@ func (m *CLIModel) updateVaultAction(msg tea.Msg, export bool) (tea.Model, tea.C
 			var handle wallet.CapabilityHandle
 			handle, err = m.Vault.Unlock(context.Background(), m.selectedAccount.AccountID, currentPasswordBytes)
 			if err == nil {
-				err = m.Vault.ExportEncryptedAccount(context.Background(), wallet.EncryptedAccountExportRequest{
-					Handle:             handle,
-					Destination:        m.exportDestinationInput.Value(),
-					CurrentPassword:    currentPasswordBytes,
-					NewPassword:        newPasswordBytes,
-					ConfirmNewPassword: confirmPasswordBytes,
-				})
+				if m.vaultExportEncrypted {
+					err = m.Vault.ExportEncryptedAccount(context.Background(), wallet.EncryptedAccountExportRequest{
+						Handle:             handle,
+						Destination:        m.exportDestinationInput.Value(),
+						CurrentPassword:    currentPasswordBytes,
+						NewPassword:        newPasswordBytes,
+						ConfirmNewPassword: confirmPasswordBytes,
+					})
+				} else {
+					err = m.Vault.ExportKeystoreV3(context.Background(), wallet.KeystoreV3ExportRequest{
+						Handle:          handle,
+						Destination:     m.exportDestinationInput.Value(),
+						Password:        newPasswordBytes,
+						ConfirmPassword: confirmPasswordBytes,
+					})
+				}
+				if wallet.IsExportCommitted(err) {
+					m.lastOperationNotice = err.Error()
+					err = nil
+				} else if err == nil {
+					m.lastOperationNotice = "Export completed successfully"
+				}
 				lockErr := m.Vault.Lock(handle)
 				if err == nil {
 					err = lockErr
@@ -1720,6 +1891,9 @@ func (m *CLIModel) updateVaultAction(msg tea.Msg, export bool) (tea.Model, tea.C
 		m.clearVaultActionInputs()
 		m.currentView = constants.WalletDetailsView
 		return m, m.refreshWalletsTable()
+	}
+	if m.vaultActionPreview {
+		return m, nil
 	}
 	var command tea.Cmd
 	switch m.vaultActionStage {
@@ -1980,6 +2154,25 @@ func (m *CLIModel) initCreateWallet() {
 	m.nameInput.Focus()
 	m.currentView = constants.CreateWalletNameView
 
+	m.createWordCountInput = textinput.New()
+	m.createWordCountInput.Placeholder = "Word count"
+	m.createWordCountInput.SetValue("12")
+	m.createWordCountInput.CharLimit = 2
+	m.createLanguageInput = textinput.New()
+	m.createLanguageInput.Placeholder = "BIP39 language"
+	m.createLanguageInput.SetValue("english")
+	m.createLanguageInput.CharLimit = 32
+	m.createPassphraseInput = textinput.New()
+	m.createPassphraseInput.Placeholder = "Optional BIP39 passphrase"
+	m.createPassphraseInput.CharLimit = constants.PasswordCharLimit
+	m.createPassphraseInput.EchoMode = textinput.EchoPassword
+	m.createPassphraseInput.EchoCharacter = '•'
+	m.createDerivationPathInput = textinput.New()
+	m.createDerivationPathInput.Placeholder = "EVM derivation path"
+	m.createDerivationPathInput.SetValue("m/44'/60'/0'/0/0")
+	m.createDerivationPathInput.CharLimit = 255
+	m.createOptionsStage = 0
+
 	m.backupConfirmationInput = textinput.New()
 	m.backupConfirmationInput.Placeholder = localization.Labels["confirm_mnemonic"]
 	m.backupConfirmationInput.CharLimit = 512
@@ -1995,11 +2188,7 @@ func (m *CLIModel) initCreateWallet() {
 	m.passwordInput.EchoMode = textinput.EchoPassword
 	m.passwordInput.EchoCharacter = '•'
 	m.passwordInput.Validate = func(s string) error {
-		_, isValid := wallet.ValidatePassword(s)
-		if !isValid && s != "" {
-			return fmt.Errorf("")
-		}
-		return nil
+		return validateStoragePasswordInput(s)
 	}
 	m.createPasswordConfirmationInput = textinput.New()
 	m.createPasswordConfirmationInput.Placeholder = "Confirm storage password"
@@ -2195,6 +2384,23 @@ func (m *CLIModel) initListWallets() {
 	m.currentView = constants.ListWalletsView
 }
 
+func (m *CLIModel) initBackupMaterialInputs() {
+	m.backupPathInput = textinput.New()
+	m.backupPathInput.Placeholder = "Re-enter the derivation path"
+	m.backupPathInput.CharLimit = 255
+	m.backupPathInput.Width = 80
+	m.backupLanguageInput = textinput.New()
+	m.backupLanguageInput.Placeholder = "Re-enter the BIP39 language"
+	m.backupLanguageInput.CharLimit = 32
+	m.backupPassphraseInput = textinput.New()
+	m.backupPassphraseInput.Placeholder = "Re-enter the BIP39 passphrase"
+	m.backupPassphraseInput.CharLimit = constants.PasswordCharLimit
+	m.backupPassphraseInput.EchoMode = textinput.EchoPassword
+	m.backupPassphraseInput.EchoCharacter = '•'
+	m.backupMaterialStage = 0
+	m.backupWordAnswers = nil
+}
+
 func (m *CLIModel) initResumeBackup(accountID string) {
 	m.resumeBackupAccountID = accountID
 	m.passwordInput = textinput.New()
@@ -2215,8 +2421,14 @@ func (m *CLIModel) initResumeBackup(accountID string) {
 	m.currentView = constants.CreateWalletView
 }
 
+func (m *CLIModel) initEncryptedExportAction() {
+	m.initVaultAction(true)
+	m.vaultExportEncrypted = true
+}
+
 func (m *CLIModel) initVaultAction(export bool) {
 	m.clearVaultActionInputs()
+	m.lastOperationNotice = ""
 	m.currentPasswordInput = textinput.New()
 	m.currentPasswordInput.Placeholder = "Current storage password"
 	m.currentPasswordInput.CharLimit = constants.PasswordCharLimit
@@ -2255,11 +2467,7 @@ func (m *CLIModel) initWalletPassword() {
 	m.passwordInput.EchoMode = textinput.EchoPassword
 	m.passwordInput.EchoCharacter = '•'
 	m.passwordInput.Validate = func(s string) error {
-		_, isValid := wallet.ValidatePassword(s)
-		if !isValid && s != "" {
-			return fmt.Errorf("")
-		}
-		return nil
+		return validateStoragePasswordInput(s)
 	}
 	m.passwordInput.Focus()
 	m.currentView = constants.WalletPasswordView

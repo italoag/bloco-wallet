@@ -1,7 +1,6 @@
 package wallet
 
 import (
-	"crypto/ecdsa"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -38,8 +37,6 @@ func (EnhancedWallet) TableName() string {
 type EnhancedWalletDetails struct {
 	Wallet       *EnhancedWallet
 	Mnemonic     *string // Nullable
-	PrivateKey   *ecdsa.PrivateKey
-	PublicKey    *ecdsa.PublicKey
 	ImportMethod ImportMethod
 	HasMnemonic  bool     // Helper field for UI
 	KDFInfo      *KDFInfo // KDF analysis information

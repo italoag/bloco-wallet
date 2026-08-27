@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 	gormlogger "gorm.io/gorm/logger"
 )
 
@@ -80,12 +81,6 @@ func newRepository(cfg *config.Config, includeLegacy bool) (*GORMRepository, err
 		}
 	}()
 
-	if err := configureSQLite(db, isDisk); err != nil {
-		return nil, fmt.Errorf("falha ao configurar SQLite: %w", err)
-	}
-	if err := runMigrations(db, includeLegacy); err != nil {
-		return nil, fmt.Errorf("falha ao migrar banco de dados: %w", err)
-	}
 	if !includeLegacy && db.Migrator().HasTable(&wallet.Wallet{}) {
 		var legacyCount int64
 		if err := db.Model(&wallet.Wallet{}).Count(&legacyCount).Error; err != nil {
@@ -94,6 +89,12 @@ func newRepository(cfg *config.Config, includeLegacy bool) (*GORMRepository, err
 		if legacyCount > 0 {
 			return nil, fmt.Errorf("legacy wallet data requires explicit migration")
 		}
+	}
+	if err := configureSQLite(db, isDisk); err != nil {
+		return nil, fmt.Errorf("falha ao configurar SQLite: %w", err)
+	}
+	if err := runMigrations(db, includeLegacy); err != nil {
+		return nil, fmt.Errorf("falha ao migrar banco de dados: %w", err)
 	}
 	if isDisk {
 		for _, path := range []string{diskPath, diskPath + "-wal", diskPath + "-shm"} {
@@ -251,6 +252,41 @@ func (repo *GORMRepository) FindAccountBySourceIdentity(ctx context.Context, sou
 		return nil, result.Error
 	}
 	return &account, nil
+}
+
+func (repo *GORMRepository) FindAccountsByAddress(ctx context.Context, address string) ([]wallet.Account, error) {
+	var accounts []wallet.Account
+	if err := repo.db.WithContext(ctx).Where("address = ?", address).Order("created_at ASC").Find(&accounts).Error; err != nil {
+		return nil, err
+	}
+	return accounts, nil
+}
+
+func (repo *GORMRepository) GetVaultMetadata(ctx context.Context, key string) (string, error) {
+	var metadata wallet.VaultMetadata
+	result := repo.db.WithContext(ctx).Where("key = ?", key).First(&metadata)
+	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		return "", wallet.ErrAccountNotFound
+	}
+	if result.Error != nil {
+		return "", result.Error
+	}
+	return metadata.Value, nil
+}
+
+func (repo *GORMRepository) PutVaultMetadata(ctx context.Context, key, value string) error {
+	metadata := wallet.VaultMetadata{Key: key, Value: value}
+	if err := repo.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&metadata).Error; err != nil {
+		return err
+	}
+	stored, err := repo.GetVaultMetadata(ctx, key)
+	if err != nil {
+		return err
+	}
+	if stored != value {
+		return wallet.ErrAccountConflict
+	}
+	return nil
 }
 
 func (repo *GORMRepository) ListAccounts(ctx context.Context) ([]wallet.Account, error) {

@@ -30,6 +30,7 @@ func (i menuItem) FilterValue() string {
 func NewMenu() []menuItem {
 	return []menuItem{
 		{title: localization.Labels["create_new_wallet"], description: localization.Labels["create_new_wallet_desc"]},
+		{title: localization.Labels["import_wallet"], description: localization.Labels["import_wallet_desc"]},
 		{title: localization.Labels["list_wallets"], description: localization.Labels["list_wallets_desc"]},
 		{title: localization.Labels["configuration"], description: localization.Labels["configuration_desc"]},
 		{title: localization.Labels["exit"], description: localization.Labels["exit_desc"]},
@@ -41,6 +42,9 @@ func NewImportMenu() []menuItem {
 	return []menuItem{
 		{title: localization.Labels["import_mnemonic"], description: localization.Labels["import_mnemonic_desc"]},
 		{title: localization.Labels["import_private_key"], description: localization.Labels["import_private_key_desc"]},
+		{title: localization.Labels["import_keystore"], description: localization.Labels["import_keystore_desc"]},
+		{title: "Batch Keystore V3", description: "Import multiple keystores with bounded concurrency"},
+		{title: "Bloco Encrypted Backup", description: "Restore a versioned encrypted account export"},
 		{title: localization.Labels["back_to_menu"], description: localization.Labels["back_to_menu_desc"]},
 	}
 }

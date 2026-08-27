@@ -15,15 +15,11 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/tyler-smith/go-bip32"
-	"github.com/tyler-smith/go-bip39"
 )
 
 type WalletDetails struct {
 	Wallet       *Wallet
-	Mnemonic     *string // Nullable for non-mnemonic imports
-	PrivateKey   *ecdsa.PrivateKey
-	PublicKey    *ecdsa.PublicKey
+	Mnemonic     *string      // Nullable for non-mnemonic imports
 	ImportMethod ImportMethod // Track import method
 	HasMnemonic  bool         // Helper field for UI
 	KDFInfo      *KDFInfo     // KDF analysis information
@@ -67,7 +63,7 @@ func (ws *WalletService) CreateWallet(name, password string) (*WalletDetails, er
 }
 
 func (ws *WalletService) CreateWalletFromMnemonic(name, mnemonic, password string) (*WalletDetails, error) {
-	if !bip39.IsMnemonicValid(mnemonic) {
+	if _, err := DetectBIP39Language(mnemonic); err != nil {
 		return nil, NewInvalidImportDataError(string(ImportMethodMnemonic), "Invalid mnemonic phrase")
 	}
 	sourceHash := (&SourceHashGenerator{}).GenerateFromMnemonic(mnemonic)
@@ -77,12 +73,12 @@ func (ws *WalletService) CreateWalletFromMnemonic(name, mnemonic, password strin
 		return nil, NewDuplicateWalletError(string(ImportMethodMnemonic), existingWallet.Address, "A wallet with this mnemonic phrase already exists")
 	}
 
-	privateKeyHex, err := DerivePrivateKey(mnemonic)
+	privateKeyHex, err := derivePrivateKeyLegacy(mnemonic)
 	if err != nil {
 		return nil, err
 	}
 
-	privKey, err := HexToECDSA(privateKeyHex)
+	privKey, err := hexToECDSALegacy(privateKeyHex)
 	if err != nil {
 		return nil, err
 	}
@@ -121,8 +117,6 @@ func (ws *WalletService) CreateWalletFromMnemonic(name, mnemonic, password strin
 	walletDetails := &WalletDetails{
 		Wallet:       wallet,
 		Mnemonic:     &mnemonic,
-		PrivateKey:   privKey,
-		PublicKey:    &privKey.PublicKey,
 		ImportMethod: ImportMethodMnemonic,
 		HasMnemonic:  true,
 	}
@@ -132,7 +126,7 @@ func (ws *WalletService) CreateWalletFromMnemonic(name, mnemonic, password strin
 
 func (ws *WalletService) ImportWallet(name, mnemonic, password string) (*WalletDetails, error) {
 	// 5.2 Validate mnemonic before any processing
-	if !bip39.IsMnemonicValid(mnemonic) {
+	if _, err := DetectBIP39Language(mnemonic); err != nil {
 		return nil, NewInvalidImportDataError(string(ImportMethodMnemonic), "Invalid mnemonic phrase")
 	}
 
@@ -145,12 +139,12 @@ func (ws *WalletService) ImportWallet(name, mnemonic, password string) (*WalletD
 		return nil, err
 	}
 
-	privateKeyHex, err := DerivePrivateKey(mnemonic)
+	privateKeyHex, err := derivePrivateKeyLegacy(mnemonic)
 	if err != nil {
 		return nil, err
 	}
 
-	privKey, err := HexToECDSA(privateKeyHex)
+	privKey, err := hexToECDSALegacy(privateKeyHex)
 	if err != nil {
 		return nil, err
 	}
@@ -189,8 +183,6 @@ func (ws *WalletService) ImportWallet(name, mnemonic, password string) (*WalletD
 	walletDetails := &WalletDetails{
 		Wallet:       wallet,
 		Mnemonic:     &mnemonic,
-		PrivateKey:   privKey,
-		PublicKey:    &privKey.PublicKey,
 		ImportMethod: ImportMethodMnemonic,
 		HasMnemonic:  true,
 	}
@@ -223,7 +215,7 @@ func (ws *WalletService) ImportWalletFromPrivateKey(name, privateKeyHex, passwor
 	}
 
 	// Convert hex to ECDSA private key
-	privKey, err := HexToECDSA(privateKeyHex)
+	privKey, err := hexToECDSALegacy(privateKeyHex)
 	if err != nil {
 		return nil, NewInvalidImportDataError(string(ImportMethodPrivateKey), "Invalid private key format")
 	}
@@ -266,8 +258,6 @@ func (ws *WalletService) ImportWalletFromPrivateKey(name, privateKeyHex, passwor
 	walletDetails := &WalletDetails{
 		Wallet:       wallet,
 		Mnemonic:     nil,
-		PrivateKey:   privKey,
-		PublicKey:    &privKey.PublicKey,
 		ImportMethod: ImportMethodPrivateKey,
 		HasMnemonic:  false,
 	}
@@ -483,6 +473,7 @@ func (ws *WalletService) ImportWalletFromKeystoreV3WithContext(ctx context.Conte
 			err,
 		)
 	}
+	defer clear(derivedKey)
 	if err := ctx.Err(); err != nil {
 		return nil, NewKeystoreImportError(ErrorImportInterrupted, "Import cancelled", err)
 	}
@@ -520,6 +511,7 @@ func (ws *WalletService) ImportWalletFromKeystoreV3WithContext(ctx context.Conte
 			err,
 		)
 	}
+	defer clear(privateKeyBytes)
 
 	// Step 13: Convert to ECDSA private key
 	privateKey, err := crypto.ToECDSA(privateKeyBytes)
@@ -530,13 +522,14 @@ func (ws *WalletService) ImportWalletFromKeystoreV3WithContext(ctx context.Conte
 			err,
 		)
 	}
+	defer privateKey.D.SetInt64(0)
 
 	// Step 14: Verify address matches derived address
 	derivedAddress := crypto.PubkeyToAddress(privateKey.PublicKey).Hex()
 	normalizedKeystoreAddress := common.HexToAddress(keystoreData.Address).Hex()
 	normalizedDerivedAddress := common.HexToAddress(derivedAddress).Hex()
 
-	if normalizedKeystoreAddress != normalizedDerivedAddress {
+	if keystoreData.Address != "" && normalizedKeystoreAddress != normalizedDerivedAddress {
 		return nil, NewKeystoreImportError(
 			ErrorAddressMismatch,
 			fmt.Sprintf("Address mismatch: keystore address %s does not match derived address %s",
@@ -715,8 +708,6 @@ func (ws *WalletService) ImportWalletFromKeystoreV3WithContext(ctx context.Conte
 	walletDetails := &WalletDetails{
 		Wallet:       wallet,
 		Mnemonic:     nil, // No mnemonic available for keystore imports
-		PrivateKey:   privateKey,
-		PublicKey:    &privateKey.PublicKey,
 		ImportMethod: ImportMethodKeystore,
 		HasMnemonic:  false, // Keystore imports don't have mnemonics
 		KDFInfo:      kdfInfo,
@@ -759,6 +750,7 @@ func (ws *WalletService) LoadWallet(wallet *Wallet, password string) (*WalletDet
 	if err != nil {
 		return nil, fmt.Errorf("incorrect password")
 	}
+	key.PrivateKey.D.SetInt64(0)
 
 	// Decrypt the mnemonic
 	var mnemonicPtr *string
@@ -773,8 +765,6 @@ func (ws *WalletService) LoadWallet(wallet *Wallet, password string) (*WalletDet
 	walletDetails := &WalletDetails{
 		Wallet:       wallet,
 		Mnemonic:     mnemonicPtr,
-		PrivateKey:   key.PrivateKey,
-		PublicKey:    &key.PrivateKey.PublicKey,
 		ImportMethod: ImportMethod(wallet.ImportMethod),
 		HasMnemonic:  wallet.Mnemonic != nil,
 	}
@@ -825,65 +815,64 @@ func readRegularFile(path string, maxBytes int64) (data []byte, err error) {
 	return data, nil
 }
 
-func decryptKeySafely(keyJSON []byte, password string) (key *keystore.Key, err error) {
+var keystoreKDFSemaphore = make(chan struct{}, 1)
+
+func decryptKeySafely(keyJSON []byte, password string) (*keystore.Key, error) {
+	return decryptKeySafelyContext(context.Background(), keyJSON, password)
+}
+
+func decryptKeySafelyContext(ctx context.Context, keyJSON []byte, password string) (key *keystore.Key, err error) {
 	if _, err := (&KeystoreValidator{}).ValidateKeystoreV3(keyJSON); err != nil {
 		return nil, err
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	select {
+	case keystoreKDFSemaphore <- struct{}{}:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	defer func() { <-keystoreKDFSemaphore }()
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			key = nil
 			err = fmt.Errorf("invalid keystore parameters")
 		}
 	}()
-	return keystore.DecryptKey(keyJSON, password)
+	key, err = keystore.DecryptKey(keyJSON, password)
+	if err != nil {
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
+		key.PrivateKey.D.SetInt64(0)
+		return nil, err
+	}
+	return key, nil
 }
 
 func GenerateMnemonic() (string, error) {
-	entropy, err := bip39.NewEntropy(128)
-	if err != nil {
-		return "", err
-	}
-	mnemonic, err := bip39.NewMnemonic(entropy)
-	if err != nil {
-		return "", err
-	}
-	return mnemonic, nil
+	return generateMnemonicForLanguage(12, BIP39English)
 }
 
-func DerivePrivateKey(mnemonic string) (string, error) {
-	if !bip39.IsMnemonicValid(mnemonic) {
+func derivePrivateKeyLegacy(mnemonic string) (string, error) {
+	language, err := DetectBIP39Language(mnemonic)
+	if err != nil {
 		return "", fmt.Errorf("invalid mnemonic phrase")
 	}
-	seed := bip39.NewSeed(mnemonic, "")
-	masterKey, err := bip32.NewMasterKey(seed)
+	path, err := ParseDerivationPath("m/44'/60'/0'/0/0")
 	if err != nil {
 		return "", err
 	}
-	purposeKey, err := masterKey.NewChildKey(bip32.FirstHardenedChild + 44)
+	privateKey, _, err := deriveEVMAccount(mnemonic, "", language, path)
 	if err != nil {
 		return "", err
 	}
-	coinTypeKey, err := purposeKey.NewChildKey(bip32.FirstHardenedChild + 60)
-	if err != nil {
-		return "", err
-	}
-	accountKey, err := coinTypeKey.NewChildKey(bip32.FirstHardenedChild + 0)
-	if err != nil {
-		return "", err
-	}
-	changeKey, err := accountKey.NewChildKey(0)
-	if err != nil {
-		return "", err
-	}
-	addressKey, err := changeKey.NewChildKey(0)
-	if err != nil {
-		return "", err
-	}
-	privateKeyBytes := addressKey.Key
-	return hex.EncodeToString(privateKeyBytes), nil
+	defer clear(privateKey)
+	return hex.EncodeToString(privateKey), nil
 }
 
-func HexToECDSA(hexkey string) (*ecdsa.PrivateKey, error) {
+func hexToECDSALegacy(hexkey string) (*ecdsa.PrivateKey, error) {
 	privateKeyBytes, err := hex.DecodeString(hexkey)
 	if err != nil {
 		return nil, err

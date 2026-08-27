@@ -273,10 +273,10 @@ func createAddressMismatchKeystoreFile(t *testing.T, password string) string {
 	return addressMismatchKeystorePath
 }
 
-func TestDerivePrivateKeyKnownBIP44Vector(t *testing.T) {
-	privateKeyHex, err := DerivePrivateKey("test test test test test test test test test test test junk")
+func TestDerivePrivateKeyLegacyKnownBIP44Vector(t *testing.T) {
+	privateKeyHex, err := derivePrivateKeyLegacy("test test test test test test test test test test test junk")
 	assert.NoError(t, err)
-	privateKey, err := HexToECDSA(privateKeyHex)
+	privateKey, err := hexToECDSALegacy(privateKeyHex)
 	assert.NoError(t, err)
 	assert.Equal(
 		t,
@@ -588,8 +588,6 @@ func TestImportWalletFromKeystoreV3_Success(t *testing.T) {
 	assert.NotEmpty(t, walletDetails.Wallet.KeyStorePath)
 	assert.Nil(t, walletDetails.Wallet.Mnemonic) // Keystore imports don't have mnemonics
 	assert.Nil(t, walletDetails.Mnemonic)        // Keystore imports don't have mnemonics
-	assert.NotNil(t, walletDetails.PrivateKey)
-	assert.NotNil(t, walletDetails.PublicKey)
 
 	// Close the repository
 	if err := mockRepo.Close(); err != nil {
@@ -1102,10 +1100,6 @@ func TestAddressVerificationInImport(t *testing.T) {
 
 	// Verify that the address in the wallet matches the expected address
 	assert.Equal(t, address.Hex(), walletDetails.Wallet.Address)
-
-	// Verify that the private key in the wallet details corresponds to the address
-	derivedAddress := crypto.PubkeyToAddress(walletDetails.PrivateKey.PublicKey).Hex()
-	assert.Equal(t, address.Hex(), derivedAddress)
 
 	// Close the repository
 	if err := mockRepo.Close(); err != nil {

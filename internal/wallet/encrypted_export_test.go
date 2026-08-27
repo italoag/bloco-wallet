@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -96,6 +97,32 @@ func TestEncryptedAccountExportRejectsUnsafeRequests(t *testing.T) {
 	}
 }
 
+func TestEncryptedExportRejectsVerificationMismatch(t *testing.T) {
+	baseVault, repository, _ := newTestVault(t)
+	password := []byte("Strong vault password 1!")
+	account := activateTestAccount(t, baseVault, password)
+	faultCodec := &faultEnvelope{base: baseVault.codec, overrideOpenAt: 3, overrideOpen: []byte("different canonical plaintext")}
+	vault, err := NewWalletVault(repository, faultCodec, baseVault.options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handle, err := vault.Unlock(context.Background(), account.AccountID, password)
+	if err != nil {
+		t.Fatal(err)
+	}
+	exportPassword := []byte("Different export password 2!")
+	err = vault.ExportEncryptedAccount(context.Background(), EncryptedAccountExportRequest{
+		Handle:             handle,
+		Destination:        filepath.Join(t.TempDir(), "mismatch.bloco"),
+		CurrentPassword:    password,
+		NewPassword:        exportPassword,
+		ConfirmNewPassword: append([]byte(nil), exportPassword...),
+	})
+	if err == nil || !strings.Contains(err.Error(), "mismatch") {
+		t.Fatalf("export verification mismatch returned %v", err)
+	}
+}
+
 func TestWriteExclusiveAtomicFailurePaths(t *testing.T) {
 	fault := errors.New("filesystem fault")
 	parent := t.TempDir()
@@ -151,6 +178,19 @@ func TestWriteExclusiveAtomicFailurePaths(t *testing.T) {
 			}
 		},
 		func(operations *atomicExportOperations, _ context.CancelFunc) {
+			otherInfo, _ := os.Stat(t.TempDir())
+			calls := 0
+			operations.lstat = func(path string) (os.FileInfo, error) {
+				if path == parent {
+					calls++
+					if calls > 1 {
+						return otherInfo, nil
+					}
+				}
+				return os.Lstat(path)
+			}
+		},
+		func(operations *atomicExportOperations, _ context.CancelFunc) {
 			operations.link = func(string, string) error { return fault }
 		},
 		func(operations *atomicExportOperations, _ context.CancelFunc) {
@@ -172,8 +212,12 @@ func TestWriteExclusiveAtomicFailurePaths(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			mutate(&operations, cancel)
-			if err := writeExclusiveAtomicWithOperations(ctx, destination, []byte("data"), 0600, operations); err == nil {
-				t.Fatal("filesystem fault was ignored")
+			err := writeExclusiveAtomicWithOperations(ctx, destination, []byte("data"), 0600, operations)
+			if index < 9 && err == nil {
+				t.Fatal("pre-commit filesystem fault was ignored")
+			}
+			if index >= 9 && !IsExportCommitted(err) {
+				t.Fatalf("post-commit warning did not report committed state: %v", err)
 			}
 		})
 	}

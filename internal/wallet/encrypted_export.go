@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,6 +13,23 @@ import (
 )
 
 const encryptedAccountExportVersion = 1
+
+type ExportCommittedWarning struct {
+	Cause error
+}
+
+func (warning *ExportCommittedWarning) Error() string {
+	return "export committed but cleanup or durability confirmation failed: " + warning.Cause.Error()
+}
+
+func (warning *ExportCommittedWarning) Unwrap() error {
+	return warning.Cause
+}
+
+func IsExportCommitted(err error) bool {
+	var warning *ExportCommittedWarning
+	return errors.As(err, &warning)
+}
 
 type EncryptedAccountExportRequest struct {
 	Handle             CapabilityHandle
@@ -35,6 +53,7 @@ type EncryptedAccountExportV1 struct {
 	ChangeIndex        uint32            `json:"change_index"`
 	AddressIndex       uint32            `json:"address_index"`
 	BIP39Language      string            `json:"bip39_language"`
+	HasBIP39Passphrase bool              `json:"has_bip39_passphrase"`
 	Capabilities       AccountCapability `json:"capabilities"`
 	EnvelopeGeneration uint64            `json:"envelope_generation"`
 	AuthorizationEpoch uint64            `json:"authorization_epoch"`
@@ -48,6 +67,7 @@ func (export EncryptedAccountExportV1) Metadata() EnvelopeMetadata {
 		SecretType:         export.SecretType,
 		Address:            export.Address,
 		EnvelopeGeneration: export.EnvelopeGeneration,
+		PassphrasePresent:  export.HasBIP39Passphrase,
 		Derivation: DerivationMetadata{
 			Scheme:       export.DerivationScheme,
 			Path:         export.DerivationPath,
@@ -81,9 +101,19 @@ func (vault *WalletVault) ExportEncryptedAccount(ctx context.Context, request En
 			return fmt.Errorf("authenticate export source: %w", err)
 		}
 		defer clear(plaintext)
+		canonicalSecret, err := canonicalSecretFromStored(account, plaintext)
+		if err != nil {
+			return fmt.Errorf("canonicalize export source: %w", err)
+		}
+		defer clear(canonicalSecret.PrivateKey)
+		canonicalPlaintext, err := encodeCanonicalSecret(canonicalSecret)
+		if err != nil {
+			return err
+		}
+		defer clear(canonicalPlaintext)
 		exportMetadata := metadataForAccount(account)
 		exportMetadata.EnvelopeGeneration++
-		exportedEnvelope, err := vault.codec.Seal(request.NewPassword, exportMetadata, plaintext)
+		exportedEnvelope, err := vault.codec.Seal(request.NewPassword, exportMetadata, canonicalPlaintext)
 		if err != nil {
 			return err
 		}
@@ -91,7 +121,7 @@ func (vault *WalletVault) ExportEncryptedAccount(ctx context.Context, request En
 		if err != nil {
 			return fmt.Errorf("verify exported envelope: %w", err)
 		}
-		if !bytes.Equal(reopened, plaintext) {
+		if !bytes.Equal(reopened, canonicalPlaintext) {
 			clear(reopened)
 			return fmt.Errorf("exported envelope mismatch")
 		}
@@ -110,6 +140,7 @@ func (vault *WalletVault) ExportEncryptedAccount(ctx context.Context, request En
 			ChangeIndex:        account.ChangeIndex,
 			AddressIndex:       account.AddressIndex,
 			BIP39Language:      account.BIP39Language,
+			HasBIP39Passphrase: account.HasBIP39Passphrase,
 			Capabilities:       account.Capabilities,
 			EnvelopeGeneration: exportMetadata.EnvelopeGeneration,
 			AuthorizationEpoch: account.AuthorizationEpoch,
@@ -173,10 +204,22 @@ func writeExclusiveAtomicWithOperations(ctx context.Context, destination string,
 	if parentInfo.Mode()&os.ModeSymlink != 0 || !parentInfo.IsDir() {
 		return fmt.Errorf("export parent must be a regular directory")
 	}
+	resolvedParent, err := filepath.EvalSymlinks(parent)
+	if err != nil {
+		return err
+	}
+	resolvedInfo, err := os.Stat(resolvedParent)
+	if err != nil || !os.SameFile(parentInfo, resolvedInfo) {
+		return fmt.Errorf("export parent resolution changed")
+	}
 	if _, err := operations.lstat(destination); err == nil {
 		return fmt.Errorf("%w: export destination exists", os.ErrExist)
 	} else if !os.IsNotExist(err) {
 		return err
+	}
+	currentParent, err := operations.lstat(parent)
+	if err != nil || !os.SameFile(parentInfo, currentParent) {
+		return fmt.Errorf("export parent changed before temporary file creation")
 	}
 	temporary, err := operations.createTemp(parent, ".bloco-export-*")
 	if err != nil {
@@ -207,23 +250,31 @@ func writeExclusiveAtomicWithOperations(ctx context.Context, destination string,
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	currentParent, err = operations.lstat(parent)
+	if err != nil || !os.SameFile(parentInfo, currentParent) {
+		return fmt.Errorf("export parent changed before commit")
+	}
 	if err := operations.link(temporaryPath, destination); err != nil {
 		return err
 	}
-	if err := operations.remove(temporaryPath); err != nil {
-		return err
+	warnings := make([]error, 0, 3)
+	if err := operations.remove(temporaryPath); err == nil {
+		keepTemporary = false
+	} else {
+		warnings = append(warnings, err)
 	}
-	keepTemporary = false
-	directory, err := operations.openDir(parent)
-	if err != nil {
-		return err
+	if directory, openErr := operations.openDir(parent); openErr == nil {
+		if syncErr := directory.Sync(); syncErr != nil {
+			warnings = append(warnings, syncErr)
+		}
+		if closeErr := directory.Close(); closeErr != nil {
+			warnings = append(warnings, closeErr)
+		}
+	} else {
+		warnings = append(warnings, openErr)
 	}
-	if err := directory.Sync(); err != nil {
-		_ = directory.Close()
-		return err
-	}
-	if err := directory.Close(); err != nil {
-		return err
+	if len(warnings) > 0 {
+		return &ExportCommittedWarning{Cause: errors.Join(warnings...)}
 	}
 	return nil
 }

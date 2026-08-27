@@ -3,7 +3,9 @@ package wallet
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
 	"errors"
@@ -35,6 +37,7 @@ type VaultOptions struct {
 	Now               func() time.Time
 	Random            io.Reader
 	MnemonicGenerator func() (string, error)
+	SourceIdentityKey []byte
 	BackupTTL         time.Duration
 	SessionTTL        time.Duration
 	InactivityTTL     time.Duration
@@ -42,30 +45,48 @@ type VaultOptions struct {
 }
 
 type CreateAccountRequest struct {
-	Name     string
-	Password []byte
+	Name            string
+	Password        []byte
+	WordCount       int
+	BIP39Language   BIP39Language
+	BIP39Passphrase string
+	DerivationPath  string
 }
 
 type AccountSummary struct {
-	AccountID        string
-	Name             string
-	Address          string
-	SignerKind       SignerKind
-	DerivationScheme string
-	DerivationPath   string
-	Capabilities     AccountCapability
-	State            AccountState
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	AccountID          string
+	Name               string
+	Address            string
+	SignerKind         SignerKind
+	DerivationScheme   string
+	DerivationPath     string
+	BIP39Language      string
+	HasBIP39Passphrase bool
+	RelatedAccountID   string
+	Capabilities       AccountCapability
+	State              AccountState
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
 }
 
 type BackupChallenge struct {
-	ChallengeID         string
-	AccountID           string
-	BackupGeneration    uint64
-	Words               []string
-	RequiredWordIndices []int
-	ExpiresAt           time.Time
+	ChallengeID                  string
+	AccountID                    string
+	BackupGeneration             uint64
+	Words                        []string
+	RequiredWordIndices          []int
+	DerivationPath               string
+	BIP39Language                BIP39Language
+	RequiresMaterialConfirmation bool
+	ExpiresAt                    time.Time
+	passphraseMAC                []byte
+}
+
+type BackupMaterialConfirmation struct {
+	WordAnswers     map[int]string
+	BIP39Passphrase string
+	DerivationPath  string
+	BIP39Language   BIP39Language
 }
 
 type CapabilityHandle struct {
@@ -95,6 +116,10 @@ type backupChallengeState struct {
 	backupGeneration uint64
 	words            []string
 	required         []int
+	passphraseMAC    []byte
+	derivationPath   string
+	language         BIP39Language
+	requiresMaterial bool
 	expiresAt        time.Time
 	consuming        bool
 }
@@ -111,9 +136,10 @@ type vaultSession struct {
 }
 
 type WalletVault struct {
-	repository AccountRepository
-	codec      SecretEnvelope
-	options    VaultOptions
+	repository        AccountRepository
+	codec             SecretEnvelope
+	options           VaultOptions
+	sourceIdentityKey []byte
 
 	lifecycle  sync.RWMutex
 	mu         sync.Mutex
@@ -147,12 +173,34 @@ func NewWalletVault(repository AccountRepository, codec SecretEnvelope, options 
 	if options.ChallengeWords <= 0 {
 		options.ChallengeWords = 3
 	}
+	if len(options.SourceIdentityKey) != 0 && len(options.SourceIdentityKey) != 32 {
+		return nil, fmt.Errorf("source identity key must contain 32 bytes")
+	}
+	sourceIdentityKey := append([]byte(nil), options.SourceIdentityKey...)
+	options.SourceIdentityKey = nil
+	if len(sourceIdentityKey) == 32 {
+		fingerprintBytes := sha256.Sum256(sourceIdentityKey)
+		fingerprint := hex.EncodeToString(fingerprintBytes[:])
+		stored, err := repository.GetVaultMetadata(context.Background(), "source_identity_key_sha256")
+		if errors.Is(err, ErrAccountNotFound) {
+			err = repository.PutVaultMetadata(context.Background(), "source_identity_key_sha256", fingerprint)
+		}
+		if err != nil {
+			clear(sourceIdentityKey)
+			return nil, fmt.Errorf("bind source identity key: %w", err)
+		}
+		if stored != "" && (len(stored) != len(fingerprint) || subtle.ConstantTimeCompare([]byte(stored), []byte(fingerprint)) != 1) {
+			clear(sourceIdentityKey)
+			return nil, fmt.Errorf("source identity key does not match vault metadata")
+		}
+	}
 	return &WalletVault{
-		repository: repository,
-		codec:      codec,
-		options:    options,
-		challenges: make(map[string]*backupChallengeState),
-		sessions:   make(map[string]*vaultSession),
+		repository:        repository,
+		codec:             codec,
+		options:           options,
+		sourceIdentityKey: sourceIdentityKey,
+		challenges:        make(map[string]*backupChallengeState),
+		sessions:          make(map[string]*vaultSession),
 	}, nil
 }
 
@@ -184,19 +232,57 @@ func (vault *WalletVault) Create(ctx context.Context, request CreateAccountReque
 	if err := validateNewStoragePassword(request.Password); err != nil {
 		return AccountSummary{}, BackupChallenge{}, err
 	}
-	mnemonic, err := vault.options.MnemonicGenerator()
+	wordCount := request.WordCount
+	if wordCount == 0 {
+		wordCount = 12
+	}
+	language := request.BIP39Language
+	if language == "" {
+		language = BIP39English
+	}
+	pathValue := request.DerivationPath
+	if pathValue == "" {
+		pathValue = "m/44'/60'/0'/0/0"
+	}
+	path, err := ParseDerivationPath(pathValue)
+	if err != nil {
+		return AccountSummary{}, BackupChallenge{}, err
+	}
+	var mnemonic string
+	if wordCount == 12 && language == BIP39English {
+		mnemonic, err = vault.options.MnemonicGenerator()
+	} else {
+		mnemonic, err = generateMnemonicForLanguage(wordCount, language)
+	}
 	if err != nil {
 		return AccountSummary{}, BackupChallenge{}, fmt.Errorf("generate mnemonic: %w", err)
 	}
-	words := strings.Fields(mnemonic)
-	if len(words) != 12 {
-		return AccountSummary{}, BackupChallenge{}, fmt.Errorf("unexpected mnemonic length")
+	if err := ValidateBIP39Mnemonic(mnemonic, language); err != nil {
+		return AccountSummary{}, BackupChallenge{}, err
 	}
+	secret := canonicalSecretV1{
+		Version:         canonicalSecretVersion,
+		Kind:            SecretTypeMnemonic,
+		Mnemonic:        mnemonic,
+		BIP39Passphrase: request.BIP39Passphrase,
+		BIP39Language:   language,
+		DerivationPath:  path.String(),
+	}
+	canonicalSecret, err := encodeCanonicalSecret(secret)
+	if err != nil {
+		return AccountSummary{}, BackupChallenge{}, err
+	}
+	defer clear(canonicalSecret)
+	secret, err = decodeCanonicalSecret(canonicalSecret)
+	if err != nil {
+		return AccountSummary{}, BackupChallenge{}, err
+	}
+	words := strings.Fields(secret.Mnemonic)
 	accountID, err := newUUID(vault.options.Random)
 	if err != nil {
 		return AccountSummary{}, BackupChallenge{}, err
 	}
-	privateKey, address, err := deriveSecretIdentity(SecretTypeMnemonic, []byte(mnemonic))
+	privateKey, address, err := deriveCanonicalSecretIdentity(secret)
 	if err != nil {
 		return AccountSummary{}, BackupChallenge{}, err
 	}
@@ -206,15 +292,16 @@ func (vault *WalletVault) Create(ctx context.Context, request CreateAccountReque
 		SecretType:         SecretTypeMnemonic,
 		Address:            address,
 		EnvelopeGeneration: 1,
-		Derivation: DerivationMetadata{
-			Scheme:   "bip44",
-			Path:     "m/44'/60'/0'/0/0",
-			Language: "english",
-		},
+		PassphrasePresent:  secret.BIP39Passphrase != "",
+		Derivation:         derivationMetadataForPath(path, language),
 	}
-	envelope, err := vault.codec.Seal(request.Password, metadata, []byte(mnemonic))
+	envelope, err := vault.codec.Seal(request.Password, metadata, canonicalSecret)
 	if err != nil {
 		return AccountSummary{}, BackupChallenge{}, err
+	}
+	sourceIdentity := "generated:" + accountID
+	if len(vault.sourceIdentityKey) == 32 {
+		sourceIdentity = vault.deriveSourceIdentity(canonicalSecret)
 	}
 	now := vault.options.Now().UTC()
 	account := &Account{
@@ -226,19 +313,28 @@ func (vault *WalletVault) Create(ctx context.Context, request CreateAccountReque
 		SecretType:         SecretTypeMnemonic,
 		DerivationScheme:   metadata.Derivation.Scheme,
 		DerivationPath:     metadata.Derivation.Path,
+		AccountIndex:       metadata.Derivation.AccountIndex,
+		ChangeIndex:        metadata.Derivation.ChangeIndex,
+		AddressIndex:       metadata.Derivation.AddressIndex,
 		BIP39Language:      metadata.Derivation.Language,
+		HasBIP39Passphrase: secret.BIP39Passphrase != "",
 		Capabilities:       CapabilitySignTransaction | CapabilitySignMessage | CapabilityExportSecret,
 		State:              AccountStatePendingBackup,
 		SecretEnvelope:     envelope,
 		EnvelopeGeneration: 1,
 		AuthorizationEpoch: 1,
 		BackupGeneration:   1,
-		SourceIdentity:     "generated:" + accountID,
+		SourceIdentity:     sourceIdentity,
 		Revision:           1,
 		CreatedAt:          now,
 		UpdatedAt:          now,
 	}
-	challenge, err := vault.prepareBackupChallenge(accountID, account.BackupGeneration, words)
+	challenge, err := vault.prepareBackupChallenge(accountID, account.BackupGeneration, mnemonicBackupMaterial{
+		words:      words,
+		passphrase: secret.BIP39Passphrase,
+		path:       secret.DerivationPath,
+		language:   secret.BIP39Language,
+	})
 	if err != nil {
 		return AccountSummary{}, BackupChallenge{}, err
 	}
@@ -255,10 +351,10 @@ func (vault *WalletVault) Create(ctx context.Context, request CreateAccountReque
 			return fmt.Errorf("reopen pending envelope: %w", err)
 		}
 		defer clear(reopened)
-		if !bytes.Equal(reopened, []byte(mnemonic)) {
+		if !bytes.Equal(reopened, canonicalSecret) {
 			return fmt.Errorf("pending envelope plaintext mismatch")
 		}
-		verificationKey, verificationAddress, err := deriveSecretIdentity(persisted.SecretType, reopened)
+		verificationKey, verificationAddress, err := deriveStoredSecretIdentity(persisted, reopened)
 		if err != nil {
 			return err
 		}
@@ -270,12 +366,16 @@ func (vault *WalletVault) Create(ctx context.Context, request CreateAccountReque
 		return ctx.Err()
 	}); err != nil {
 		clearWords(challenge.Words)
+		clear(challenge.passphraseMAC)
 		return AccountSummary{}, BackupChallenge{}, err
 	}
 	if err := vault.storeBackupChallenge(challenge); err != nil {
 		clearWords(challenge.Words)
+		clear(challenge.passphraseMAC)
 		return summaryFromAccount(account), BackupChallenge{}, err
 	}
+	clear(challenge.passphraseMAC)
+	challenge.passphraseMAC = nil
 	return summaryFromAccount(account), challenge, nil
 }
 
@@ -296,7 +396,7 @@ func (vault *WalletVault) ResumeBackup(ctx context.Context, accountID string, pa
 		return AccountSummary{}, BackupChallenge{}, fmt.Errorf("resume backup: %w", err)
 	}
 	defer clear(plaintext)
-	privateKey, address, err := deriveSecretIdentity(account.SecretType, plaintext)
+	privateKey, address, err := deriveStoredSecretIdentity(account, plaintext)
 	if err != nil {
 		return AccountSummary{}, BackupChallenge{}, err
 	}
@@ -304,9 +404,9 @@ func (vault *WalletVault) ResumeBackup(ctx context.Context, accountID string, pa
 	if !addressesEqual(address, account.Address) {
 		return AccountSummary{}, BackupChallenge{}, fmt.Errorf("pending account identity mismatch")
 	}
-	words := strings.Fields(string(plaintext))
-	if len(words) != 12 {
-		return AccountSummary{}, BackupChallenge{}, fmt.Errorf("unexpected mnemonic length")
+	backupMaterial, err := mnemonicBackupMaterialFromStoredSecret(account, plaintext)
+	if err != nil {
+		return AccountSummary{}, BackupChallenge{}, err
 	}
 	var resumed *Account
 	if err := vault.repository.WithAccountTransaction(ctx, func(transaction AccountRepository) error {
@@ -327,7 +427,7 @@ func (vault *WalletVault) ResumeBackup(ctx context.Context, accountID string, pa
 	}); err != nil {
 		return AccountSummary{}, BackupChallenge{}, err
 	}
-	challenge, err := vault.issueBackupChallenge(resumed.AccountID, resumed.BackupGeneration, words)
+	challenge, err := vault.issueBackupChallenge(resumed.AccountID, resumed.BackupGeneration, backupMaterial)
 	if err != nil {
 		return summaryFromAccount(resumed), BackupChallenge{}, err
 	}
@@ -335,6 +435,14 @@ func (vault *WalletVault) ResumeBackup(ctx context.Context, accountID string, pa
 }
 
 func (vault *WalletVault) ConfirmBackup(ctx context.Context, challengeID string, answers map[int]string) (AccountSummary, error) {
+	return vault.confirmBackup(ctx, challengeID, BackupMaterialConfirmation{WordAnswers: answers}, false)
+}
+
+func (vault *WalletVault) ConfirmBackupWithMaterial(ctx context.Context, challengeID string, confirmation BackupMaterialConfirmation) (AccountSummary, error) {
+	return vault.confirmBackup(ctx, challengeID, confirmation, true)
+}
+
+func (vault *WalletVault) confirmBackup(ctx context.Context, challengeID string, confirmation BackupMaterialConfirmation, materialProvided bool) (AccountSummary, error) {
 	if err := vault.beginOperation(); err != nil {
 		return AccountSummary{}, err
 	}
@@ -357,6 +465,7 @@ func (vault *WalletVault) ConfirmBackup(ctx context.Context, challengeID string,
 				vault.mu.Lock()
 				if stale, exists := vault.challenges[challengeID]; exists {
 					clearWords(stale.words)
+					clear(stale.passphraseMAC)
 					delete(vault.challenges, challengeID)
 				}
 				vault.mu.Unlock()
@@ -367,14 +476,34 @@ func (vault *WalletVault) ConfirmBackup(ctx context.Context, challengeID string,
 		vault.mu.Lock()
 		if challenge, exists := vault.challenges[challengeID]; exists {
 			clearWords(challenge.words)
+			clear(challenge.passphraseMAC)
 			delete(vault.challenges, challengeID)
 		}
 		vault.mu.Unlock()
 		return AccountSummary{}, ErrBackupChallengeExpired
 	}
-	if !backupAnswersMatch(challenge, answers) {
+	if !backupAnswersMatch(challenge, confirmation.WordAnswers) {
 		vault.mu.Unlock()
 		return AccountSummary{}, ErrBackupConfirmationFailed
+	}
+	if challenge.requiresMaterial && !materialProvided {
+		vault.mu.Unlock()
+		return AccountSummary{}, ErrBackupConfirmationFailed
+	}
+	confirmedAddress := ""
+	if materialProvided {
+		if !backupMaterialMatches(challengeID, challenge, confirmation) {
+			vault.mu.Unlock()
+			return AccountSummary{}, ErrBackupConfirmationFailed
+		}
+		path, _ := ParseDerivationPath(confirmation.DerivationPath)
+		privateKey, address, err := deriveEVMAccount(strings.Join(challenge.words, " "), confirmation.BIP39Passphrase, confirmation.BIP39Language, path)
+		if err != nil {
+			vault.mu.Unlock()
+			return AccountSummary{}, ErrBackupConfirmationFailed
+		}
+		clear(privateKey)
+		confirmedAddress = address
 	}
 	challenge.consuming = true
 	accountID := challenge.accountID
@@ -388,6 +517,9 @@ func (vault *WalletVault) ConfirmBackup(ctx context.Context, challengeID string,
 		}
 		if account.State != AccountStatePendingBackup || account.BackupGeneration != challenge.backupGeneration {
 			return ErrBackupChallengeNotFound
+		}
+		if confirmedAddress != "" && !addressesEqual(confirmedAddress, account.Address) {
+			return ErrBackupConfirmationFailed
 		}
 		account.State = AccountStateActive
 		account.UpdatedAt = vault.options.Now().UTC()
@@ -407,6 +539,7 @@ func (vault *WalletVault) ConfirmBackup(ctx context.Context, challengeID string,
 	vault.mu.Lock()
 	if challenge, exists := vault.challenges[challengeID]; exists {
 		clearWords(challenge.words)
+		clear(challenge.passphraseMAC)
 		delete(vault.challenges, challengeID)
 	}
 	vault.mu.Unlock()
@@ -435,6 +568,7 @@ func (vault *WalletVault) CancelBackup(ctx context.Context, challengeID string) 
 			vault.mu.Lock()
 			if stale, exists := vault.challenges[challengeID]; exists {
 				clearWords(stale.words)
+				clear(stale.passphraseMAC)
 				delete(vault.challenges, challengeID)
 			}
 			vault.mu.Unlock()
@@ -445,6 +579,7 @@ func (vault *WalletVault) CancelBackup(ctx context.Context, challengeID string) 
 	vault.mu.Lock()
 	if challenge, exists := vault.challenges[challengeID]; exists {
 		clearWords(challenge.words)
+		clear(challenge.passphraseMAC)
 		delete(vault.challenges, challengeID)
 	}
 	vault.mu.Unlock()
@@ -466,6 +601,7 @@ func (vault *WalletVault) SuspendBackup(challengeID string) error {
 		return ErrBackupConfirmationInProgress
 	}
 	clearWords(challenge.words)
+	clear(challenge.passphraseMAC)
 	delete(vault.challenges, challengeID)
 	return nil
 }
@@ -493,7 +629,7 @@ func (vault *WalletVault) Unlock(ctx context.Context, accountID string, password
 		return CapabilityHandle{}, fmt.Errorf("unlock account: %w", err)
 	}
 	defer clear(plaintext)
-	privateKey, address, err := deriveSecretIdentity(account.SecretType, plaintext)
+	privateKey, address, err := deriveStoredSecretIdentity(account, plaintext)
 	if err != nil {
 		return CapabilityHandle{}, err
 	}
@@ -589,7 +725,7 @@ func (vault *WalletVault) RotatePassword(ctx context.Context, accountID string, 
 		if !bytes.Equal(reopened, plaintext) {
 			return fmt.Errorf("rotated envelope mismatch")
 		}
-		privateKey, address, err := deriveSecretIdentity(persisted.SecretType, reopened)
+		privateKey, address, err := deriveStoredSecretIdentity(persisted, reopened)
 		if err != nil {
 			return err
 		}
@@ -670,8 +806,11 @@ func (vault *WalletVault) Close() {
 	}
 	for challengeID, challenge := range vault.challenges {
 		clearWords(challenge.words)
+		clear(challenge.passphraseMAC)
 		delete(vault.challenges, challengeID)
 	}
+	clear(vault.sourceIdentityKey)
+	vault.sourceIdentityKey = nil
 }
 
 func (vault *WalletVault) ListAccounts(ctx context.Context) ([]AccountSummary, error) {
@@ -804,16 +943,19 @@ func summaryFromAccount(account *Account) AccountSummary {
 		return AccountSummary{}
 	}
 	return AccountSummary{
-		AccountID:        account.AccountID,
-		Name:             account.Name,
-		Address:          account.Address,
-		SignerKind:       account.SignerKind,
-		DerivationScheme: account.DerivationScheme,
-		DerivationPath:   account.DerivationPath,
-		Capabilities:     account.Capabilities,
-		State:            account.State,
-		CreatedAt:        account.CreatedAt,
-		UpdatedAt:        account.UpdatedAt,
+		AccountID:          account.AccountID,
+		Name:               account.Name,
+		Address:            account.Address,
+		SignerKind:         account.SignerKind,
+		DerivationScheme:   account.DerivationScheme,
+		DerivationPath:     account.DerivationPath,
+		BIP39Language:      account.BIP39Language,
+		HasBIP39Passphrase: account.HasBIP39Passphrase,
+		RelatedAccountID:   account.RelatedAccountID,
+		Capabilities:       account.Capabilities,
+		State:              account.State,
+		CreatedAt:          account.CreatedAt,
+		UpdatedAt:          account.UpdatedAt,
 	}
 }
 
@@ -823,6 +965,7 @@ func metadataForAccount(account *Account) EnvelopeMetadata {
 		SecretType:         account.SecretType,
 		Address:            account.Address,
 		EnvelopeGeneration: account.EnvelopeGeneration,
+		PassphrasePresent:  account.HasBIP39Passphrase,
 		Derivation: DerivationMetadata{
 			Scheme:       account.DerivationScheme,
 			Path:         account.DerivationPath,
@@ -838,7 +981,7 @@ func deriveSecretIdentity(secretType SecretType, plaintext []byte) ([]byte, stri
 	var privateKey []byte
 	switch secretType {
 	case SecretTypeMnemonic:
-		privateKeyHex, err := DerivePrivateKey(string(plaintext))
+		privateKeyHex, err := derivePrivateKeyLegacy(string(plaintext))
 		if err != nil {
 			return nil, "", err
 		}
@@ -883,22 +1026,50 @@ func backupAnswersMatch(challenge *backupChallengeState, answers map[int]string)
 	return true
 }
 
-func (vault *WalletVault) prepareBackupChallenge(accountID string, backupGeneration uint64, words []string) (BackupChallenge, error) {
+func backupMaterialMatches(challengeID string, challenge *backupChallengeState, confirmation BackupMaterialConfirmation) bool {
+	path, err := ParseDerivationPath(confirmation.DerivationPath)
+	if err != nil || path.String() != challenge.derivationPath || confirmation.BIP39Language != challenge.language {
+		return false
+	}
+	if len(confirmation.BIP39Passphrase) > maxBIP39PassphraseLength {
+		return false
+	}
+	passphraseMAC := hmac.New(sha256.New, []byte(challengeID))
+	_, _ = passphraseMAC.Write([]byte(normalizeBIP39Passphrase(confirmation.BIP39Passphrase)))
+	return hmac.Equal(challenge.passphraseMAC, passphraseMAC.Sum(nil))
+}
+
+func (vault *WalletVault) prepareBackupChallenge(accountID string, backupGeneration uint64, material mnemonicBackupMaterial) (BackupChallenge, error) {
 	challengeID, err := newRandomToken(vault.options.Random, 32)
 	if err != nil {
 		return BackupChallenge{}, err
 	}
-	required, err := randomWordIndices(vault.options.Random, len(words), vault.options.ChallengeWords)
+	required, err := randomWordIndices(vault.options.Random, len(material.words), vault.options.ChallengeWords)
 	if err != nil {
 		return BackupChallenge{}, err
 	}
+	passphraseMAC := hmac.New(sha256.New, []byte(challengeID))
+	_, _ = passphraseMAC.Write([]byte(normalizeBIP39Passphrase(material.passphrase)))
+	path := material.path
+	if path == "" {
+		path = "m/44'/60'/0'/0/0"
+	}
+	language := material.language
+	if language == "" {
+		language = BIP39English
+	}
+	requiresMaterial := material.passphrase != "" || path != "m/44'/60'/0'/0/0" || language != BIP39English
 	return BackupChallenge{
-		ChallengeID:         challengeID,
-		AccountID:           accountID,
-		BackupGeneration:    backupGeneration,
-		Words:               append([]string(nil), words...),
-		RequiredWordIndices: append([]int(nil), required...),
-		ExpiresAt:           vault.options.Now().UTC().Add(vault.options.BackupTTL),
+		ChallengeID:                  challengeID,
+		AccountID:                    accountID,
+		BackupGeneration:             backupGeneration,
+		Words:                        append([]string(nil), material.words...),
+		RequiredWordIndices:          append([]int(nil), required...),
+		DerivationPath:               path,
+		BIP39Language:                language,
+		RequiresMaterialConfirmation: requiresMaterial,
+		ExpiresAt:                    vault.options.Now().UTC().Add(vault.options.BackupTTL),
+		passphraseMAC:                passphraseMAC.Sum(nil),
 	}, nil
 }
 
@@ -911,6 +1082,7 @@ func (vault *WalletVault) storeBackupChallenge(challenge BackupChallenge) error 
 				return ErrBackupConfirmationInProgress
 			}
 			clearWords(existing.words)
+			clear(existing.passphraseMAC)
 			delete(vault.challenges, existingID)
 		}
 	}
@@ -919,20 +1091,27 @@ func (vault *WalletVault) storeBackupChallenge(challenge BackupChallenge) error 
 		backupGeneration: challenge.BackupGeneration,
 		words:            append([]string(nil), challenge.Words...),
 		required:         append([]int(nil), challenge.RequiredWordIndices...),
+		passphraseMAC:    append([]byte(nil), challenge.passphraseMAC...),
+		derivationPath:   challenge.DerivationPath,
+		language:         challenge.BIP39Language,
+		requiresMaterial: challenge.RequiresMaterialConfirmation,
 		expiresAt:        challenge.ExpiresAt,
 	}
 	return nil
 }
 
-func (vault *WalletVault) issueBackupChallenge(accountID string, backupGeneration uint64, words []string) (BackupChallenge, error) {
-	challenge, err := vault.prepareBackupChallenge(accountID, backupGeneration, words)
+func (vault *WalletVault) issueBackupChallenge(accountID string, backupGeneration uint64, material mnemonicBackupMaterial) (BackupChallenge, error) {
+	challenge, err := vault.prepareBackupChallenge(accountID, backupGeneration, material)
 	if err != nil {
 		return BackupChallenge{}, err
 	}
 	if err := vault.storeBackupChallenge(challenge); err != nil {
 		clearWords(challenge.Words)
+		clear(challenge.passphraseMAC)
 		return BackupChallenge{}, err
 	}
+	clear(challenge.passphraseMAC)
+	challenge.passphraseMAC = nil
 	return challenge, nil
 }
 

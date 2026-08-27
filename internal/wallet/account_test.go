@@ -10,6 +10,9 @@ func validAccountForValidation() *Account {
 		SignerKind:         SignerKindSoftware,
 		SignerReference:    "software:018f76c1-04e7-4d55-8db4-f57c7ff9e3b2",
 		SecretType:         SecretTypeMnemonic,
+		DerivationScheme:   "bip44",
+		DerivationPath:     "m/44'/60'/0'/0/0",
+		BIP39Language:      string(BIP39English),
 		Capabilities:       CapabilitySignMessage,
 		State:              AccountStateActive,
 		SecretEnvelope:     []byte("encrypted"),
@@ -29,8 +32,19 @@ func TestAccountValidation(t *testing.T) {
 	if err := valid.Validate(); err != nil {
 		t.Fatal(err)
 	}
+	invalidDerivation := *valid
+	invalidDerivation.DerivationPath = "invalid"
+	if err := invalidDerivation.Validate(); err == nil {
+		t.Fatal("invalid mnemonic derivation metadata was accepted")
+	}
+	related := *valid
+	related.RelatedAccountID = "118f76c1-04e7-4d55-8db4-f57c7ff9e3b2"
+	if err := related.Validate(); err != nil {
+		t.Fatalf("valid related account was rejected: %v", err)
+	}
 	mutations := []func(*Account){
 		func(account *Account) { account.AccountID = "invalid" },
+		func(account *Account) { account.RelatedAccountID = "invalid" },
 		func(account *Account) { account.Name = "" },
 		func(account *Account) { account.Address = "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266" },
 		func(account *Account) { account.SignerReference = "" },

@@ -46,12 +46,16 @@ func runMigrations(database *gorm.DB, includeLegacy bool) error {
 		return fmt.Errorf("create schema migration table: %w", err)
 	}
 	return database.Transaction(func(transaction *gorm.DB) error {
-		var current uint
-		if err := transaction.Model(&schemaMigration{}).Select("COALESCE(MAX(version), 0)").Scan(&current).Error; err != nil {
+		var appliedRecords []schemaMigration
+		if err := transaction.Find(&appliedRecords).Error; err != nil {
 			return err
 		}
-		if current > 2 {
-			return fmt.Errorf("database schema version %d is newer than supported version 2", current)
+		applied := make(map[uint]struct{}, len(appliedRecords))
+		for _, record := range appliedRecords {
+			if record.Version > 4 {
+				return fmt.Errorf("database schema version %d is newer than supported version 4", record.Version)
+			}
+			applied[record.Version] = struct{}{}
 		}
 		migrations := []struct {
 			version uint
@@ -64,9 +68,23 @@ func runMigrations(database *gorm.DB, includeLegacy bool) error {
 				return tx.AutoMigrate(&wallet.Wallet{})
 			}},
 			{version: 2, apply: func(tx *gorm.DB) error { return tx.AutoMigrate(&wallet.Account{}) }},
+			{version: 3, apply: func(tx *gorm.DB) error {
+				if tx.Migrator().HasColumn(&wallet.Account{}, "HasBIP39Passphrase") {
+					return nil
+				}
+				return tx.Migrator().AddColumn(&wallet.Account{}, "HasBIP39Passphrase")
+			}},
+			{version: 4, apply: func(tx *gorm.DB) error {
+				if !tx.Migrator().HasColumn(&wallet.Account{}, "RelatedAccountID") {
+					if err := tx.Migrator().AddColumn(&wallet.Account{}, "RelatedAccountID"); err != nil {
+						return err
+					}
+				}
+				return tx.AutoMigrate(&wallet.VaultMetadata{})
+			}},
 		}
 		for _, migration := range migrations {
-			if migration.version <= current {
+			if _, exists := applied[migration.version]; exists {
 				continue
 			}
 			if err := migration.apply(transaction); err != nil {

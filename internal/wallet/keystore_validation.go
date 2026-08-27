@@ -1,9 +1,11 @@
 package wallet
 
 import (
+	"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"regexp"
 	"strings"
@@ -70,10 +72,16 @@ func (e *KeystoreImportError) Unwrap() error {
 
 // KeystoreV3 represents the structure of a keystore v3 file
 type KeystoreV3 struct {
-	Version int              `json:"version"`
-	ID      string           `json:"id"`
-	Address string           `json:"address"`
-	Crypto  KeystoreV3Crypto `json:"crypto"`
+	Version      int              `json:"version"`
+	MinorVersion int              `json:"minorversion,omitempty"`
+	ID           string           `json:"id"`
+	Address      string           `json:"address,omitempty"`
+	Label        string           `json:"label,omitempty"`
+	Name         string           `json:"name,omitempty"`
+	Description  string           `json:"description,omitempty"`
+	Meta         json.RawMessage  `json:"meta,omitempty"`
+	Xethers      json.RawMessage  `json:"x-ethers,omitempty"`
+	Crypto       KeystoreV3Crypto `json:"crypto"`
 }
 
 // KeystoreV3Crypto represents the crypto section of a keystore v3 file
@@ -116,7 +124,19 @@ func (kv *KeystoreValidator) ValidateKeystoreV3(data []byte) (*KeystoreV3, error
 	var keystore KeystoreV3
 
 	// Parse JSON
-	if err := json.Unmarshal(data, &keystore); err != nil {
+	if err := rejectDuplicateJSONKeys(data); err != nil {
+		return nil, NewKeystoreImportError(ErrorInvalidJSON, "O arquivo não contém um JSON válido", err)
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&keystore); err != nil {
+		return nil, NewKeystoreImportError(ErrorInvalidJSON, "O arquivo não contém um JSON válido", err)
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		if err == nil {
+			err = fmt.Errorf("keystore contains trailing JSON data")
+		}
 		return nil, NewKeystoreImportError(ErrorInvalidJSON, "O arquivo não contém um JSON válido", err)
 	}
 
@@ -135,7 +155,7 @@ func (kv *KeystoreValidator) ValidateStructure(keystore *KeystoreV3) error {
 		return err
 	}
 
-	if matched, _ := regexp.MatchString(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$`, keystore.ID); !matched {
+	if matched, _ := regexp.MatchString(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`, keystore.ID); !matched {
 		return NewKeystoreImportErrorWithField(
 			ErrorInvalidKeystore,
 			"Invalid or missing keystore id",
@@ -145,8 +165,10 @@ func (kv *KeystoreValidator) ValidateStructure(keystore *KeystoreV3) error {
 	}
 
 	// Check address
-	if err := kv.ValidateAddress(keystore.Address); err != nil {
-		return err
+	if keystore.Address != "" {
+		if err := kv.ValidateAddress(keystore.Address); err != nil {
+			return err
+		}
 	}
 
 	// Check crypto section
@@ -324,8 +346,14 @@ func (kv *KeystoreValidator) validateScryptParams(params any) error {
 			)
 		}
 	}
+	allowedFields := map[string]struct{}{"dklen": {}, "n": {}, "r": {}, "p": {}, "salt": {}}
+	for field := range paramsMap {
+		if _, allowed := allowedFields[field]; !allowed {
+			return NewKeystoreImportErrorWithField(ErrorInvalidKeystore, "Unsupported scrypt parameter", "crypto.kdfparams."+field, nil)
+		}
+	}
 	dklen, err := strictJSONInteger(paramsMap, "dklen")
-	if err != nil || dklen != 32 {
+	if err != nil || dklen < 32 || dklen > 64 {
 		return NewKeystoreImportErrorWithField(ErrorInvalidKeystore, "Invalid scrypt dklen", "crypto.kdfparams.dklen", err)
 	}
 	n, err := strictJSONInteger(paramsMap, "n")
@@ -340,8 +368,13 @@ func (kv *KeystoreValidator) validateScryptParams(params any) error {
 	if err != nil || p < 1 || p > 16 {
 		return NewKeystoreImportErrorWithField(ErrorInvalidKeystore, "Invalid scrypt p", "crypto.kdfparams.p", err)
 	}
-	if int64(128)*n*r > 256*1024*1024 {
+	const maxScryptMemory = int64(256 * 1024 * 1024)
+	if r == 0 || n > maxScryptMemory/(128*r) {
 		return NewKeystoreImportErrorWithField(ErrorInvalidKeystore, "Scrypt memory cost exceeds limit", "crypto.kdfparams", nil)
+	}
+	const maxScryptWork = int64(8 * 1024 * 1024)
+	if n > maxScryptWork/r || p > maxScryptWork/(n*r) {
+		return NewKeystoreImportErrorWithField(ErrorInvalidKeystore, "Scrypt work factor exceeds limit", "crypto.kdfparams", nil)
 	}
 	if err := validateSalt(paramsMap["salt"]); err != nil {
 		return NewKeystoreImportErrorWithField(ErrorInvalidKeystore, "Invalid scrypt salt", "crypto.kdfparams.salt", err)
@@ -374,12 +407,18 @@ func (kv *KeystoreValidator) validatePBKDF2Params(params any) error {
 			)
 		}
 	}
+	allowedFields := map[string]struct{}{"dklen": {}, "c": {}, "prf": {}, "salt": {}}
+	for field := range paramsMap {
+		if _, allowed := allowedFields[field]; !allowed {
+			return NewKeystoreImportErrorWithField(ErrorInvalidKeystore, "Unsupported PBKDF2 parameter", "crypto.kdfparams."+field, nil)
+		}
+	}
 	dklen, err := strictJSONInteger(paramsMap, "dklen")
-	if err != nil || dklen != 32 {
+	if err != nil || dklen < 32 || dklen > 64 {
 		return NewKeystoreImportErrorWithField(ErrorInvalidKeystore, "Invalid PBKDF2 dklen", "crypto.kdfparams.dklen", err)
 	}
 	iterations, err := strictJSONInteger(paramsMap, "c")
-	if err != nil || iterations < 1000 || iterations > 2000000 {
+	if err != nil || iterations < 1000 || iterations > 1000000 {
 		return NewKeystoreImportErrorWithField(ErrorInvalidKeystore, "Invalid PBKDF2 iterations", "crypto.kdfparams.c", err)
 	}
 	prf, ok := paramsMap["prf"].(string)
@@ -390,6 +429,59 @@ func (kv *KeystoreValidator) validatePBKDF2Params(params any) error {
 		return NewKeystoreImportErrorWithField(ErrorInvalidKeystore, "Invalid PBKDF2 salt", "crypto.kdfparams.salt", err)
 	}
 	return nil
+}
+
+func rejectDuplicateJSONKeys(data []byte) error {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	type frame struct {
+		object    bool
+		expectKey bool
+		keys      map[string]struct{}
+	}
+	stack := make([]frame, 0)
+	completeValue := func() {
+		if len(stack) > 0 && stack[len(stack)-1].object && !stack[len(stack)-1].expectKey {
+			stack[len(stack)-1].expectKey = true
+		}
+	}
+	for {
+		token, err := decoder.Token()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if delimiter, ok := token.(json.Delim); ok {
+			switch delimiter {
+			case '{':
+				stack = append(stack, frame{object: true, expectKey: true, keys: make(map[string]struct{})})
+			case '[':
+				stack = append(stack, frame{})
+			case '}', ']':
+				if len(stack) == 0 {
+					return fmt.Errorf("unexpected JSON delimiter")
+				}
+				stack = stack[:len(stack)-1]
+				completeValue()
+			}
+			continue
+		}
+		if len(stack) > 0 && stack[len(stack)-1].object && stack[len(stack)-1].expectKey {
+			key, ok := token.(string)
+			if !ok {
+				return fmt.Errorf("JSON object key is not a string")
+			}
+			normalizedKey := strings.ToLower(key)
+			if _, exists := stack[len(stack)-1].keys[normalizedKey]; exists {
+				return fmt.Errorf("duplicate JSON key: %s", key)
+			}
+			stack[len(stack)-1].keys[normalizedKey] = struct{}{}
+			stack[len(stack)-1].expectKey = false
+			continue
+		}
+		completeValue()
+	}
 }
 
 func strictJSONInteger(params map[string]any, field string) (int64, error) {

@@ -95,7 +95,13 @@ func main() {
 		log.Printf("Failed to initialize secret envelope: %v", err)
 		os.Exit(1)
 	}
-	vault, err := wallet.NewWalletVault(repo, codec, wallet.VaultOptions{})
+	identityKey, err := loadOrCreateSourceIdentityKey(cfg.AppDir)
+	if err != nil {
+		log.Printf("Failed to initialize source identity key: %v", err)
+		os.Exit(1)
+	}
+	vault, err := wallet.NewWalletVault(repo, codec, wallet.VaultOptions{SourceIdentityKey: identityKey})
+	clear(identityKey)
 	if err != nil {
 		log.Printf("Failed to initialize wallet vault: %v", err)
 		os.Exit(1)

@@ -83,11 +83,68 @@ func TestAccountRepositoryAppliesSecurityPragmasAndMigrations(t *testing.T) {
 	if err := repository.db.Model(&schemaMigration{}).Count(&migrationCount).Error; err != nil {
 		t.Fatal(err)
 	}
-	if migrationCount != 2 {
-		t.Fatalf("expected two schema migrations, got %d", migrationCount)
+	if migrationCount != 4 {
+		t.Fatalf("expected four schema migrations, got %d", migrationCount)
 	}
 	if repository.db.Migrator().HasTable(&wallet.Wallet{}) {
 		t.Fatal("fresh vault database created legacy wallet table")
+	}
+	if !repository.db.Migrator().HasTable(&wallet.VaultMetadata{}) {
+		t.Fatal("fresh vault database omitted metadata table")
+	}
+	if err := repository.PutVaultMetadata(context.Background(), "identity", "fingerprint"); err != nil {
+		t.Fatal(err)
+	}
+	if value, err := repository.GetVaultMetadata(context.Background(), "identity"); err != nil || value != "fingerprint" {
+		t.Fatal("vault metadata did not round-trip")
+	}
+	if err := repository.PutVaultMetadata(context.Background(), "identity", "different"); !errors.Is(err, wallet.ErrAccountConflict) {
+		t.Fatal("vault metadata conflict was accepted")
+	}
+}
+
+func TestVaultRepositoryAppliesPhaseTwoAccountMigration(t *testing.T) {
+	root := t.TempDir()
+	cfg := &config.Config{
+		AppDir:       root,
+		DatabasePath: filepath.Join(root, "upgrade.db"),
+		Database:     config.DatabaseConfig{Type: "sqlite"},
+	}
+	repository, err := NewVaultRepository(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	account := testAccount("018f76c1-04e7-4d55-8db4-f57c7ff9e3b2", "upgrade-source")
+	if err := repository.CreateAccount(context.Background(), account); err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.db.Migrator().DropColumn(&wallet.Account{}, "HasBIP39Passphrase"); err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.db.Delete(&schemaMigration{}, 3).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := NewVaultRepository(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := reopened.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	if !reopened.db.Migrator().HasColumn(&wallet.Account{}, "HasBIP39Passphrase") {
+		t.Fatal("phase two migration did not restore BIP39 passphrase metadata")
+	}
+	preserved, err := reopened.GetAccount(context.Background(), account.AccountID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preserved.Address != account.Address || preserved.SourceIdentity != account.SourceIdentity {
+		t.Fatal("phase two migration changed existing account data")
 	}
 }
 

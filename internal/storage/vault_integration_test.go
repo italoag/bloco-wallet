@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"path/filepath"
 	"testing"
@@ -29,7 +30,8 @@ func TestVaultSurvivesRepositoryRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	vault, err := wallet.NewWalletVault(repository, codec, wallet.VaultOptions{})
+	identityKey := bytes.Repeat([]byte{0x42}, 32)
+	vault, err := wallet.NewWalletVault(repository, codec, wallet.VaultOptions{SourceIdentityKey: identityKey})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +61,10 @@ func TestVaultSurvivesRepositoryRestart(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	reopenedVault, err := wallet.NewWalletVault(reopenedRepository, codec, wallet.VaultOptions{})
+	if _, err := wallet.NewWalletVault(reopenedRepository, codec, wallet.VaultOptions{SourceIdentityKey: bytes.Repeat([]byte{0x43}, 32)}); err == nil {
+		t.Fatal("reopened vault accepted a different source identity key")
+	}
+	reopenedVault, err := wallet.NewWalletVault(reopenedRepository, codec, wallet.VaultOptions{SourceIdentityKey: identityKey})
 	if err != nil {
 		t.Fatal(err)
 	}

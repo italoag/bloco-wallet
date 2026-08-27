@@ -51,6 +51,7 @@ type Account struct {
 	ChangeIndex        uint32            `gorm:"not null;default:0"`
 	AddressIndex       uint32            `gorm:"not null;default:0"`
 	BIP39Language      string            `gorm:"size:32"`
+	HasBIP39Passphrase bool              `gorm:"not null;default:false"`
 	Capabilities       AccountCapability `gorm:"not null"`
 	State              AccountState      `gorm:"index;size:32;not null"`
 	SecretEnvelope     []byte            `gorm:"type:blob"`
@@ -58,6 +59,7 @@ type Account struct {
 	AuthorizationEpoch uint64            `gorm:"not null;default:1"`
 	BackupGeneration   uint64            `gorm:"not null;default:1"`
 	SourceIdentity     string            `gorm:"uniqueIndex;size:128;not null"`
+	RelatedAccountID   string            `gorm:"index;size:36"`
 	Revision           uint64            `gorm:"not null;default:1"`
 	CreatedAt          time.Time         `gorm:"not null;autoCreateTime"`
 	UpdatedAt          time.Time         `gorm:"not null;autoUpdateTime"`
@@ -75,6 +77,12 @@ func (account *Account) Validate() error {
 	if !matched {
 		return fmt.Errorf("account ID must be a canonical UUID v4")
 	}
+	if account.RelatedAccountID != "" {
+		related, _ := regexp.MatchString(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`, account.RelatedAccountID)
+		if !related {
+			return fmt.Errorf("related account ID must be a canonical UUID v4")
+		}
+	}
 	if account.Name == "" || !common.IsHexAddress(account.Address) || common.HexToAddress(account.Address).Hex() != account.Address {
 		return fmt.Errorf("account name and checksummed address are required")
 	}
@@ -90,6 +98,13 @@ func (account *Account) Validate() error {
 	case SignerKindSoftware:
 		if (account.SecretType != SecretTypeMnemonic && account.SecretType != SecretTypePrivateKey) || len(account.SecretEnvelope) == 0 || account.EnvelopeGeneration == 0 {
 			return fmt.Errorf("software account requires an encrypted secret")
+		}
+		if account.SecretType == SecretTypeMnemonic {
+			if _, err := ParseDerivationPath(account.DerivationPath); err != nil || !IsSupportedBIP39Language(BIP39Language(account.BIP39Language)) {
+				return fmt.Errorf("mnemonic account requires canonical derivation metadata")
+			}
+		} else if account.DerivationPath != "" || account.BIP39Language != "" || account.HasBIP39Passphrase {
+			return fmt.Errorf("private key account cannot contain mnemonic metadata")
 		}
 	case SignerKindWatchOnly:
 		if account.Capabilities&(CapabilitySignTransaction|CapabilitySignMessage|CapabilityExportSecret) != 0 || len(account.SecretEnvelope) != 0 {
@@ -111,11 +126,24 @@ var (
 	ErrAccountRevisionConflict = errors.New("account revision conflict")
 )
 
+type VaultMetadata struct {
+	Key       string    `gorm:"primaryKey;size:128"`
+	Value     string    `gorm:"not null"`
+	UpdatedAt time.Time `gorm:"not null;autoUpdateTime"`
+}
+
+func (VaultMetadata) TableName() string {
+	return "vault_metadata"
+}
+
 type AccountRepository interface {
 	CreateAccount(ctx context.Context, account *Account) error
 	GetAccount(ctx context.Context, accountID string) (*Account, error)
 	FindAccountBySourceIdentity(ctx context.Context, sourceIdentity string) (*Account, error)
+	FindAccountsByAddress(ctx context.Context, address string) ([]Account, error)
 	ListAccounts(ctx context.Context) ([]Account, error)
+	GetVaultMetadata(ctx context.Context, key string) (string, error)
+	PutVaultMetadata(ctx context.Context, key, value string) error
 	UpdateAccount(ctx context.Context, account *Account) error
 	DeletePendingAccount(ctx context.Context, accountID string, backupGeneration uint64) error
 	WithAccountTransaction(ctx context.Context, operation func(AccountRepository) error) error

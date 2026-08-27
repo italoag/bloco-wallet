@@ -33,6 +33,28 @@ func (m *CLIModel) viewCreateWalletName() string {
 	return view.String()
 }
 
+func (m *CLIModel) viewCreateWalletOptions() string {
+	label := "Word count"
+	input := m.createWordCountInput.View()
+	switch m.createOptionsStage {
+	case 1:
+		label = "BIP39 language"
+		input = m.createLanguageInput.View()
+	case 2:
+		label = "Optional BIP39 passphrase"
+		input = m.createPassphraseInput.View()
+	case 3:
+		label = "EVM derivation path"
+		input = m.createDerivationPathInput.View()
+	}
+	view := lipgloss.NewStyle().Bold(true).Render("Configure BIP39 account") + "\n\n" +
+		fmt.Sprintf("Step %d/4\n%s:\n%s\n\nPress Enter to continue or Esc to cancel.", m.createOptionsStage+1, label, input)
+	if m.createPasswordError != "" {
+		view += "\n\n" + m.styles.ErrorStyle.Render(m.createPasswordError)
+	}
+	return view
+}
+
 func (m *CLIModel) viewCreateWalletBackup() string {
 	if localization.Labels == nil {
 		return "Localization labels not initialized."
@@ -40,6 +62,8 @@ func (m *CLIModel) viewCreateWalletBackup() string {
 
 	backupWords := m.mnemonic
 	confirmationLabel := localization.Labels["confirm_mnemonic"]
+	confirmationInput := m.backupConfirmationInput.View()
+	materialNotice := ""
 	if m.Vault != nil && m.backupChallenge != nil {
 		backupWords = strings.Join(m.backupChallenge.Words, " ")
 		indices := make([]string, 0, len(m.backupChallenge.RequiredWordIndices))
@@ -47,14 +71,28 @@ func (m *CLIModel) viewCreateWalletBackup() string {
 			indices = append(indices, fmt.Sprintf("#%d", index+1))
 		}
 		confirmationLabel = fmt.Sprintf("Confirm the requested words in order (%s):", strings.Join(indices, ", "))
+		if m.backupChallenge.RequiresMaterialConfirmation {
+			materialNotice = fmt.Sprintf("Record this canonical path and language:\nPath: %s\nLanguage: %s\nThe BIP39 passphrase must also be backed up separately.\n\n", m.backupChallenge.DerivationPath, m.backupChallenge.BIP39Language)
+			switch m.backupMaterialStage {
+			case 1:
+				confirmationLabel = "Re-enter the canonical derivation path:"
+				confirmationInput = m.backupPathInput.View()
+			case 2:
+				confirmationLabel = "Re-enter the BIP39 language:"
+				confirmationInput = m.backupLanguageInput.View()
+			case 3:
+				confirmationLabel = "Re-enter the BIP39 passphrase exactly:"
+				confirmationInput = m.backupPassphraseInput.View()
+			}
+		}
 	}
 
 	var view strings.Builder
 	view.WriteString(
 		lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FF00")).Render(localization.Labels["mnemonic_phrase"]) + "\n\n" +
 			fmt.Sprintf("%s\n\n", backupWords) +
-			confirmationLabel + "\n\n" +
-			m.backupConfirmationInput.View() + "\n\n",
+			materialNotice + confirmationLabel + "\n\n" +
+			confirmationInput + "\n\n",
 	)
 	if m.backupError != "" {
 		view.WriteString(m.styles.ErrorStyle.Render(m.backupError) + "\n\n")
@@ -65,7 +103,9 @@ func (m *CLIModel) viewCreateWalletBackup() string {
 
 // renderPasswordValidation renders the password validation status
 func (m *CLIModel) renderPasswordValidation(password string) string {
-	validationErr, _ := wallet.ValidatePassword(password)
+	passwordBytes := []byte(password)
+	validationErr := wallet.ValidateStoragePassword(passwordBytes)
+	clear(passwordBytes)
 
 	var builder strings.Builder
 
@@ -73,7 +113,7 @@ func (m *CLIModel) renderPasswordValidation(password string) string {
 	if password == "" {
 		builder.WriteString(m.styles.RedCross.Render("✗"))
 		builder.WriteString(" required\n")
-	} else if validationErr.TooShort {
+	} else if validationErr != nil {
 		builder.WriteString(m.styles.RedCross.Render("✗"))
 		builder.WriteString(" has 15 characters or more\n")
 	} else {
@@ -82,30 +122,30 @@ func (m *CLIModel) renderPasswordValidation(password string) string {
 	}
 
 	// Check for lowercase letter
-	if password == "" || validationErr.NoLowercase {
+	if password == "" || validationErr != nil {
 		builder.WriteString(m.styles.RedCross.Render("✗"))
-		builder.WriteString(" has a lowercase letter\n")
+		builder.WriteString(" is valid UTF-8\n")
 	} else {
 		builder.WriteString(m.styles.GreenCheck.Render("✓"))
-		builder.WriteString(" has a lowercase letter\n")
+		builder.WriteString(" is valid UTF-8\n")
 	}
 
 	// Check for uppercase letter
-	if password == "" || validationErr.NoUppercase {
+	if password == "" || validationErr != nil {
 		builder.WriteString(m.styles.RedCross.Render("✗"))
-		builder.WriteString(" has an uppercase letter\n")
+		builder.WriteString(" contains only printable characters\n")
 	} else {
 		builder.WriteString(m.styles.GreenCheck.Render("✓"))
-		builder.WriteString(" has an uppercase letter\n")
+		builder.WriteString(" contains only printable characters\n")
 	}
 
 	// Check for digit or special character
-	if password == "" || validationErr.NoDigitOrSpecial {
+	if password == "" || validationErr != nil {
 		builder.WriteString(m.styles.RedCross.Render("✗"))
-		builder.WriteString(" has a digit or special character")
+		builder.WriteString(" preserves whitespace exactly")
 	} else {
 		builder.WriteString(m.styles.GreenCheck.Render("✓"))
-		builder.WriteString(" has a digit or special character")
+		builder.WriteString(" preserves whitespace exactly")
 	}
 
 	return builder.String()
@@ -613,7 +653,19 @@ func (m *CLIModel) renderDeleteConfirmationDialog() string {
 func (m *CLIModel) viewVaultAction(export bool) string {
 	title := "Rotate storage password"
 	if export {
-		title = "Export encrypted account"
+		title = "Export Keystore V3"
+		if m.vaultExportEncrypted {
+			title = "Export Bloco encrypted backup"
+		}
+	}
+	if export && m.vaultActionPreview && m.selectedAccount != nil {
+		format := "Keystore V3 (derived private key only)"
+		if m.vaultExportEncrypted {
+			format = "Bloco encrypted backup (canonical secret)"
+		}
+		return lipgloss.NewStyle().Bold(true).Render("Confirm secret export") + "\n\n" +
+			fmt.Sprintf("Account: %s\nAddress: %s\nFormat: %s\nDestination: %s\n\nThis operation writes an exportable secret artifact.\nPress Enter again to export or Esc to cancel.",
+				m.selectedAccount.Name, m.selectedAccount.Address, format, m.exportDestinationInput.Value())
 	}
 	var view strings.Builder
 	view.WriteString(lipgloss.NewStyle().Bold(true).Render(title) + "\n\n")
@@ -653,7 +705,11 @@ func (m *CLIModel) viewWalletDetails() string {
 	}
 	if m.selectedAccount != nil {
 		account := m.selectedAccount
-		actions := "L: Lock account | R: Rotate password | E: Export encrypted account"
+		actions := "L: Lock | R: Rotate password | E: Export Keystore V3 | X: Export encrypted backup"
+		notice := ""
+		if m.lastOperationNotice != "" {
+			notice = "\n" + m.lastOperationNotice + "\n"
+		}
 		if account.State == wallet.AccountStatePendingBackup {
 			actions = "B: Resume backup confirmation"
 		}
@@ -662,7 +718,10 @@ func (m *CLIModel) viewWalletDetails() string {
 			fmt.Sprintf("%-*s %s\n", 20, "Signer:", account.SignerKind) +
 			fmt.Sprintf("%-*s %s\n", 20, "State:", account.State) +
 			fmt.Sprintf("%-*s %s\n", 20, "Path:", account.DerivationPath) +
-			"\n" + actions + "\n" + localization.Labels["press_esc"]
+			fmt.Sprintf("%-*s %s\n", 20, "BIP39 language:", account.BIP39Language) +
+			fmt.Sprintf("%-*s %t\n", 20, "Passphrase present:", account.HasBIP39Passphrase) +
+			fmt.Sprintf("%-*s %s\n", 20, "Related account:", account.RelatedAccountID) +
+			notice + "\n" + actions + "\n" + localization.Labels["press_esc"]
 	}
 
 	if m.walletDetails != nil {

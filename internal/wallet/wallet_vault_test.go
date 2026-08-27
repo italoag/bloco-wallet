@@ -19,6 +19,7 @@ import (
 type memoryAccountRepository struct {
 	mu       sync.Mutex
 	accounts map[string]*Account
+	metadata map[string]string
 }
 
 type blockingGetAccountRepository struct {
@@ -42,7 +43,7 @@ func (repository *blockingGetAccountRepository) GetAccount(ctx context.Context, 
 }
 
 func newMemoryAccountRepository() *memoryAccountRepository {
-	return &memoryAccountRepository{accounts: make(map[string]*Account)}
+	return &memoryAccountRepository{accounts: make(map[string]*Account), metadata: make(map[string]string)}
 }
 
 func cloneAccount(account *Account) *Account {
@@ -96,6 +97,38 @@ func (repository *memoryAccountRepository) FindAccountBySourceIdentity(_ context
 	return nil, ErrAccountNotFound
 }
 
+func (repository *memoryAccountRepository) FindAccountsByAddress(_ context.Context, address string) ([]Account, error) {
+	repository.mu.Lock()
+	defer repository.mu.Unlock()
+	accounts := make([]Account, 0)
+	for _, account := range repository.accounts {
+		if account.Address == address {
+			accounts = append(accounts, *cloneAccount(account))
+		}
+	}
+	return accounts, nil
+}
+
+func (repository *memoryAccountRepository) GetVaultMetadata(_ context.Context, key string) (string, error) {
+	repository.mu.Lock()
+	defer repository.mu.Unlock()
+	value, exists := repository.metadata[key]
+	if !exists {
+		return "", ErrAccountNotFound
+	}
+	return value, nil
+}
+
+func (repository *memoryAccountRepository) PutVaultMetadata(_ context.Context, key, value string) error {
+	repository.mu.Lock()
+	defer repository.mu.Unlock()
+	if existing, exists := repository.metadata[key]; exists && existing != value {
+		return ErrAccountConflict
+	}
+	repository.metadata[key] = value
+	return nil
+}
+
 func (repository *memoryAccountRepository) ListAccounts(_ context.Context) ([]Account, error) {
 	repository.mu.Lock()
 	defer repository.mu.Unlock()
@@ -134,21 +167,24 @@ func (repository *memoryAccountRepository) DeletePendingAccount(_ context.Contex
 
 func (repository *memoryAccountRepository) WithAccountTransaction(ctx context.Context, operation func(AccountRepository) error) error {
 	repository.mu.Lock()
+	defer repository.mu.Unlock()
 	snapshot := make(map[string]*Account, len(repository.accounts))
 	for id, account := range repository.accounts {
 		snapshot[id] = cloneAccount(account)
 	}
-	repository.mu.Unlock()
-	tx := &memoryAccountRepository{accounts: snapshot}
+	metadata := make(map[string]string, len(repository.metadata))
+	for key, value := range repository.metadata {
+		metadata[key] = value
+	}
+	tx := &memoryAccountRepository{accounts: snapshot, metadata: metadata}
 	if err := operation(tx); err != nil {
 		return err
 	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	repository.mu.Lock()
 	repository.accounts = tx.accounts
-	repository.mu.Unlock()
+	repository.metadata = tx.metadata
 	return nil
 }
 
@@ -178,11 +214,12 @@ func newTestVault(t *testing.T) (*WalletVault, *memoryAccountRepository, *fakeVa
 	repository := newMemoryAccountRepository()
 	clock := &fakeVaultClock{now: time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC)}
 	vault, err := NewWalletVault(repository, codec, VaultOptions{
-		Now:            clock.Now,
-		BackupTTL:      10 * time.Minute,
-		SessionTTL:     30 * time.Minute,
-		InactivityTTL:  5 * time.Minute,
-		ChallengeWords: 3,
+		Now:               clock.Now,
+		BackupTTL:         10 * time.Minute,
+		SessionTTL:        30 * time.Minute,
+		InactivityTTL:     5 * time.Minute,
+		ChallengeWords:    3,
+		SourceIdentityKey: bytes.Repeat([]byte{0x42}, 32),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -248,11 +285,11 @@ func TestWalletVaultCreateRequiresBackupConfirmation(t *testing.T) {
 	if bytes.Contains(account.SecretEnvelope, mnemonic) {
 		t.Fatal("plaintext mnemonic appears in persisted envelope")
 	}
-	privateKeyHex, err := DerivePrivateKey(string(mnemonic))
+	privateKeyHex, err := derivePrivateKeyLegacy(string(mnemonic))
 	if err != nil {
 		t.Fatal(err)
 	}
-	privateKey, err := HexToECDSA(privateKeyHex)
+	privateKey, err := hexToECDSALegacy(privateKeyHex)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -276,6 +313,71 @@ func TestWalletVaultCreateRequiresBackupConfirmation(t *testing.T) {
 	}
 	if _, err := vault.ConfirmBackup(context.Background(), challenge.ChallengeID, answers); !errors.Is(err, ErrBackupChallengeNotFound) {
 		t.Fatalf("backup challenge remained reusable: %v", err)
+	}
+}
+
+func TestWalletVaultCreatesConfiguredBIP39Account(t *testing.T) {
+	vault, repository, _ := newTestVault(t)
+	password := []byte("Strong vault password 1!")
+	summary, challenge, err := vault.Create(context.Background(), CreateAccountRequest{
+		Name:            "Spanish 24",
+		Password:        password,
+		WordCount:       24,
+		BIP39Language:   BIP39Spanish,
+		BIP39Passphrase: "contraseña",
+		DerivationPath:  "m/44'/60'/5'/1/7",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(challenge.Words) != 24 {
+		t.Fatalf("expected 24 backup words, got %d", len(challenge.Words))
+	}
+	if err := vault.SuspendBackup(challenge.ChallengeID); err != nil {
+		t.Fatal(err)
+	}
+	restarted, err := NewWalletVault(repository, vault.codec, vault.options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, challenge, err = restarted.ResumeBackup(context.Background(), summary.AccountID, password)
+	if err != nil {
+		t.Fatal(err)
+	}
+	vault = restarted
+	answers := make(map[int]string, len(challenge.RequiredWordIndices))
+	for _, index := range challenge.RequiredWordIndices {
+		answers[index] = challenge.Words[index]
+	}
+	if _, err := vault.ConfirmBackup(context.Background(), challenge.ChallengeID, answers); !errors.Is(err, ErrBackupConfirmationFailed) {
+		t.Fatalf("custom BIP39 account activated without full backup material: %v", err)
+	}
+	for _, confirmation := range []BackupMaterialConfirmation{
+		{WordAnswers: answers, BIP39Passphrase: "wrong", DerivationPath: challenge.DerivationPath, BIP39Language: challenge.BIP39Language},
+		{WordAnswers: answers, BIP39Passphrase: "contraseña", DerivationPath: "m/44'/60'/0'/0/0", BIP39Language: challenge.BIP39Language},
+		{WordAnswers: answers, BIP39Passphrase: "contraseña", DerivationPath: challenge.DerivationPath, BIP39Language: BIP39English},
+	} {
+		if _, err := vault.ConfirmBackupWithMaterial(context.Background(), challenge.ChallengeID, confirmation); !errors.Is(err, ErrBackupConfirmationFailed) {
+			t.Fatalf("incorrect backup material was accepted: %v", err)
+		}
+	}
+	if _, err := vault.ConfirmBackupWithMaterial(context.Background(), challenge.ChallengeID, BackupMaterialConfirmation{
+		WordAnswers:     answers,
+		BIP39Passphrase: "contraseña",
+		DerivationPath:  challenge.DerivationPath,
+		BIP39Language:   challenge.BIP39Language,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := repository.GetAccount(context.Background(), summary.AccountID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.BIP39Language != string(BIP39Spanish) || !stored.HasBIP39Passphrase || stored.AccountIndex != 5 || stored.ChangeIndex != 1 || stored.AddressIndex != 7 {
+		t.Fatal("configured BIP39 metadata was not persisted")
+	}
+	if _, err := vault.Unlock(context.Background(), summary.AccountID, password); err != nil {
+		t.Fatal(err)
 	}
 }
 

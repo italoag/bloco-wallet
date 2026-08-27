@@ -168,6 +168,9 @@ func TestSecretEnvelopeValidationErrors(t *testing.T) {
 	if _, err := codec.Seal([]byte("short"), metadata, []byte("secret")); err == nil {
 		t.Fatal("short password was accepted")
 	}
+	if _, err := codec.Seal(bytes.Repeat([]byte{'p'}, 4097), metadata, []byte("secret")); err == nil {
+		t.Fatal("oversized password was accepted")
+	}
 	if _, err := codec.Seal(append([]byte("valid password 123"), 0xff), metadata, []byte("secret")); err == nil {
 		t.Fatal("invalid UTF-8 password was accepted")
 	}
@@ -293,6 +296,7 @@ func TestSecretEnvelopeAuthenticatesMetadata(t *testing.T) {
 		"secret type": func(value *EnvelopeMetadata) { value.SecretType = SecretTypePrivateKey },
 		"address":     func(value *EnvelopeMetadata) { value.Address = "0x0000000000000000000000000000000000000001" },
 		"generation":  func(value *EnvelopeMetadata) { value.EnvelopeGeneration++ },
+		"passphrase":  func(value *EnvelopeMetadata) { value.PassphrasePresent = !value.PassphrasePresent },
 		"path":        func(value *EnvelopeMetadata) { value.Derivation.Path = "m/44'/60'/1'/0/0" },
 		"language":    func(value *EnvelopeMetadata) { value.Derivation.Language = "spanish" },
 	}

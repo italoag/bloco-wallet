@@ -110,8 +110,6 @@ func TestImportWalletFromPrivateKey_Success(t *testing.T) {
 		assert.Equal(t, ImportMethodPrivateKey, details.ImportMethod)
 		assert.False(t, details.HasMnemonic)
 		assert.Nil(t, details.Mnemonic)
-		assert.NotNil(t, details.PrivateKey)
-		assert.NotNil(t, details.PublicKey)
 	}
 
 	mockRepo.AssertExpectations(t)

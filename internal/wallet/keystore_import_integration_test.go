@@ -107,8 +107,6 @@ func assertWalletImportSuccess(t *testing.T, walletDetails *wallet.WalletDetails
 	assert.Equal(t, expectedAddress.Hex(), walletDetails.Wallet.Address)
 	assert.NotEmpty(t, walletDetails.Wallet.KeyStorePath)
 	assert.Nil(t, walletDetails.Wallet.Mnemonic) // Keystore imports don't have mnemonics
-	assert.NotNil(t, walletDetails.PrivateKey)
-	assert.NotNil(t, walletDetails.PublicKey)
 
 	// Verify keystore file exists
 	_, err := os.Stat(walletDetails.Wallet.KeyStorePath)
@@ -200,7 +198,6 @@ func TestKeystoreImportWithInvalidStructure(t *testing.T) {
 	// Build test cases using the builder pattern
 	testCases := newKeystoreTestCaseBuilder().
 		addInvalidVersionCase().
-		addMissingAddressCase().
 		addInvalidAddressCase().
 		addMissingCryptoCase().
 		build()
@@ -721,8 +718,6 @@ func TestCompleteImportFlow(t *testing.T) {
 	assert.Equal(t, address.Hex(), walletDetails.Wallet.Address)
 	assert.NotEmpty(t, walletDetails.Wallet.KeyStorePath)
 	assert.Nil(t, walletDetails.Wallet.Mnemonic) // Keystore imports don't have mnemonics
-	assert.NotNil(t, walletDetails.PrivateKey)
-	assert.NotNil(t, walletDetails.PublicKey)
 
 	// Step 2: Verify the keystore file was copied to the managed directory
 	_, err = os.Stat(walletDetails.Wallet.KeyStorePath)
@@ -774,9 +769,8 @@ func TestCompleteImportFlow(t *testing.T) {
 	// Verify that loaded keystore imports don't have mnemonics
 	assert.Nil(t, loadedWalletDetails.Mnemonic, "Loaded keystore imports should not have mnemonics")
 
-	// Step 7: Verify the private key matches the address
-	loadedAddress := crypto.PubkeyToAddress(loadedWalletDetails.PrivateKey.PublicKey).Hex()
-	assert.Equal(t, address.Hex(), loadedAddress)
+	// Step 7: Verify the loaded account matches the address
+	assert.Equal(t, address.Hex(), loadedWalletDetails.Wallet.Address)
 
 	// Step 8: Try to decrypt the mnemonic with an incorrect password
 	_, err = newWalletService.LoadWallet(&wallets[0], "wrongpassword")
@@ -916,20 +910,6 @@ func (b *keystoreTestCaseBuilder) addInvalidVersionCase() *keystoreTestCaseBuild
 		},
 		expectedError: "Invalid keystore version",
 		errorType:     wallet.ErrorInvalidVersion,
-	})
-	return b
-}
-
-// addMissingAddressCase adds a test case for missing address
-func (b *keystoreTestCaseBuilder) addMissingAddressCase() *keystoreTestCaseBuilder {
-	b.cases = append(b.cases, keystoreTestCase{
-		name: "Missing Address",
-		modifyFunc: func(ks map[string]any) map[string]any {
-			delete(ks, "address")
-			return ks
-		},
-		expectedError: "Missing required field: address",
-		errorType:     wallet.ErrorMissingRequiredFields,
 	})
 	return b
 }

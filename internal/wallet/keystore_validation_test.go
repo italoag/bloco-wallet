@@ -115,7 +115,7 @@ func TestValidateKeystoreV3(t *testing.T) {
 					"mac": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 				}
 			}`,
-			expectedError: ErrorMissingRequiredFields,
+			expectedError: -1,
 		},
 		{
 			name: "Invalid address format",

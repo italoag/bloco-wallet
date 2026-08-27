@@ -21,11 +21,13 @@ func (reader errorReader) Read([]byte) (int, error) {
 }
 
 type faultEnvelope struct {
-	base       SecretEnvelope
-	sealErr    error
-	openErr    error
-	failOpenAt int
-	openCalls  int
+	base           SecretEnvelope
+	sealErr        error
+	openErr        error
+	failOpenAt     int
+	overrideOpenAt int
+	overrideOpen   []byte
+	openCalls      int
 }
 
 func (envelope *faultEnvelope) Seal(password []byte, metadata EnvelopeMetadata, plaintext []byte) ([]byte, error) {
@@ -37,6 +39,9 @@ func (envelope *faultEnvelope) Seal(password []byte, metadata EnvelopeMetadata, 
 
 func (envelope *faultEnvelope) Open(password []byte, metadata EnvelopeMetadata, encoded []byte) ([]byte, error) {
 	envelope.openCalls++
+	if envelope.overrideOpenAt > 0 && envelope.openCalls == envelope.overrideOpenAt {
+		return append([]byte(nil), envelope.overrideOpen...), nil
+	}
 	if envelope.openErr != nil || (envelope.failOpenAt > 0 && envelope.openCalls == envelope.failOpenAt) {
 		if envelope.openErr != nil {
 			return nil, envelope.openErr
@@ -75,6 +80,18 @@ func (repository *faultAccountRepository) GetAccount(ctx context.Context, accoun
 
 func (repository *faultAccountRepository) FindAccountBySourceIdentity(ctx context.Context, sourceIdentity string) (*Account, error) {
 	return repository.base.FindAccountBySourceIdentity(ctx, sourceIdentity)
+}
+
+func (repository *faultAccountRepository) FindAccountsByAddress(ctx context.Context, address string) ([]Account, error) {
+	return repository.base.FindAccountsByAddress(ctx, address)
+}
+
+func (repository *faultAccountRepository) GetVaultMetadata(ctx context.Context, key string) (string, error) {
+	return repository.base.GetVaultMetadata(ctx, key)
+}
+
+func (repository *faultAccountRepository) PutVaultMetadata(ctx context.Context, key, value string) error {
+	return repository.base.PutVaultMetadata(ctx, key, value)
 }
 
 func (repository *faultAccountRepository) ListAccounts(ctx context.Context) ([]Account, error) {
@@ -179,6 +196,33 @@ func TestWalletVaultRejectsInvalidRequests(t *testing.T) {
 	}
 	if err := json.Unmarshal([]byte(`{}`), &handle); !errors.Is(err, ErrCapabilitySerialization) {
 		t.Fatalf("capability handle deserialized: %v", err)
+	}
+}
+
+func TestWalletVaultReportsChallengeStoreConflictAfterCommit(t *testing.T) {
+	codec, err := NewSecretEnvelopeCodec(testEnvelopePolicy())
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository := newMemoryAccountRepository()
+	vault, err := NewWalletVault(repository, codec, VaultOptions{
+		Random:            bytes.NewReader(make([]byte, 256)),
+		MnemonicGenerator: func() (string, error) { return "test test test test test test test test test test test junk", nil },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	accountID := "00000000-0000-4000-8000-000000000000"
+	vault.challenges["existing"] = &backupChallengeState{accountID: accountID, consuming: true}
+	summary, _, err := vault.Create(context.Background(), CreateAccountRequest{
+		Name:     "Challenge conflict",
+		Password: []byte("Strong vault password 1!"),
+	})
+	if !errors.Is(err, ErrBackupConfirmationInProgress) || summary.AccountID != accountID {
+		t.Fatalf("challenge store conflict returned %v for %s", err, summary.AccountID)
+	}
+	if err := repository.DeletePendingAccount(context.Background(), accountID, 1); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -329,6 +373,36 @@ func TestWalletVaultPreservesChallengeOnRepositoryFailures(t *testing.T) {
 	}
 }
 
+func TestWalletVaultRejectsBackupMaterialThatCannotDerive(t *testing.T) {
+	vault, _, _ := newTestVault(t)
+	_, challenge, err := vault.Create(context.Background(), CreateAccountRequest{
+		Name:            "Invalid derivation material",
+		Password:        []byte("Strong vault password 1!"),
+		BIP39Passphrase: "passphrase",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	vault.mu.Lock()
+	state := vault.challenges[challenge.ChallengeID]
+	for index := range state.words {
+		state.words[index] = "invalid"
+	}
+	vault.mu.Unlock()
+	answers := make(map[int]string, len(challenge.RequiredWordIndices))
+	for _, index := range challenge.RequiredWordIndices {
+		answers[index] = "invalid"
+	}
+	if _, err := vault.ConfirmBackupWithMaterial(context.Background(), challenge.ChallengeID, BackupMaterialConfirmation{
+		WordAnswers:     answers,
+		BIP39Passphrase: "passphrase",
+		DerivationPath:  challenge.DerivationPath,
+		BIP39Language:   challenge.BIP39Language,
+	}); !errors.Is(err, ErrBackupConfirmationFailed) {
+		t.Fatalf("non-derivable backup material returned %v", err)
+	}
+}
+
 func TestWalletVaultRejectsConcurrentBackupConsumption(t *testing.T) {
 	vault, _, _ := newTestVault(t)
 	_, challenge, err := vault.Create(context.Background(), CreateAccountRequest{Name: "Consuming", Password: []byte("Strong vault password 1!")})
@@ -347,7 +421,11 @@ func TestWalletVaultRejectsConcurrentBackupConsumption(t *testing.T) {
 	if err := vault.SuspendBackup(challenge.ChallengeID); !errors.Is(err, ErrBackupConfirmationInProgress) {
 		t.Fatalf("concurrent suspension was accepted: %v", err)
 	}
-	if _, err := vault.issueBackupChallenge(challenge.AccountID, challenge.BackupGeneration, challenge.Words); !errors.Is(err, ErrBackupConfirmationInProgress) {
+	if _, err := vault.issueBackupChallenge(challenge.AccountID, challenge.BackupGeneration, mnemonicBackupMaterial{
+		words:    challenge.Words,
+		path:     challenge.DerivationPath,
+		language: challenge.BIP39Language,
+	}); !errors.Is(err, ErrBackupConfirmationInProgress) {
 		t.Fatalf("concurrent challenge replacement was accepted: %v", err)
 	}
 	vault.mu.Lock()

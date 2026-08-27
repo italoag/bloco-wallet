@@ -110,11 +110,9 @@ func TestDisplayedMnemonicControlsPersistedAccount(t *testing.T) {
 	if displayedMnemonic != *model.walletDetails.Mnemonic {
 		t.Fatal("displayed mnemonic does not control persisted account")
 	}
-	privateKeyHex, err := wallet.DerivePrivateKey(displayedMnemonic)
+	preview, err := wallet.PreviewMnemonicImport(wallet.MnemonicImportRequest{Mnemonic: displayedMnemonic})
 	require.NoError(t, err)
-	privateKey, err := wallet.HexToECDSA(privateKeyHex)
-	require.NoError(t, err)
-	assert.Equal(t, model.walletDetails.Wallet.Address, crypto.PubkeyToAddress(privateKey.PublicKey).Hex())
+	assert.Equal(t, model.walletDetails.Wallet.Address, preview.Address)
 
 	restartedService := wallet.NewWalletService(
 		repository,
@@ -157,7 +155,7 @@ func TestVaultBackedCreateFlowPersistsOnlyEncryptedSecret(t *testing.T) {
 		MaxTime: 4, MaxMemoryKiB: 256 * 1024, MaxParallelism: 8, MaxKeyLength: 32, MaxSaltLength: 64,
 	})
 	require.NoError(t, err)
-	vault, err := wallet.NewWalletVault(repository, codec, wallet.VaultOptions{ChallengeWords: 3})
+	vault, err := wallet.NewWalletVault(repository, codec, wallet.VaultOptions{ChallengeWords: 3, SourceIdentityKey: bytes.Repeat([]byte{0x42}, 32)})
 	require.NoError(t, err)
 	model := &CLIModel{Vault: vault, styles: createStyles()}
 
@@ -165,6 +163,10 @@ func TestVaultBackedCreateFlowPersistsOnlyEncryptedSecret(t *testing.T) {
 	assert.Empty(t, model.mnemonic)
 	model.nameInput.SetValue("Vault UI")
 	_, _ = model.updateCreateWalletName(tea.KeyMsg{Type: tea.KeyEnter})
+	assert.Equal(t, constants.CreateWalletOptionsView, model.currentView)
+	for range 4 {
+		_, _ = model.updateCreateWalletOptions(tea.KeyMsg{Type: tea.KeyEnter})
+	}
 	assert.Equal(t, constants.CreateWalletView, model.currentView)
 	model.passwordInput.SetValue("Strong vault password 1!")
 	_, _ = model.updateCreateWalletPassword(tea.KeyMsg{Type: tea.KeyEnter})
@@ -218,6 +220,8 @@ func TestVaultBackedCreateFlowPersistsOnlyEncryptedSecret(t *testing.T) {
 	_, _ = model.updateVaultAction(tea.KeyMsg{Type: tea.KeyEnter}, true)
 	model.exportDestinationInput.SetValue(exportPath)
 	_, _ = model.updateVaultAction(tea.KeyMsg{Type: tea.KeyEnter}, true)
+	assert.True(t, model.vaultActionPreview)
+	_, _ = model.updateVaultAction(tea.KeyMsg{Type: tea.KeyEnter}, true)
 	assert.Equal(t, constants.WalletDetailsView, model.currentView)
 	assert.FileExists(t, exportPath)
 
@@ -238,6 +242,67 @@ func TestVaultBackedCreateFlowPersistsOnlyEncryptedSecret(t *testing.T) {
 	storedPending, err := repository.GetAccount(context.Background(), pending.AccountID)
 	require.NoError(t, err)
 	assert.Equal(t, wallet.AccountStatePendingBackup, storedPending.State)
+
+	custom, customChallenge, err := vault.Create(context.Background(), wallet.CreateAccountRequest{
+		Name:            "Custom backup UI",
+		Password:        []byte(newStoragePassword),
+		WordCount:       15,
+		BIP39Language:   wallet.BIP39Spanish,
+		BIP39Passphrase: "contraseña",
+		DerivationPath:  "m/44'/60'/4'/1/2",
+	})
+	require.NoError(t, err)
+	model.pendingAccount = &custom
+	model.backupChallenge = &customChallenge
+	model.initBackupMaterialInputs()
+	model.currentView = constants.CreateWalletBackupView
+	requestedWords := make([]string, 0, len(customChallenge.RequiredWordIndices))
+	for _, index := range customChallenge.RequiredWordIndices {
+		requestedWords = append(requestedWords, customChallenge.Words[index])
+	}
+	model.backupConfirmationInput.SetValue(strings.Join(requestedWords, " "))
+	_, _ = model.updateCreateWalletBackup(tea.KeyMsg{Type: tea.KeyEnter})
+	assert.Equal(t, 1, model.backupMaterialStage)
+	model.backupPathInput.SetValue(customChallenge.DerivationPath)
+	_, _ = model.updateCreateWalletBackup(tea.KeyMsg{Type: tea.KeyEnter})
+	model.backupLanguageInput.SetValue(string(customChallenge.BIP39Language))
+	_, _ = model.updateCreateWalletBackup(tea.KeyMsg{Type: tea.KeyEnter})
+	model.backupPassphraseInput.SetValue("wrong")
+	_, _ = model.updateCreateWalletBackup(tea.KeyMsg{Type: tea.KeyEnter})
+	require.NotNil(t, model.backupChallenge)
+	model.backupPassphraseInput.SetValue("contraseña")
+	_, _ = model.updateCreateWalletBackup(tea.KeyMsg{Type: tea.KeyEnter})
+	assert.Equal(t, constants.WalletDetailsView, model.currentView)
+
+	model.initCanonicalImport(wallet.ImportMethodMnemonic)
+	for index := range model.canonicalImport.fields {
+		field := &model.canonicalImport.fields[index]
+		switch field.key {
+		case "name":
+			field.input.SetValue("Canonical UI import")
+		case "mnemonic":
+			field.input.SetValue("test test test test test test test test test test test junk")
+		case "language":
+			field.input.SetValue("english")
+		case "path":
+			field.input.SetValue("m/44'/60'/9'/0/0")
+		case "storage_password", "confirm_password":
+			field.input.SetValue("Canonical storage password 4!")
+		}
+	}
+	var importCommand tea.Cmd
+	for range model.canonicalImport.fields {
+		_, importCommand = model.updateCanonicalImport(tea.KeyMsg{Type: tea.KeyEnter})
+	}
+	require.NotNil(t, importCommand)
+	_, _ = model.Update(importCommand())
+	require.NotNil(t, model.canonicalImport.preview)
+	_, importCommand = model.updateCanonicalImport(tea.KeyMsg{Type: tea.KeyEnter})
+	require.NotNil(t, importCommand)
+	_, _ = model.Update(importCommand())
+	require.NotNil(t, model.selectedAccount)
+	assert.Equal(t, wallet.AccountStateActive, model.selectedAccount.State)
+	assert.Equal(t, constants.WalletDetailsView, model.currentView)
 }
 
 func TestQIsAcceptedInSecretInput(t *testing.T) {
@@ -274,29 +339,39 @@ func TestWalletCreationRequiresMnemonicConfirmation(t *testing.T) {
 	assert.Nil(t, model.walletDetails)
 }
 
-func TestUnsafeKeystoreImportIsNotInMenu(t *testing.T) {
+func TestKeystoreImportUsesCanonicalMenu(t *testing.T) {
 	cfg := &config.Config{Language: "en", LocaleDir: "../../pkg/localization/locales"}
 	require.NoError(t, localization.InitLocalization(cfg))
+	found := false
 	for _, item := range NewImportMenu() {
-		assert.NotEqual(t, localization.Labels["import_keystore"], item.title)
+		if item.title == localization.Labels["import_keystore"] {
+			found = true
+		}
 	}
+	assert.True(t, found)
+	model := &CLIModel{selectedMenu: 2, styles: createStyles()}
+	_, _ = model.updateImportMethodSelection(tea.KeyMsg{Type: tea.KeyEnter})
+	require.NotNil(t, model.canonicalImport)
+	assert.Equal(t, wallet.ImportMethodKeystore, model.canonicalImport.method)
+	assert.Equal(t, constants.CanonicalImportView, model.currentView)
 }
 
 func TestSecretImportInputsAreMasked(t *testing.T) {
 	cfg := &config.Config{Language: "en", LocaleDir: "../../pkg/localization/locales"}
 	require.NoError(t, localization.InitLocalization(cfg))
 
-	mnemonicModel := &CLIModel{selectedMenu: 0, styles: createStyles()}
-	_, _ = mnemonicModel.updateImportMethodSelection(tea.KeyMsg{Type: tea.KeyEnter})
-	require.NotEmpty(t, mnemonicModel.textInputs)
-	mnemonicModel.textInputs[0].SetValue("abandon")
-	assert.NotContains(t, mnemonicModel.viewImportWallet(), "abandon")
+	mnemonicModel := &CLIModel{styles: createStyles()}
+	mnemonicModel.initCanonicalImport(wallet.ImportMethodMnemonic)
+	mnemonicModel.canonicalImport.stage = 1
+	mnemonicModel.canonicalImport.fields[1].input.SetValue("abandon")
+	assert.NotContains(t, mnemonicModel.viewCanonicalImport(), "abandon")
 
-	privateKeyModel := &CLIModel{selectedMenu: 1, styles: createStyles()}
-	_, _ = privateKeyModel.updateImportMethodSelection(tea.KeyMsg{Type: tea.KeyEnter})
+	privateKeyModel := &CLIModel{styles: createStyles()}
+	privateKeyModel.initCanonicalImport(wallet.ImportMethodPrivateKey)
+	privateKeyModel.canonicalImport.stage = 1
 	privateKey := strings.Repeat("a", 64)
-	privateKeyModel.privateKeyInput.SetValue(privateKey)
-	assert.NotContains(t, privateKeyModel.viewImportPrivateKey(), privateKey)
+	privateKeyModel.canonicalImport.fields[1].input.SetValue(privateKey)
+	assert.NotContains(t, privateKeyModel.viewCanonicalImport(), privateKey)
 }
 
 func TestMnemonicImportIgnoresStalePrivateKeyInput(t *testing.T) {
@@ -330,11 +405,9 @@ func TestMnemonicImportIgnoresStalePrivateKeyInput(t *testing.T) {
 	_, _ = model.updateImportWalletPassword(tea.KeyMsg{Type: tea.KeyEnter})
 
 	require.NotNil(t, model.walletDetails)
-	privateKeyHex, err := wallet.DerivePrivateKey(mnemonic)
+	preview, err := wallet.PreviewMnemonicImport(wallet.MnemonicImportRequest{Mnemonic: mnemonic})
 	require.NoError(t, err)
-	expectedKey, err := wallet.HexToECDSA(privateKeyHex)
-	require.NoError(t, err)
-	assert.Equal(t, crypto.PubkeyToAddress(expectedKey.PublicKey).Hex(), model.walletDetails.Wallet.Address)
+	assert.Equal(t, preview.Address, model.walletDetails.Wallet.Address)
 	assert.Empty(t, model.privateKeyInput.Value())
 }
 
@@ -343,6 +416,7 @@ func TestWalletDetailsViewHidesSecrets(t *testing.T) {
 	require.NoError(t, localization.InitLocalization(cfg))
 	privateKey, err := crypto.GenerateKey()
 	require.NoError(t, err)
+	defer privateKey.D.SetInt64(0)
 	mnemonic := "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
 	model := &CLIModel{walletDetails: &wallet.WalletDetails{
 		Wallet: &wallet.Wallet{
@@ -350,8 +424,6 @@ func TestWalletDetailsViewHidesSecrets(t *testing.T) {
 			ImportMethod: string(wallet.ImportMethodMnemonic),
 		},
 		Mnemonic:     &mnemonic,
-		PrivateKey:   privateKey,
-		PublicKey:    &privateKey.PublicKey,
 		ImportMethod: wallet.ImportMethodMnemonic,
 		HasMnemonic:  true,
 	}}

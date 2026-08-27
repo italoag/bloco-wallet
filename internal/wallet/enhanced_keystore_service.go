@@ -78,6 +78,7 @@ func (eks *EnhancedKeyStoreService) ReadKeyStore(filePath, password string) (*En
 	if err != nil {
 		return nil, fmt.Errorf("erro ao derivar chave: %w", err)
 	}
+	defer clear(derivedKey)
 
 	// Verifica a integridade usando MAC
 	if err := eks.verifyMAC(derivedKey, cryptoParams); err != nil {
@@ -89,6 +90,7 @@ func (eks *EnhancedKeyStoreService) ReadKeyStore(filePath, password string) (*En
 	if err != nil {
 		return nil, fmt.Errorf("erro ao descriptografar chave privada: %w", err)
 	}
+	defer clear(privateKeyBytes)
 
 	// Gera informações da carteira
 	walletDetails, err := eks.generateWalletInfo(privateKeyBytes)
@@ -265,6 +267,7 @@ func (eks *EnhancedKeyStoreService) generateWalletInfo(privateKeyBytes []byte) (
 	if err != nil {
 		return nil, fmt.Errorf("erro ao converter chave privada: %w", err)
 	}
+	defer privateKey.D.SetInt64(0)
 
 	// Gera chave pública
 	publicKey := privateKey.Public().(*ecdsa.PublicKey)
@@ -283,9 +286,7 @@ func (eks *EnhancedKeyStoreService) generateWalletInfo(privateKeyBytes []byte) (
 	}
 
 	return &EnhancedWalletDetails{
-		Wallet:     wallet,
-		PrivateKey: privateKey,
-		PublicKey:  publicKey,
+		Wallet: wallet,
 		// KDFInfo será preenchido pelo método ReadKeyStore
 	}, nil
 }

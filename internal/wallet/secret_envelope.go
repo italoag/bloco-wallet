@@ -46,6 +46,7 @@ type EnvelopeMetadata struct {
 	SecretType         SecretType
 	Address            string
 	EnvelopeGeneration uint64
+	PassphrasePresent  bool
 	Derivation         DerivationMetadata
 }
 
@@ -267,7 +268,14 @@ func validateArgon2Policy(policy Argon2idPolicy) error {
 	return nil
 }
 
+func ValidateStoragePassword(password []byte) error {
+	return validateNewStoragePassword(password)
+}
+
 func validateNewStoragePassword(password []byte) error {
+	if len(password) > 4096 {
+		return fmt.Errorf("storage password size is outside policy")
+	}
 	if !utf8.Valid(password) {
 		return fmt.Errorf("storage password must be valid UTF-8")
 	}
@@ -301,6 +309,11 @@ func encodeEnvelopeAAD(version uint32, metadata EnvelopeMetadata) ([]byte, error
 	}
 	if err := binary.Write(&buffer, binary.BigEndian, metadata.EnvelopeGeneration); err != nil {
 		return nil, err
+	}
+	if metadata.PassphrasePresent {
+		buffer.WriteByte(1)
+	} else {
+		buffer.WriteByte(0)
 	}
 	values := []string{
 		metadata.AccountID,
