@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"sync"
 	"time"
 )
 
@@ -59,6 +60,7 @@ type Options struct {
 
 // Service orchestrates pairing, session approval, and request routing.
 type Service struct {
+	mu          sync.Mutex
 	relay       Relay
 	store       SessionStore
 	now         func() time.Time
@@ -120,6 +122,8 @@ func (service *Service) SetKey(topic string, key []byte) error {
 	if len(key) != SymKeyBytes {
 		return fmt.Errorf("walletconnect: invalid symmetric key size")
 	}
+	service.mu.Lock()
+	defer service.mu.Unlock()
 	service.keys[topic] = append([]byte(nil), key...)
 	return nil
 }
@@ -143,7 +147,9 @@ func (service *Service) Run(ctx context.Context) {
 			if !ok {
 				return
 			}
+			service.mu.Lock()
 			key, exists := service.keys[subscription.Topic]
+			service.mu.Unlock()
 			if !exists {
 				continue
 			}
@@ -198,11 +204,15 @@ func (service *Service) handleProposal(ctx context.Context, topic string, propos
 	if _, err := ValidateProposal(proposal); err != nil {
 		return err
 	}
-	service.sweepProposals()
+	if proposal.Expiry <= service.now().UnixMilli() {
+		return fmt.Errorf("walletconnect: proposal already expired")
+	}
+	service.mu.Lock()
 	service.proposals[proposal.ID] = &pendingProposal{
 		proposal: proposal,
 		expires:  service.now().Add(service.proposalTTL),
 	}
+	service.mu.Unlock()
 	if service.onProposal != nil {
 		if err := service.onProposal(ctx, proposal); err != nil {
 			return err
@@ -222,6 +232,9 @@ func (service *Service) handleSessionRequest(ctx context.Context, topic string, 
 	if session.Revoked || session.ExpiresAt <= service.now().UnixMilli() {
 		return fmt.Errorf("walletconnect: session is not active")
 	}
+	if !sessionAllowsRequest(session, params) {
+		return fmt.Errorf("walletconnect: request outside approved session scope")
+	}
 	if service.onRequest != nil {
 		if err := service.onRequest(ctx, session, params); err != nil {
 			return err
@@ -231,17 +244,52 @@ func (service *Service) handleSessionRequest(ctx context.Context, topic string, 
 	return nil
 }
 
+// sessionAllowsRequest enforces the approved namespaces: the request method
+// must be approved and the chain must be covered by the session chains.
+func sessionAllowsRequest(session *Session, params *SessionRequestParams) bool {
+	chainNamespace, chainID, err := ParseNamespaceChain(params.ChainID)
+	if err != nil {
+		return false
+	}
+	namespace, exists := session.Namespaces[chainNamespace]
+	if !exists {
+		return false
+	}
+	methodApproved := false
+	for _, method := range namespace.Methods {
+		if method == params.Request.Method {
+			methodApproved = true
+			break
+		}
+	}
+	if !methodApproved {
+		return false
+	}
+	expectedChain := chainNamespace + ":" + chainID
+	for _, chain := range namespace.Chains {
+		if chain == expectedChain {
+			return true
+		}
+	}
+	return false
+}
+
 // ApproveProposal approves a pending proposal and persists the session.
 func (service *Service) ApproveProposal(ctx context.Context, proposalID int64, accountID, address string) (*Session, error) {
+	service.mu.Lock()
 	pending, exists := service.proposals[proposalID]
 	if !exists {
+		service.mu.Unlock()
 		return nil, fmt.Errorf("walletconnect: proposal not pending")
 	}
-	if service.now().After(pending.expires) {
+	if service.now().After(pending.expires) || pending.proposal.Expiry <= service.now().UnixMilli() {
 		delete(service.proposals, proposalID)
+		service.mu.Unlock()
 		return nil, fmt.Errorf("walletconnect: proposal expired")
 	}
 	proposal := pending.proposal
+	delete(service.proposals, proposalID)
+	service.mu.Unlock()
 	namespaces, err := ApproveNamespaces(proposal.RequiredNamespaces, address)
 	if err != nil {
 		return nil, err
@@ -266,12 +314,13 @@ func (service *Service) ApproveProposal(ctx context.Context, proposalID int64, a
 	if err := service.store.SaveSession(ctx, session); err != nil {
 		return nil, err
 	}
-	delete(service.proposals, proposalID)
 	return session, nil
 }
 
 // RejectProposal drops a pending proposal.
 func (service *Service) RejectProposal(proposalID int64) {
+	service.mu.Lock()
+	defer service.mu.Unlock()
 	delete(service.proposals, proposalID)
 }
 
@@ -288,6 +337,8 @@ func (service *Service) RevokeSession(ctx context.Context, topic string, revoked
 // PendingProposal returns a pending proposal if it exists and is fresh.
 func (service *Service) PendingProposal(proposalID int64) (*Proposal, bool) {
 	service.sweepProposals()
+	service.mu.Lock()
+	defer service.mu.Unlock()
 	pending, exists := service.proposals[proposalID]
 	if !exists {
 		return nil, false
@@ -306,8 +357,10 @@ func peerMetadataMap(peer *PeerMetadata) map[string]any {
 
 func (service *Service) sweepProposals() {
 	now := service.now()
+	service.mu.Lock()
+	defer service.mu.Unlock()
 	for id, pending := range service.proposals {
-		if now.After(pending.expires) {
+		if now.After(pending.expires) || pending.proposal.Expiry <= now.UnixMilli() {
 			delete(service.proposals, id)
 		}
 	}

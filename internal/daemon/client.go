@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strings"
 	"time"
 )
 
@@ -23,8 +24,12 @@ func Dial(ctx context.Context, address, token string) (*Client, error) {
 	if address == "" || token == "" {
 		return nil, fmt.Errorf("daemon: address and token are required")
 	}
+	network := "unix"
+	if strings.HasPrefix(address, "127.0.0.1:") || strings.HasPrefix(address, "[::1]:") || strings.HasPrefix(address, "localhost:") {
+		network = "tcp"
+	}
 	var dialer net.Dialer
-	conn, err := dialer.DialContext(ctx, "unix", address)
+	conn, err := dialer.DialContext(ctx, network, address)
 	if err != nil {
 		return nil, fmt.Errorf("daemon: dial: %w", err)
 	}

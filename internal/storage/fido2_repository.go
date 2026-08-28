@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"blocowallet/internal/fido2"
 
@@ -91,7 +92,7 @@ func (repository *GORMRepository) ListCredentials(ctx context.Context, rpID stri
 
 func (repository *GORMRepository) UpdateSignCount(ctx context.Context, credentialID []byte, signCount uint32, usedAt int64) error {
 	update := repository.db.WithContext(ctx).Model(&fido2CredentialRow{}).Where(
-		"credential_id = ? AND sign_count <= ?", credentialID, signCount,
+		"credential_id = ? AND sign_count < ?", credentialID, signCount,
 	).Updates(map[string]any{"sign_count": signCount, "last_used_at_ms": usedAt})
 	if update.Error != nil {
 		return fmt.Errorf("update fido2 sign count: %w", update.Error)
@@ -119,6 +120,13 @@ func (repository *GORMRepository) SaveChallenge(ctx context.Context, challenge *
 	}
 	if err := repository.db.WithContext(ctx).Create(&row).Error; err != nil {
 		return fmt.Errorf("save fido2 challenge: %w", err)
+	}
+	// Sweep consumed and long-expired challenges to bound table growth.
+	sweepBefore := challenge.CreatedAt - int64(24*time.Hour/time.Millisecond)
+	if err := repository.db.WithContext(ctx).Where(
+		"(used = 1 OR expires_at_ms <= ?) AND created_at_ms < ?", challenge.CreatedAt, sweepBefore,
+	).Delete(&fido2ChallengeRow{}).Error; err != nil {
+		return fmt.Errorf("sweep fido2 challenges: %w", err)
 	}
 	return nil
 }

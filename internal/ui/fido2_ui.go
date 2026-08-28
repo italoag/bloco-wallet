@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -36,6 +37,7 @@ type fido2State struct {
 	credentials []fido2.Credential
 	selected    int
 	response    textinput.Model
+	challengeID string
 	challenge   string
 	status      string
 	err         string
@@ -144,7 +146,8 @@ func (model *CLIModel) updateFIDO2(message tea.Msg) (tea.Model, tea.Cmd) {
 					state.err = safeError(err)
 					return model, nil
 				}
-				state.challenge = string(challenge.Challenge)
+				state.challengeID = challenge.ChallengeID
+				state.challenge = base64.RawURLEncoding.EncodeToString(challenge.Challenge)
 				state.status = "Registration challenge (base64url):\n" + safeInline(state.challenge) + "\n\nPaste the authenticator response JSON below."
 				state.phase = fido2Register
 				state.response.Focus()
@@ -161,7 +164,8 @@ func (model *CLIModel) updateFIDO2(message tea.Msg) (tea.Model, tea.Cmd) {
 					state.err = safeError(err)
 					return model, nil
 				}
-				state.challenge = string(challenge.Challenge)
+				state.challengeID = challenge.ChallengeID
+				state.challenge = base64.RawURLEncoding.EncodeToString(challenge.Challenge)
 				state.status = "Authentication challenge (base64url):\n" + safeInline(state.challenge) + "\n\nPaste the authenticator response JSON below."
 				state.phase = fido2Authenticate
 				state.response.Focus()
@@ -174,7 +178,7 @@ func (model *CLIModel) updateFIDO2(message tea.Msg) (tea.Model, tea.Cmd) {
 					state.err = "Response must be the authenticator JSON"
 					return model, nil
 				}
-				result, err := model.fido2Service.FinishRegistration(context.Background(), state.challenge, response, false)
+				result, err := model.fido2Service.FinishRegistration(context.Background(), state.challengeID, response, false)
 				if err != nil {
 					state.err = safeError(err)
 					return model, nil
@@ -195,7 +199,7 @@ func (model *CLIModel) updateFIDO2(message tea.Msg) (tea.Model, tea.Cmd) {
 					state.err = "Response must be the authenticator JSON"
 					return model, nil
 				}
-				result, err := model.fido2Service.FinishAuthentication(context.Background(), state.challenge, response, false)
+				result, err := model.fido2Service.FinishAuthentication(context.Background(), state.challengeID, response, false)
 				if err != nil {
 					state.err = safeError(err)
 					return model, nil

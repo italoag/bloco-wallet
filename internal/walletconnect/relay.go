@@ -67,6 +67,7 @@ func NewRelayClient(ctx context.Context, relayURL string) (*RelayClient, error) 
 	if err != nil {
 		return nil, fmt.Errorf("walletconnect: relay dial: %w", err)
 	}
+	conn.SetReadLimit(MaxRelayPayload)
 	client := &RelayClient{
 		url: relayURL, conn: conn, nextID: 1,
 		pending:  make(map[int64]chan *jsonrpcResponse),

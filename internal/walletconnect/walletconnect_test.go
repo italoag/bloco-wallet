@@ -487,6 +487,32 @@ func TestWalletConnectServiceEndToEndWithMockRelay(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("session request was not delivered")
 	}
+
+	// A request outside the approved scope is rejected before any handler.
+	outOfScope, err := json.Marshal(map[string]any{
+		"type": "session_request",
+		"payload": map[string]any{
+			"id": 78, "chainId": "eip155:1",
+			"request": map[string]any{"id": 78, "method": "eth_sendTransaction", "params": []any{}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	encryptedOutOfScope, err := walletconnect.EncryptEnvelope(dappKey, outOfScope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	requestReceived = make(chan *walletconnect.SessionRequestParams, 1)
+	if err := dappRelay.Publish(ctx, session.Topic, encryptedOutOfScope); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-requestReceived:
+		t.Fatal("out-of-scope session request reached the handler")
+	case <-time.After(300 * time.Millisecond):
+	}
+
 	stored, err := store.GetSession(ctx, session.Topic)
 	if err != nil {
 		t.Fatal(err)
