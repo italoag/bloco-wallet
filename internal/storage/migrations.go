@@ -10,7 +10,7 @@ import (
 	"gorm.io/gorm"
 )
 
-const latestSchemaVersion uint = 13
+const latestSchemaVersion uint = 14
 
 type schemaMigration struct {
 	Version   uint      `gorm:"primaryKey"`
@@ -94,6 +94,7 @@ func runMigrations(database *gorm.DB, includeLegacy bool) error {
 			{version: 11, apply: migrateERC1155Effects},
 			{version: 12, apply: migrateContractCallOperation},
 			{version: 13, apply: migrateFIDO2Credentials},
+			{version: 14, apply: migrateWalletConnectSessions},
 		}
 		for _, migration := range migrations {
 			if _, exists := applied[migration.version]; exists {
@@ -641,6 +642,34 @@ func migrateFIDO2Credentials(transaction *gorm.DB) error {
 		`CREATE TRIGGER trg_fido2_challenge_binding_immutable
 			BEFORE UPDATE OF challenge_id, kind, rp_id, origin, account_id, challenge ON fido2_challenges
 			BEGIN SELECT RAISE(ABORT, 'immutable FIDO2 challenge binding'); END`,
+	}
+	for _, statement := range statements {
+		if err := transaction.Exec(statement).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func migrateWalletConnectSessions(transaction *gorm.DB) error {
+	statements := []string{
+		`CREATE TABLE wc_sessions (
+			topic TEXT PRIMARY KEY NOT NULL CHECK(length(topic) = 64),
+			peer_name TEXT NOT NULL DEFAULT '' CHECK(length(peer_name) <= 128),
+			peer_metadata TEXT NOT NULL DEFAULT '{}' CHECK(length(peer_metadata) <= 4096),
+			account_id TEXT NOT NULL CHECK(length(account_id) = 36),
+			namespaces TEXT NOT NULL CHECK(length(namespaces) <= 65536),
+			expires_at_ms INTEGER NOT NULL CHECK(expires_at_ms >= 0),
+			revoked INTEGER NOT NULL DEFAULT 0 CHECK(revoked IN (0, 1)),
+			created_at_ms INTEGER NOT NULL CHECK(created_at_ms >= 0),
+			last_used_at_ms INTEGER,
+			CHECK(json_valid(peer_metadata)),
+			CHECK(json_valid(namespaces))
+		) STRICT`,
+		`CREATE INDEX ix_wc_session_expiry ON wc_sessions(revoked, expires_at_ms)`,
+		`CREATE TRIGGER trg_wc_session_binding_immutable
+			BEFORE UPDATE OF topic, peer_name, peer_metadata, account_id, namespaces ON wc_sessions
+			BEGIN SELECT RAISE(ABORT, 'immutable WalletConnect session binding'); END`,
 	}
 	for _, statement := range statements {
 		if err := transaction.Exec(statement).Error; err != nil {
