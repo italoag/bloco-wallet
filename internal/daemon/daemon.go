@@ -141,6 +141,11 @@ func (server *Server) Shutdown(ctx context.Context) error {
 	}
 }
 
+// Done reports when the server has fully terminated.
+func (server *Server) Done() <-chan struct{} {
+	return server.done
+}
+
 func (server *Server) now() time.Time {
 	if server.options.Now != nil {
 		return server.options.Now()
@@ -182,11 +187,13 @@ func (server *Server) acceptLoop() {
 
 func (server *Server) handleConnection(conn net.Conn) {
 	defer func() { _ = conn.Close() }()
-	if server.options.PeerUID != nil {
-		if uid, ok := server.options.PeerUID(conn); ok && uid != currentUID() {
-			_ = writeFrame(conn, NewErrorResponse("", CodeUnauthorized, "daemon: peer uid rejected"))
-			return
-		}
+	peerUID := server.options.PeerUID
+	if peerUID == nil {
+		peerUID = platformPeerUID
+	}
+	if uid, ok := peerUID(conn); ok && uid != currentUID() {
+		_ = writeFrame(conn, NewErrorResponse("", CodeUnauthorized, "daemon: peer uid rejected"))
+		return
 	}
 	for {
 		frame, err := readFrame(conn)

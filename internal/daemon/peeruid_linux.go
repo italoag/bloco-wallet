@@ -7,8 +7,8 @@ import (
 	"syscall"
 )
 
-// peerUID returns the peer's UID via SO_PEERCRED.
-func peerUID(conn net.Conn) (uint32, bool) {
+// platformPeerUID returns the peer's UID via SO_PEERCRED.
+func platformPeerUID(conn net.Conn) (uint32, bool) {
 	unixConn, ok := conn.(*net.UnixConn)
 	if !ok {
 		return 0, false

@@ -50,6 +50,11 @@ func main() {
 	}
 	ui.ConfigureConfigurationManager(configManager)
 
+	if len(os.Args) > 1 && os.Args[1] == "daemon" {
+		runDaemon(cfg)
+		return
+	}
+
 	// Initialize file-based logger (no terminal output)
 	logDir := filepath.Join(cfg.AppDir, "logs")
 	lgr, err := logger.NewFileLogger(logger.LoggingConfig{
