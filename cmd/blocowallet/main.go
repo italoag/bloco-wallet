@@ -127,6 +127,7 @@ func main() {
 		log.Printf("Failed to initialize transaction signer: %v", err)
 		os.Exit(1)
 	}
+	transactionSigner := configureExternalSigners(softwareSigner, repo)
 	transactionAuthorizer, err := wallet.NewTransactionAuthorizer(vault, wallet.TransactionAuthorizationMode(cfg.Security.TransactionAuthorizationMode))
 	if err != nil {
 		log.Printf("Failed to initialize transaction authorizer: %v", err)
@@ -144,7 +145,7 @@ func main() {
 	app.ConfigureHistoryReader(repo)
 	app.ConfigureTransactionAuthorizer(transactionAuthorizer)
 	app.ConfigureMessageSigningFactory(func(context.Context) (ui.MessageSigningService, error) {
-		return evm.NewMessageSigningService(repo, softwareSigner, evm.MessageSigningOptions{ApprovalTTL: 2 * time.Minute})
+		return evm.NewMessageSigningService(repo, transactionSigner, evm.MessageSigningOptions{ApprovalTTL: 2 * time.Minute})
 	})
 	configureWalletConnect(app, repo)
 	createEngine := func(ctx context.Context, network config.Network) (*evm.Engine, error) {
@@ -160,7 +161,7 @@ func main() {
 		if err != nil {
 			return nil, err
 		}
-		return evm.NewEngine(repo, rpc, softwareSigner, evm.EngineOptions{
+		return evm.NewEngine(repo, rpc, transactionSigner, evm.EngineOptions{
 			ReservationTTL: 5 * time.Minute,
 			ApprovalTTL:    2 * time.Minute,
 		})

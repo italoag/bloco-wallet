@@ -40,7 +40,8 @@ func (store *memorySessionStore) GetSession(_ context.Context, topic string) (*w
 	if !exists {
 		return nil, fmt.Errorf("session not found")
 	}
-	return session, nil
+	copied := *session
+	return &copied, nil
 }
 func (store *memorySessionStore) ListSessions(_ context.Context, accountID string, includeRevoked bool) ([]walletconnect.Session, error) {
 	store.mu.Lock()
