@@ -26,6 +26,8 @@ const (
 	PersonalSignView          = "personal_sign"
 	EIP712SignView            = "eip712_sign"
 	ContractCallView          = "contract_call"
+	WalletConnectView         = "walletconnect"
+	FIDO2View                 = "fido2"
 	NativeTransferView        = "native_transfer"
 	RotatePasswordView        = "rotate_password"
 	ExportAccountView         = "export_account"

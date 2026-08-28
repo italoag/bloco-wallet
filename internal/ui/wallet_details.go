@@ -32,6 +32,8 @@ type WalletDetailsKeyMap struct {
 	Send1155        key.Binding
 	Send1155Batch   key.Binding
 	ContractCall    key.Binding
+	WalletConnect   key.Binding
+	FIDO2           key.Binding
 	ApproveToken    key.Binding
 	ResumeBackup    key.Binding
 	ToggleHelp      key.Binding
@@ -58,6 +60,8 @@ func newWalletDetailsKeyMap() WalletDetailsKeyMap {
 		Send1155:        key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "Send 1155")),
 		Send1155Batch:   key.NewBinding(key.WithKeys("z"), key.WithHelp("z", "Send 1155 batch")),
 		ContractCall:    key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "Contract call")),
+		WalletConnect:   key.NewBinding(key.WithKeys("w"), key.WithHelp("w", "WC sessions")),
+		FIDO2:           key.NewBinding(key.WithKeys("p"), key.WithHelp("p", "Security keys")),
 		ApproveToken:    key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "Approve ERC-20")),
 		ResumeBackup:    key.NewBinding(key.WithKeys("b"), key.WithHelp("b", "Resume backup")),
 		ToggleHelp:      key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "More help")),
@@ -66,14 +70,14 @@ func newWalletDetailsKeyMap() WalletDetailsKeyMap {
 }
 
 func (keyMap WalletDetailsKeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{keyMap.Lock, keyMap.FetchBalances, keyMap.History, keyMap.SignMessage, keyMap.SignTypedData, keyMap.SendNative, keyMap.SendToken, keyMap.SendNFT, keyMap.Send1155, keyMap.Send1155Batch, keyMap.ContractCall, keyMap.ResumeBackup, keyMap.Back}
+	return []key.Binding{keyMap.Lock, keyMap.FetchBalances, keyMap.History, keyMap.SignMessage, keyMap.SignTypedData, keyMap.SendNative, keyMap.SendToken, keyMap.SendNFT, keyMap.Send1155, keyMap.Send1155Batch, keyMap.ContractCall, keyMap.WalletConnect, keyMap.FIDO2, keyMap.ResumeBackup, keyMap.Back}
 }
 
 func (keyMap WalletDetailsKeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{keyMap.Up, keyMap.Down, keyMap.PageUp, keyMap.PageDown},
 		{keyMap.Lock, keyMap.Rotate, keyMap.Export, keyMap.EncryptedExport},
-		{keyMap.FetchBalances, keyMap.History, keyMap.SignMessage, keyMap.SignTypedData, keyMap.SendNative, keyMap.SendToken, keyMap.SendNFT, keyMap.Send1155, keyMap.Send1155Batch, keyMap.ContractCall, keyMap.ApproveToken},
+		{keyMap.FetchBalances, keyMap.History, keyMap.SignMessage, keyMap.SignTypedData, keyMap.SendNative, keyMap.SendToken, keyMap.SendNFT, keyMap.Send1155, keyMap.Send1155Batch, keyMap.ContractCall, keyMap.WalletConnect, keyMap.FIDO2, keyMap.ApproveToken},
 		{keyMap.ResumeBackup, keyMap.ToggleHelp, keyMap.Back},
 	}
 }
@@ -134,6 +138,8 @@ func (model *CLIModel) updateWalletDetailsKeyAvailability() {
 	model.walletDetailsKeys.Send1155.SetEnabled(canTransact)
 	model.walletDetailsKeys.Send1155Batch.SetEnabled(canTransact)
 	model.walletDetailsKeys.ContractCall.SetEnabled(canTransact)
+	model.walletDetailsKeys.WalletConnect.SetEnabled(hasAccount && model.walletConnectReader != nil && !pendingBackup)
+	model.walletDetailsKeys.FIDO2.SetEnabled(hasAccount && model.fido2Service != nil && !pendingBackup)
 	model.walletDetailsKeys.ApproveToken.SetEnabled(canTransact)
 	model.walletDetailsKeys.ResumeBackup.SetEnabled(custodial && pendingBackup)
 }

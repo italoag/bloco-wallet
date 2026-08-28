@@ -49,6 +49,14 @@ type CLIModel struct {
 	contractCall                    *contractCallState
 	contractCallGeneration          uint64
 	contractCallEngineValue         TransactionEngine
+	walletConnect                   *walletConnectState
+	walletConnectGeneration         uint64
+	walletConnectService            WalletConnectService
+	walletConnectReader             WalletConnectSessionReader
+	fido2                           *fido2State
+	fido2Generation                 uint64
+	fido2Service                    FIDO2Service
+	fido2Reader                     FIDO2CredentialReader
 	historyReader                   evm.HistoryReader
 	accountHistory                  *accountHistoryState
 	historyGeneration               uint64

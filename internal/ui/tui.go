@@ -610,6 +610,10 @@ func (m *CLIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateEIP712Sign(msg)
 	case constants.ContractCallView:
 		return m.updateContractCall(msg)
+	case constants.WalletConnectView:
+		return m.updateWalletConnect(msg)
+	case constants.FIDO2View:
+		return m.updateFIDO2(msg)
 	case constants.NativeTransferView:
 		return m.updateNativeTransfer(msg)
 	case constants.RotatePasswordView:
@@ -782,6 +786,10 @@ func (m *CLIModel) getContentView() string {
 		return m.viewEIP712Sign()
 	case constants.ContractCallView:
 		return m.viewContractCall()
+	case constants.WalletConnectView:
+		return m.viewWalletConnect()
+	case constants.FIDO2View:
+		return m.viewFIDO2()
 	case constants.NativeTransferView:
 		return m.viewNativeTransfer()
 	case constants.RotatePasswordView:
@@ -1868,6 +1876,16 @@ func (m *CLIModel) updateWalletDetails(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.walletDetailsKeys.ContractCall):
 			if m.transactionEngineFactory != nil && m.transactionAuthorizer != nil && m.selectedAccount != nil && m.selectedAccount.SignerKind == wallet.SignerKindSoftware && m.selectedAccount.Capabilities&wallet.CapabilitySignTransaction != 0 && (m.selectedAccount.State == wallet.AccountStateActive || m.selectedAccount.State == wallet.AccountStateLocked) {
 				m.initContractCall()
+				return m, nil
+			}
+		case key.Matches(msg, m.walletDetailsKeys.WalletConnect):
+			if m.walletConnectReader != nil && m.selectedAccount != nil {
+				m.initWalletConnect()
+				return m, nil
+			}
+		case key.Matches(msg, m.walletDetailsKeys.FIDO2):
+			if m.fido2Service != nil && m.selectedAccount != nil {
+				m.initFIDO2()
 				return m, nil
 			}
 		case key.Matches(msg, m.walletDetailsKeys.SendNative), key.Matches(msg, m.walletDetailsKeys.SendToken), key.Matches(msg, m.walletDetailsKeys.SendNFT), key.Matches(msg, m.walletDetailsKeys.Send1155), key.Matches(msg, m.walletDetailsKeys.Send1155Batch), key.Matches(msg, m.walletDetailsKeys.ApproveToken):

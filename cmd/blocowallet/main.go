@@ -146,6 +146,7 @@ func main() {
 	app.ConfigureMessageSigningFactory(func(context.Context) (ui.MessageSigningService, error) {
 		return evm.NewMessageSigningService(repo, softwareSigner, evm.MessageSigningOptions{ApprovalTTL: 2 * time.Minute})
 	})
+	configureWalletConnect(app, repo)
 	createEngine := func(ctx context.Context, network config.Network) (*evm.Engine, error) {
 		endpoint, err := network.ResolveRPCEndpoint(config.EnvironmentCredentialProvider{})
 		if err != nil {

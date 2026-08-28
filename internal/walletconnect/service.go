@@ -76,10 +76,11 @@ type pendingProposal struct {
 	expires  time.Time
 }
 
-// NewService creates a WalletConnect v2 service.
+// NewService creates a WalletConnect v2 service. The relay may be attached
+// later via AttachRelay; the store is required.
 func NewService(relay Relay, store SessionStore, options Options) (*Service, error) {
-	if relay == nil || store == nil {
-		return nil, fmt.Errorf("walletconnect: relay and store are required")
+	if store == nil {
+		return nil, fmt.Errorf("walletconnect: store is required")
 	}
 	service := &Service{relay: relay, store: store, proposals: make(map[int64]*pendingProposal), keys: make(map[string][]byte)}
 	service.now = options.Now
@@ -123,8 +124,17 @@ func (service *Service) SetKey(topic string, key []byte) error {
 	return nil
 }
 
+// AttachRelay binds a live relay transport after construction, enabling the
+// push loop and outbound publish/subscribe.
+func (service *Service) AttachRelay(relay Relay) {
+	service.relay = relay
+}
+
 // Run consumes relay subscriptions and delivers them until the context ends.
 func (service *Service) Run(ctx context.Context) {
+	if service.relay == nil {
+		return
+	}
 	for {
 		select {
 		case <-ctx.Done():
@@ -263,6 +273,16 @@ func (service *Service) ApproveProposal(ctx context.Context, proposalID int64, a
 // RejectProposal drops a pending proposal.
 func (service *Service) RejectProposal(proposalID int64) {
 	delete(service.proposals, proposalID)
+}
+
+// ListSessions delegates to the session store.
+func (service *Service) ListSessions(ctx context.Context, accountID string, includeRevoked bool) ([]Session, error) {
+	return service.store.ListSessions(ctx, accountID, includeRevoked)
+}
+
+// RevokeSession delegates to the session store.
+func (service *Service) RevokeSession(ctx context.Context, topic string, revokedAt int64) error {
+	return service.store.RevokeSession(ctx, topic, revokedAt)
 }
 
 // PendingProposal returns a pending proposal if it exists and is fresh.
