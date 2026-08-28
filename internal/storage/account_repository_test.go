@@ -214,6 +214,10 @@ func TestVaultRepositoryAppliesHistoryAndWatchGuardMigrations(t *testing.T) {
 		"DROP TRIGGER trg_message_signing_binding_immutable",
 		"DROP TRIGGER trg_message_signature_hash_write_once",
 		"DROP TABLE message_signing_records",
+		"DROP TRIGGER trg_fido2_credential_identity_immutable",
+		"DROP TRIGGER trg_fido2_challenge_binding_immutable",
+		"DROP TABLE fido2_credentials",
+		"DROP TABLE fido2_challenges",
 		"DROP TABLE message_signing_approvals",
 		"DROP TRIGGER trg_evm_effect_immutable",
 		"DROP TABLE evm_transaction_effects",
@@ -328,6 +332,16 @@ func TestVaultRepositoryAppliesERC721MigrationPreservingRecords(t *testing.T) {
 	}
 	if err := repository.db.Exec("ALTER TABLE evm_transactions DROP COLUMN token_id").Error; err != nil {
 		t.Fatal(err)
+	}
+	for _, statement := range []string{
+		"DROP TRIGGER trg_fido2_credential_identity_immutable",
+		"DROP TRIGGER trg_fido2_challenge_binding_immutable",
+		"DROP TABLE fido2_credentials",
+		"DROP TABLE fido2_challenges",
+	} {
+		if err := repository.db.Exec(statement).Error; err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := repository.db.Where("version >= ?", 10).Delete(&schemaMigration{}).Error; err != nil {
 		t.Fatal(err)

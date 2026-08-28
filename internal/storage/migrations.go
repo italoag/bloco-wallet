@@ -10,7 +10,7 @@ import (
 	"gorm.io/gorm"
 )
 
-const latestSchemaVersion uint = 12
+const latestSchemaVersion uint = 13
 
 type schemaMigration struct {
 	Version   uint      `gorm:"primaryKey"`
@@ -93,6 +93,7 @@ func runMigrations(database *gorm.DB, includeLegacy bool) error {
 			{version: 10, apply: migrateERC721Operation},
 			{version: 11, apply: migrateERC1155Effects},
 			{version: 12, apply: migrateContractCallOperation},
+			{version: 13, apply: migrateFIDO2Credentials},
 		}
 		for _, migration := range migrations {
 			if _, exists := applied[migration.version]; exists {
@@ -598,6 +599,48 @@ func migrateContractCallOperation(transaction *gorm.DB) error {
 		`CREATE TRIGGER trg_evm_effect_immutable
 			BEFORE UPDATE OF transaction_id, effect_index, token_id, amount ON evm_transaction_effects
 			BEGIN SELECT RAISE(ABORT, 'immutable EVM transaction effect'); END`,
+	}
+	for _, statement := range statements {
+		if err := transaction.Exec(statement).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func migrateFIDO2Credentials(transaction *gorm.DB) error {
+	statements := []string{
+		`CREATE TABLE fido2_credentials (
+			credential_id BLOB PRIMARY KEY NOT NULL CHECK(typeof(credential_id) = 'blob' AND length(credential_id) BETWEEN 16 AND 512),
+			rp_id TEXT NOT NULL CHECK(length(rp_id) BETWEEN 1 AND 128),
+			user_handle BLOB NOT NULL CHECK(typeof(user_handle) = 'blob' AND length(user_handle) BETWEEN 1 AND 64),
+			public_key BLOB NOT NULL CHECK(typeof(public_key) = 'blob' AND length(public_key) BETWEEN 1 AND 2048),
+			algorithm INTEGER NOT NULL CHECK(algorithm IN (-7, -8)),
+			sign_count INTEGER NOT NULL DEFAULT 0 CHECK(sign_count >= 0),
+			transports TEXT NOT NULL DEFAULT '[]' CHECK(length(transports) <= 1024),
+			created_at_ms INTEGER NOT NULL CHECK(created_at_ms >= 0),
+			last_used_at_ms INTEGER,
+			CHECK(json_valid(transports))
+		) STRICT`,
+		`CREATE TABLE fido2_challenges (
+			challenge_id TEXT PRIMARY KEY NOT NULL CHECK(length(challenge_id) = 36),
+			kind TEXT NOT NULL CHECK(kind IN ('register', 'authenticate')),
+			rp_id TEXT NOT NULL CHECK(length(rp_id) BETWEEN 1 AND 128),
+			origin TEXT NOT NULL CHECK(length(origin) BETWEEN 1 AND 512),
+			account_id TEXT CHECK(account_id IS NULL OR length(account_id) = 36),
+			user_handle BLOB CHECK(user_handle IS NULL OR (typeof(user_handle) = 'blob' AND length(user_handle) BETWEEN 1 AND 64)),
+			challenge BLOB NOT NULL CHECK(typeof(challenge) = 'blob' AND length(challenge) = 32),
+			expires_at_ms INTEGER NOT NULL CHECK(expires_at_ms > created_at_ms),
+			used INTEGER NOT NULL DEFAULT 0 CHECK(used IN (0, 1)),
+			created_at_ms INTEGER NOT NULL CHECK(created_at_ms >= 0)
+		) STRICT`,
+		`CREATE INDEX ix_fido2_challenge_expiry ON fido2_challenges(used, expires_at_ms)`,
+		`CREATE TRIGGER trg_fido2_credential_identity_immutable
+			BEFORE UPDATE OF credential_id, rp_id, user_handle, public_key, algorithm ON fido2_credentials
+			BEGIN SELECT RAISE(ABORT, 'immutable FIDO2 credential identity'); END`,
+		`CREATE TRIGGER trg_fido2_challenge_binding_immutable
+			BEFORE UPDATE OF challenge_id, kind, rp_id, origin, account_id, challenge ON fido2_challenges
+			BEGIN SELECT RAISE(ABORT, 'immutable FIDO2 challenge binding'); END`,
 	}
 	for _, statement := range statements {
 		if err := transaction.Exec(statement).Error; err != nil {

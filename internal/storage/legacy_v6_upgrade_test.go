@@ -72,6 +72,10 @@ func TestVaultRepositoryUpgradesLegacyV6Schema(t *testing.T) {
 		"DROP TRIGGER trg_message_signature_hash_write_once",
 		"DROP TABLE message_signing_approvals",
 		"DROP TABLE message_signing_records",
+		"DROP TRIGGER trg_fido2_credential_identity_immutable",
+		"DROP TRIGGER trg_fido2_challenge_binding_immutable",
+		"DROP TABLE fido2_credentials",
+		"DROP TABLE fido2_challenges",
 	} {
 		if err := repository.db.Exec(statement).Error; err != nil {
 			t.Fatal(err)
