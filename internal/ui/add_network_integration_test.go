@@ -4,6 +4,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,6 +14,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"blocowallet/internal/blockchain"
+	"blocowallet/internal/constants"
+	"blocowallet/pkg/config"
 	"blocowallet/pkg/logger"
 )
 
@@ -73,6 +76,87 @@ func drive(t *testing.T, c *AddNetworkComponent, msg tea.Msg) {
 	}
 }
 
+func TestAddNetworkKeyboardFocusReachesDecimalsAndRPCReference(t *testing.T) {
+	component := NewAddNetworkComponent()
+	for _, step := range []struct {
+		value string
+		read  func() string
+	}{
+		{"Custom", func() string { return component.nameInput.Value() }},
+		{"123", func() string { return component.chainIDInput.Value() }},
+		{"CUS", func() string { return component.symbolInput.Value() }},
+		{"6", func() string { return component.decimalsInput.Value() }},
+		{"env:BLOCO_TEST_RPC", func() string { return component.rpcEndpointInput.Value() }},
+	} {
+		_, _ = component.Update(tea.KeyMsg{Type: tea.KeyTab})
+		_, _ = component.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(step.value)})
+		if step.read() != step.value {
+			t.Fatalf("keyboard input did not reach focused field: got %q, want %q", step.read(), step.value)
+		}
+	}
+}
+
+func TestAddNetworkEscapeCancelsAndStaleResultIsIgnored(t *testing.T) {
+	component := NewAddNetworkComponent()
+	component.adding = true
+	component.searchGeneration = 7
+	model := &CLIModel{currentView: constants.AddNetworkView, addNetworkComponent: component, styles: createStyles()}
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if model.currentView != constants.NetworkMenuView || model.addNetworkComponent.operationContext.Err() == nil {
+		t.Fatal("global escape did not cancel add-network operation")
+	}
+	model.addNetworkComponent = NewAddNetworkComponent()
+	model.currentView = constants.AddNetworkView
+	_, _ = model.updateAddNetwork(networkCommitResultMsg{componentID: component.id, operationID: 7, config: &config.Config{}})
+	if model.currentView != constants.AddNetworkView {
+		t.Fatal("stale add-network result changed current view")
+	}
+}
+
+func TestAddNetworkClearsAuthoritativeDecimalsWhenIdentityChanges(t *testing.T) {
+	component := NewAddNetworkComponent()
+	component.isSearchFocused = false
+	component.focusIndex = 2
+	component.chainIDInput.SetValue("1")
+	component.decimalsInput.SetValue("18")
+	component.nativeDecimals = 18
+	component.nativeDecimalsSet = true
+	component.updateFocus()
+	_, _ = component.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}})
+	if component.nativeDecimalsSet || component.decimalsInput.Value() != "" {
+		t.Fatal("stale native decimals survived chain identity edit")
+	}
+}
+
+func TestAddNetworkAcceptsCredentialReferenceWithoutPersistingSecret(t *testing.T) {
+	rpcServer := newRPCServer(t, "0x1", nil)
+	defer rpcServer.Close()
+	parsedRPC, _ := url.Parse(rpcServer.URL)
+	ConfigureRPCGateway(blockchain.NewRPCGateway(blockchain.RPCGatewayOptions{AllowedLocalTargets: []string{parsedRPC.Host}}))
+	defer ConfigureRPCGateway(nil)
+	t.Setenv("BLOCO_TEST_NETWORK_RPC", rpcServer.URL)
+	component := NewAddNetworkComponent()
+	component.isSearchFocused = false
+	component.focusIndex = 1
+	component.nameInput.SetValue("Referenced network")
+	component.chainIDInput.SetValue("1")
+	component.symbolInput.SetValue("ETH")
+	component.decimalsInput.SetValue("18")
+	component.rpcEndpointInput.SetValue("env:BLOCO_TEST_NETWORK_RPC")
+	_, command := component.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if command == nil {
+		t.Fatal("referenced endpoint did not submit")
+	}
+	message := command()
+	request, ok := message.(AddNetworkRequestMsg)
+	if !ok {
+		t.Fatalf("expected AddNetworkRequestMsg, got %T", message)
+	}
+	if request.RPCEndpoint != "" || request.RPCEndpointRef != "env:BLOCO_TEST_NETWORK_RPC" {
+		t.Fatalf("credential value crossed persistence boundary: %+v", request)
+	}
+}
+
 func TestIntegration_AddNetwork_EndToEnd_CrossArch(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
@@ -100,6 +184,9 @@ func TestIntegration_AddNetwork_EndToEnd_CrossArch(t *testing.T) {
 			// RPC server that always returns chainId 0x1
 			rpcSrv := newRPCServer(t, "0x1", nil)
 			defer rpcSrv.Close()
+			parsedRPC, _ := url.Parse(rpcSrv.URL)
+			ConfigureRPCGateway(blockchain.NewRPCGateway(blockchain.RPCGatewayOptions{AllowedLocalTargets: []string{parsedRPC.Host}}))
+			defer ConfigureRPCGateway(nil)
 
 			// Build component
 			c := NewAddNetworkComponent()
@@ -118,6 +205,7 @@ func TestIntegration_AddNetwork_EndToEnd_CrossArch(t *testing.T) {
 
 			// Fill network data directly with our test RPC URL
 			c.fillNetworkData(sugg, rpcSrv.URL)
+			c.decimalsInput.SetValue("18")
 
 			// Move focus off search to enable form submission
 			c.isSearchFocused = false

@@ -3,14 +3,19 @@
 
 package wallet
 
-import "github.com/ethereum/go-ethereum/accounts/keystore"
+import (
+	"time"
+
+	"github.com/ethereum/go-ethereum/accounts/keystore"
+)
 
 // Test-optimized scrypt parameters for development
 // These parameters are much faster but less secure - only for testing!
 const (
 	// Fast test parameters (about 10x faster than standard)
-	TestScryptN = keystore.LightScryptN // 4096 instead of 262144
-	TestScryptP = keystore.LightScryptP // 1 instead of 1
+	TestScryptN          = keystore.LightScryptN // 4096 instead of 262144
+	TestScryptP          = keystore.LightScryptP // 1 instead of 1
+	TestOperationTimeout = 5 * time.Second
 
 	// Medium test parameters (about 4x faster than standard)
 	TestScryptNMedium = 65536 // 1/4 of standard

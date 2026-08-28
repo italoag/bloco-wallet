@@ -5,12 +5,50 @@ import (
 	"blocowallet/pkg/config"
 	"blocowallet/pkg/localization"
 	"fmt"
+	"sort"
 	"strconv"
+	"strings"
 
+	"github.com/charmbracelet/bubbles/help"
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
+
+type NetworkListKeyMap struct {
+	Up         key.Binding
+	Down       key.Binding
+	Add        key.Binding
+	Edit       key.Binding
+	Delete     key.Binding
+	Refresh    key.Binding
+	Revalidate key.Binding
+	Back       key.Binding
+	ToggleHelp key.Binding
+}
+
+func newNetworkListKeyMap() NetworkListKeyMap {
+	return NetworkListKeyMap{
+		Up:         key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "up")),
+		Down:       key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "down")),
+		Add:        key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "Add Network")),
+		Edit:       key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "Edit Network")),
+		Delete:     key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "Delete Network")),
+		Refresh:    key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "Refresh")),
+		Revalidate: key.NewBinding(key.WithKeys("v"), key.WithHelp("v", "Revalidate")),
+		Back:       key.NewBinding(key.WithKeys("esc", "backspace"), key.WithHelp("esc", "Back")),
+		ToggleHelp: key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "More help")),
+	}
+}
+
+func (keyMap NetworkListKeyMap) ShortHelp() []key.Binding {
+	return []key.Binding{keyMap.Add, keyMap.Edit, keyMap.Delete, keyMap.Refresh, keyMap.Revalidate, keyMap.Back}
+}
+
+func (keyMap NetworkListKeyMap) FullHelp() [][]key.Binding {
+	return [][]key.Binding{{keyMap.Up, keyMap.Down}, {keyMap.Add, keyMap.Edit, keyMap.Delete}, {keyMap.Refresh, keyMap.Revalidate}, {keyMap.ToggleHelp, keyMap.Back}}
+}
 
 // NetworkListComponent represents the network list component
 type NetworkListComponent struct {
@@ -18,7 +56,11 @@ type NetworkListComponent struct {
 	width  int
 	height int
 	table  table.Model
+	help   help.Model
+	keys   NetworkListKeyMap
 	err    error
+	busy   bool
+	status string
 
 	// Cached classification info to avoid network calls during View rendering
 	networksInfo map[string]NetworkInfo
@@ -31,8 +73,10 @@ type NetworkListComponent struct {
 func NewNetworkListComponent() NetworkListComponent {
 	c := NetworkListComponent{
 		id:               "network-list",
-		chainListService: blockchain.NewChainListService(),
+		chainListService: getChainListService(),
 		networksInfo:     make(map[string]NetworkInfo),
+		help:             help.New(),
+		keys:             newNetworkListKeyMap(),
 	}
 	c.initTable()
 	return c
@@ -43,7 +87,7 @@ func (c *NetworkListComponent) initTable() {
 	columns := []table.Column{
 		{Title: "#", Width: 4},
 		{Title: localization.Labels["network_name"], Width: 18},
-		{Title: "Type", Width: 12},
+		{Title: "Type / Identity / Privacy", Width: 36},
 		{Title: localization.Labels["chain_id"], Width: 10},
 		{Title: localization.Labels["symbol"], Width: 8},
 		{Title: localization.Labels["status"], Width: 10},
@@ -78,6 +122,7 @@ func (c *NetworkListComponent) initTable() {
 func (c *NetworkListComponent) SetSize(width, height int) {
 	c.width = width
 	c.height = height
+	c.help.Width = max(0, width-4)
 
 	// Only set the table height and width if there are rows to display
 	// This prevents "index out of range" errors when the table is empty
@@ -91,6 +136,28 @@ func (c *NetworkListComponent) SetSize(width, height int) {
 // SetError sets an error state
 func (c *NetworkListComponent) SetError(err error) {
 	c.err = err
+	c.busy = false
+}
+
+func (c *NetworkListComponent) SetBusy(status string) {
+	c.busy = true
+	c.status = status
+	c.err = nil
+}
+
+func (c *NetworkListComponent) SetStatus(status string) {
+	c.busy = false
+	c.status = status
+	c.err = nil
+}
+
+func (c *NetworkListComponent) updateKeyAvailability() {
+	hasSelection := len(c.table.Rows()) > 0 && c.GetSelectedNetworkKey() != ""
+	c.keys.Edit.SetEnabled(hasSelection && !c.busy)
+	c.keys.Delete.SetEnabled(hasSelection && !c.busy)
+	c.keys.Revalidate.SetEnabled(hasSelection && !c.busy)
+	c.keys.Add.SetEnabled(!c.busy)
+	c.keys.Refresh.SetEnabled(!c.busy)
 }
 
 // UpdateNetworks updates the table with networks from the configuration
@@ -107,13 +174,25 @@ func (c *NetworkListComponent) UpdateNetworks(cfg *config.Config) {
 		c.SetError(fmt.Errorf("failed to load network information: %v", err))
 		return
 	}
+	c.UpdateNetworksWithInfo(cfg, networksWithInfo)
+}
+
+func (c *NetworkListComponent) UpdateNetworksWithInfo(cfg *config.Config, networksWithInfo map[string]NetworkInfo) {
+	if cfg == nil || cfg.Networks == nil {
+		return
+	}
 	// Cache to avoid repeated network calls during table navigation/render
 	c.networksInfo = networksWithInfo
 
 	var rows []table.Row
+	keys := make([]string, 0, len(cfg.Networks))
+	for key := range cfg.Networks {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
 
-	i := 1
-	for key, network := range cfg.Networks {
+	for index, networkKey := range keys {
+		network := cfg.Networks[networkKey]
 		status := localization.Labels["inactive"]
 		if network.IsActive {
 			status = localization.Labels["active"]
@@ -121,31 +200,28 @@ func (c *NetworkListComponent) UpdateNetworks(cfg *config.Config) {
 
 		// Get network type and source information
 		networkType := "Custom"
-		typeIcon := "🔧"
-		if networkInfo, exists := networksWithInfo[key]; exists {
-			switch networkInfo.Type {
-			case blockchain.NetworkTypeStandard:
-				networkType = "Standard"
-				typeIcon = "✅"
-				if networkInfo.IsValidated {
-					networkType = "Standard ✓"
-				}
-			case blockchain.NetworkTypeCustom:
-				networkType = "Custom"
-				typeIcon = "🔧"
+		identity := "not checked now"
+		if networkInfo, exists := networksWithInfo[networkKey]; exists {
+			if networkInfo.Type == blockchain.NetworkTypeStandard {
+				networkType = "Registry claim"
 			}
+			if networkInfo.PreviouslyValidated {
+				identity = "previously observed"
+			}
+			networkType = fmt.Sprintf("%s / %s / health:%s", networkType, identity, safeShort(networkInfo.CurrentHealth))
+		} else {
+			networkType = fmt.Sprintf("%s / %s", networkType, identity)
 		}
 
 		rows = append(rows, table.Row{
-			strconv.Itoa(i),
-			network.Name,
-			fmt.Sprintf("%s %s", typeIcon, networkType),
+			strconv.Itoa(index + 1),
+			safeShort(network.Name),
+			safeShort(networkType),
 			strconv.FormatInt(network.ChainID, 10),
-			network.Symbol,
-			status,
-			key, // Hidden column for network key
+			safeShort(network.Symbol),
+			safeShort(status),
+			networkKey, // Hidden column for network key
 		})
-		i++
 	}
 
 	c.table.SetRows(rows)
@@ -154,6 +230,8 @@ func (c *NetworkListComponent) UpdateNetworks(cfg *config.Config) {
 	if len(rows) > 0 {
 		c.table.SetCursor(0)
 	}
+	c.busy = false
+	c.updateKeyAvailability()
 }
 
 // GetSelectedNetworkKey returns the key of the selected network
@@ -195,6 +273,10 @@ func (c *NetworkListComponent) Init() tea.Cmd {
 
 // Update handles messages for the network list component
 func (c *NetworkListComponent) Update(msg tea.Msg) (*NetworkListComponent, tea.Cmd) {
+	if keyMessage, ok := msg.(tea.KeyMsg); ok && key.Matches(keyMessage, c.keys.ToggleHelp) {
+		c.help.ShowAll = !c.help.ShowAll
+		return c, nil
+	}
 	var cmd tea.Cmd
 	c.table, cmd = c.table.Update(msg)
 	return c, cmd
@@ -211,7 +293,7 @@ func (c *NetworkListComponent) View() string {
 		Background(lipgloss.Color("#874BFD")).
 		MarginLeft(2).
 		MarginBottom(1)
-	content = headerStyle.Render("🌐 " + localization.Labels["networks"])
+	content = headerStyle.Render(localization.Labels["networks"])
 	content += "\n\n"
 
 	// Table
@@ -222,13 +304,19 @@ func (c *NetworkListComponent) View() string {
 		content += "No networks found. Add a network to get started."
 	}
 	content += "\n\n"
+	if c.busy {
+		content += lipgloss.NewStyle().Foreground(lipgloss.Color("#E5C07B")).MarginLeft(2).Render(safeInline(c.status))
+		content += "\n\n"
+	}
 
 	// Error message
 	if c.err != nil {
 		errorStyle := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#FF0000")).
 			MarginLeft(2)
-		content += errorStyle.Render(fmt.Sprintf("❌ %s", c.err.Error()))
+		content += errorStyle.Render("Network operation failed: " + safeInline(c.err.Error()))
+		content += "\n"
+		content += errorStyle.Render("Press r to reload, v to revalidate the selected provider, or e to correct its settings.")
 		content += "\n\n"
 	}
 
@@ -243,53 +331,45 @@ func (c *NetworkListComponent) View() string {
 				MarginLeft(2).
 				MarginBottom(1)
 
-			var details string
-			switch selectedNetworkInfo.Type {
-			case blockchain.NetworkTypeStandard:
-				details = fmt.Sprintf("📋 Selected: Standard Network (Source: %s)", selectedNetworkInfo.Source)
+			registryStatus := "Not listed or not verified"
+			if selectedNetworkInfo.Type == blockchain.NetworkTypeStandard {
+				registryStatus = "Stored ChainList claim"
 				if selectedNetworkInfo.ChainInfo != nil {
-					details += fmt.Sprintf(" • Verified on ChainList as '%s'", selectedNetworkInfo.ChainInfo.Name)
-				}
-			case blockchain.NetworkTypeCustom:
-				details = fmt.Sprintf("📋 Selected: Custom Network (Source: %s)", selectedNetworkInfo.Source)
-				if !selectedNetworkInfo.IsValidated {
-					details += " • Not verified on ChainList"
+					registryStatus = "Listed as " + safeShort(selectedNetworkInfo.ChainInfo.Name)
 				}
 			}
+			identityStatus := "Not verified in this session"
+			if selectedNetworkInfo.IsValidated {
+				identityStatus = "Verified against the configured chain ID now"
+			} else if selectedNetworkInfo.PreviouslyValidated {
+				identityStatus = "Previously verified; press v to verify again"
+			}
+			details := strings.Join([]string{
+				"Selected network",
+				"Source: " + safeShort(selectedNetworkInfo.Source),
+				"Registry: " + registryStatus,
+				"Chain identity: " + identityStatus,
+				"Health: " + safeShort(selectedNetworkInfo.CurrentHealth),
+				"Privacy tracking: " + safeShort(selectedNetworkInfo.PrivacyTracking),
+				"Provider confidence: " + safeShort(selectedNetworkInfo.QuorumConfidence),
+				"Press v to revalidate or e to correct the provider settings.",
+			}, "\n")
 			content += detailStyle.Render(details)
 			content += "\n"
 		}
 	}
 
 	// Network type legend
-	legendStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#888888")).
-		MarginLeft(2).
-		MarginBottom(1)
-
-	legend := "Network Types: ✅ Standard (ChainList verified) • 🔧 Custom (Manual configuration)"
-	content += legendStyle.Render(legend)
-	content += "\n"
+	if c.status != "" && !c.busy {
+		content += lipgloss.NewStyle().Foreground(lipgloss.Color("#98C379")).MarginLeft(2).Render(safeInline(c.status))
+		content += "\n"
+	}
 
 	// Instructions
-	infoStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#666666")).
-		MarginLeft(2)
-
-	content += infoStyle.Render(localization.Labels["network_list_instructions"])
 	content += "\n"
 
 	// Footer
-	footerStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#874BFD")).
-		MarginTop(1)
-
-	footer := footerStyle.Render("a: " + localization.Labels["add_network"] + " • ")
-	footer += footerStyle.Render("e: " + localization.Labels["edit_network"] + " • ")
-	footer += footerStyle.Render("d: " + localization.Labels["delete_network"] + " • ")
-	footer += footerStyle.Render("esc: " + localization.Labels["back"])
-
-	content += footer
+	content += c.help.View(c.keys)
 
 	return content
 }

@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 // MockConfigurationManager is a mock implementation of ConfigurationManagerInterface for testing
@@ -148,6 +149,63 @@ func TestNetworkManager_GetNetwork(t *testing.T) {
 	mockConfigManager.AssertExpectations(t)
 }
 
+func TestNetworkManagerPersistsStandardCredentialReferenceEndToEnd(t *testing.T) {
+	t.Setenv("BLOCO_WALLET_APP_APP_DIR", t.TempDir())
+	t.Setenv("BLOCO_TEST_STANDARD_RPC", "https://rpc.example.com/v3/super-secret-token")
+	manager := config.NewConfigurationManager()
+	_, err := manager.LoadConfiguration()
+	require.NoError(t, err)
+	chainList := &MockChainListService{}
+	chainInfo := &blockchain.ChainInfo{
+		ChainID: 1,
+		Name:    "Ethereum",
+		NativeCurrency: struct {
+			Name     string `json:"name"`
+			Symbol   string `json:"symbol"`
+			Decimals int    `json:"decimals"`
+		}{Name: "Ether", Symbol: "ETH", Decimals: 18},
+		RPC: []blockchain.RPCEndpoint{{URL: "https://rpc.example.com/v3/super-secret-token", Tracking: "none"}},
+	}
+	chainList.On("GetChainInfo", 1).Return(chainInfo, nil)
+	chainList.On("ValidateRPCEndpoint", "https://rpc.example.com/v3/super-secret-token").Return(nil)
+	chainList.On("GetChainIDFromRPC", "https://rpc.example.com/v3/super-secret-token").Return(1, nil)
+	networkManager := NewNetworkManager(manager, chainList)
+	err = networkManager.AddNetwork(config.Network{Name: "Ethereum", ChainID: 1, Symbol: "ETH", RPCEndpointRef: "env:BLOCO_TEST_STANDARD_RPC", IsActive: true})
+	require.NoError(t, err)
+	reloaded, err := manager.ReloadConfiguration()
+	require.NoError(t, err)
+	saved := reloaded.Networks["standard_ethereum_1"]
+	assert.Empty(t, saved.RPCEndpoint)
+	assert.Equal(t, "env:BLOCO_TEST_STANDARD_RPC", saved.RPCEndpointRef)
+	data, err := os.ReadFile(manager.GetConfigPath())
+	require.NoError(t, err)
+	assert.NotContains(t, string(data), "super-secret-token")
+}
+
+func TestNetworkManagerPersistsCustomCredentialReferenceEndToEnd(t *testing.T) {
+	t.Setenv("BLOCO_WALLET_APP_APP_DIR", t.TempDir())
+	t.Setenv("BLOCO_TEST_CUSTOM_RPC", "https://custom.example.com/v2/super-secret-token")
+	manager := config.NewConfigurationManager()
+	_, err := manager.LoadConfiguration()
+	require.NoError(t, err)
+	chainList := &MockChainListService{}
+	chainList.On("GetChainInfo", 123).Return(nil, assert.AnError)
+	chainList.On("ValidateRPCEndpoint", "https://custom.example.com/v2/super-secret-token").Return(nil)
+	chainList.On("GetChainIDFromRPC", "https://custom.example.com/v2/super-secret-token").Return(123, nil)
+	networkManager := NewNetworkManager(manager, chainList)
+	err = networkManager.AddNetwork(config.Network{Name: "Custom", ChainID: 123, Symbol: "CUS", NativeDecimals: 6, NativeDecimalsSet: true, RPCEndpointRef: "env:BLOCO_TEST_CUSTOM_RPC", IsActive: true})
+	require.NoError(t, err)
+	reloaded, err := manager.ReloadConfiguration()
+	require.NoError(t, err)
+	saved := reloaded.Networks["custom_custom_123"]
+	assert.Empty(t, saved.RPCEndpoint)
+	assert.Equal(t, "env:BLOCO_TEST_CUSTOM_RPC", saved.RPCEndpointRef)
+	assert.Equal(t, 6, saved.NativeDecimals)
+	data, err := os.ReadFile(manager.GetConfigPath())
+	require.NoError(t, err)
+	assert.NotContains(t, string(data), "super-secret-token")
+}
+
 func TestNetworkManager_AddNetwork_Custom(t *testing.T) {
 	mockConfigManager := &MockConfigurationManager{}
 	mockChainListService := &MockChainListService{}
@@ -161,6 +219,8 @@ func TestNetworkManager_AddNetwork_Custom(t *testing.T) {
 
 	// Mock chainlist response - network not found (will be classified as custom)
 	mockChainListService.On("GetChainInfo", 12345).Return(nil, assert.AnError)
+	mockChainListService.On("ValidateRPCEndpoint", "https://test-rpc.example.com").Return(nil)
+	mockChainListService.On("GetChainIDFromRPC", "https://test-rpc.example.com").Return(12345, nil)
 
 	nm := NewNetworkManager(mockConfigManager, mockChainListService)
 
@@ -182,6 +242,28 @@ func TestNetworkManager_AddNetwork_Custom(t *testing.T) {
 	savedConfig := mockConfigManager.config
 	assert.NotNil(t, savedConfig)
 	assert.Contains(t, savedConfig.Networks, "custom_test_network_12345")
+}
+
+func TestNetworkManager_UpdateNetworkRekeysAndPreservesReference(t *testing.T) {
+	configManager := &MockConfigurationManager{}
+	chainList := &MockChainListService{}
+	cfg := &config.Config{Networks: map[string]config.Network{
+		"custom_old_123": {Name: "Old", ChainID: 123, Symbol: "CUS", NativeDecimals: 6, NativeDecimalsSet: true, RPCEndpointRef: "env:BLOCO_TEST_EDIT_RPC", IsActive: false},
+	}}
+	t.Setenv("BLOCO_TEST_EDIT_RPC", "https://rpc.example.com/v2/credential")
+	configManager.On("LoadConfiguration").Return(cfg, nil)
+	configManager.On("SaveConfiguration", mock.AnythingOfType("*config.Config")).Return(nil)
+	chainList.On("GetChainInfo", 123).Return(nil, assert.AnError)
+	chainList.On("ValidateRPCEndpoint", "https://rpc.example.com/v2/credential").Return(nil)
+	chainList.On("GetChainIDFromRPC", "https://rpc.example.com/v2/credential").Return(123, nil)
+	manager := NewNetworkManager(configManager, chainList)
+	err := manager.UpdateNetwork("custom_old_123", config.Network{Name: "Updated", ChainID: 123, Symbol: "CUS", NativeDecimals: 6, NativeDecimalsSet: true, RPCEndpointRef: "env:BLOCO_TEST_EDIT_RPC", IsActive: false})
+	require.NoError(t, err)
+	assert.NotContains(t, configManager.config.Networks, "custom_old_123")
+	updated, exists := configManager.config.Networks["custom_updated_123"]
+	assert.True(t, exists)
+	assert.Equal(t, "env:BLOCO_TEST_EDIT_RPC", updated.RPCEndpointRef)
+	assert.False(t, updated.IsActive)
 }
 
 func TestNetworkManager_RemoveNetwork(t *testing.T) {
@@ -245,6 +327,8 @@ func TestNetworkManager_Integration(t *testing.T) {
 
 	// Mock chainlist response for custom network
 	mockChainListService.On("GetChainInfo", 12345).Return(nil, assert.AnError)
+	mockChainListService.On("ValidateRPCEndpoint", "https://test-rpc.example.com").Return(nil)
+	mockChainListService.On("GetChainIDFromRPC", "https://test-rpc.example.com").Return(12345, nil)
 
 	nm := NewNetworkManager(configManager, mockChainListService)
 

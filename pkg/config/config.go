@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"embed"
 	"fmt"
 	"os"
@@ -16,40 +17,56 @@ var defaultConfig embed.FS
 
 // Config holds all application configuration
 type Config struct {
-	AppDir       string
-	Language     string
-	WalletsDir   string
-	DatabasePath string
-	LocaleDir    string
-	Fonts        []string
-	Database     DatabaseConfig
-	Security     SecurityConfig
-	Networks     map[string]Network
+	AppDir        string
+	Language      string
+	WalletsDir    string
+	DatabasePath  string
+	LocaleDir     string
+	Fonts         []string
+	Database      DatabaseConfig
+	Security      SecurityConfig
+	NetworkPolicy NetworkPolicyConfig
+	Networks      map[string]Network
+	revision      [32]byte
+	hasRevision   bool
 }
 
 // DatabaseConfig holds database-specific configuration
 type DatabaseConfig struct {
-	Type string // sqlite, postgres, mysql
-	DSN  string // Data Source Name (connection string)
+	Type   string // sqlite, postgres, mysql
+	DSN    string // Data Source Name (connection string)
+	DSNRef string
 }
 
 // SecurityConfig holds security-specific configuration
 type SecurityConfig struct {
-	Argon2Time    uint32
-	Argon2Memory  uint32
-	Argon2Threads uint8
-	Argon2KeyLen  uint32
-	SaltLength    uint32
+	Argon2Time                   uint32
+	Argon2Memory                 uint32
+	Argon2Threads                uint8
+	Argon2KeyLen                 uint32
+	SaltLength                   uint32
+	TransactionAuthorizationMode string
+}
+
+type NetworkPolicyConfig struct {
+	AllowedLocalTargets []string
 }
 
 // Network creates a new Config instance with default values
 type Network struct {
-	Name        string
-	RPCEndpoint string // RPC endpoint for the network
-	ChainID     int64
-	Symbol      string
-	Explorer    string
-	IsActive    bool
+	Name               string
+	RPCEndpoint        string // RPC endpoint for the network
+	RPCEndpointRef     string
+	ChainID            int64
+	Symbol             string
+	NativeDecimals     int
+	NativeDecimalsSet  bool
+	ConfirmationTarget uint64
+	Explorer           string
+	IsActive           bool
+	RegistryListed     bool
+	IdentityValidated  bool
+	Tracking           string
 }
 
 // LoadConfig loads the configuration from a TOML file using Viper
@@ -71,34 +88,42 @@ func LoadConfig(appDir string) (*Config, error) {
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 
-	// Check if a config file exists
-	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		// Create a config directory if it doesn't exist
-		if err := os.MkdirAll(appDir, 0700); err != nil {
-			return nil, fmt.Errorf("failed to create config directory: %w", err)
-		}
-
-		// Read default config
+	if err := ensurePrivateConfigDirectory(appDir); err != nil {
+		return nil, fmt.Errorf("failed to secure config directory: %w", err)
+	}
+	unlock, err := lockConfigFile(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("lock configuration: %w", err)
+	}
+	defer unlock()
+	if err := validatePrivateConfigPath(configPath, true); err != nil {
+		return nil, err
+	}
+	if _, err := os.Lstat(configPath); os.IsNotExist(err) {
 		defaultConfigData, err := defaultConfig.ReadFile("default_config.toml")
 		if err != nil {
 			return nil, fmt.Errorf("failed to read default config: %w", err)
 		}
-
-		// Write default config to file
-		if err := os.WriteFile(configPath, defaultConfigData, 0600); err != nil {
+		if err := writeAtomicConfig(configPath, defaultConfigData, false); err != nil && !IsConfigCommitted(err) {
 			return nil, fmt.Errorf("failed to write default config: %w", err)
 		}
+	} else if err != nil {
+		return nil, err
 	}
 
-	if err := os.Chmod(appDir, 0700); err != nil {
-		return nil, fmt.Errorf("failed to secure config directory: %w", err)
-	}
-	if err := os.Chmod(configPath, 0600); err != nil {
+	if err := secureConfigPermissions(configPath, false); err != nil {
 		return nil, fmt.Errorf("failed to secure config file: %w", err)
 	}
 
+	if err := validatePrivateConfigPath(configPath, false); err != nil {
+		return nil, err
+	}
+	data, err := readPrivateConfigFile(configPath)
+	if err != nil {
+		return nil, err
+	}
 	// Read the config file
-	if err := v.ReadInConfig(); err != nil {
+	if err := v.ReadConfig(bytes.NewReader(data)); err != nil {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
 
@@ -111,17 +136,20 @@ func LoadConfig(appDir string) (*Config, error) {
 		LocaleDir:    v.GetString("app.locale_dir"),
 		Fonts:        v.GetStringSlice("fonts.available"),
 		Database: DatabaseConfig{
-			Type: v.GetString("database.type"),
-			DSN:  v.GetString("database.dsn"),
+			Type:   v.GetString("database.type"),
+			DSN:    v.GetString("database.dsn"),
+			DSNRef: v.GetString("database.dsn_ref"),
 		},
 		Security: SecurityConfig{
-			Argon2Time:    v.GetUint32("security.argon2_time"),
-			Argon2Memory:  v.GetUint32("security.argon2_memory"),
-			Argon2Threads: uint8(v.GetUint("security.argon2_threads")),
-			Argon2KeyLen:  v.GetUint32("security.argon2_key_len"),
-			SaltLength:    v.GetUint32("security.salt_length"),
+			Argon2Time:                   v.GetUint32("security.argon2_time"),
+			Argon2Memory:                 v.GetUint32("security.argon2_memory"),
+			Argon2Threads:                uint8(v.GetUint("security.argon2_threads")),
+			Argon2KeyLen:                 v.GetUint32("security.argon2_key_len"),
+			SaltLength:                   v.GetUint32("security.salt_length"),
+			TransactionAuthorizationMode: v.GetString("security.transaction_authorization_mode"),
 		},
-		Networks: make(map[string]Network),
+		NetworkPolicy: NetworkPolicyConfig{AllowedLocalTargets: v.GetStringSlice("network_policy.allowed_local_targets")},
+		Networks:      make(map[string]Network),
 	}
 
 	// Load networks from config
@@ -129,12 +157,19 @@ func LoadConfig(appDir string) (*Config, error) {
 	for key := range networksMap {
 		networkKey := "networks." + key
 		network := Network{
-			Name:        v.GetString(networkKey + ".name"),
-			RPCEndpoint: v.GetString(networkKey + ".rpc_endpoint"),
-			ChainID:     v.GetInt64(networkKey + ".chain_id"),
-			Symbol:      v.GetString(networkKey + ".symbol"),
-			Explorer:    v.GetString(networkKey + ".explorer"),
-			IsActive:    v.GetBool(networkKey + ".is_active"),
+			Name:               v.GetString(networkKey + ".name"),
+			RPCEndpoint:        v.GetString(networkKey + ".rpc_endpoint"),
+			RPCEndpointRef:     v.GetString(networkKey + ".rpc_endpoint_ref"),
+			ChainID:            v.GetInt64(networkKey + ".chain_id"),
+			Symbol:             v.GetString(networkKey + ".symbol"),
+			NativeDecimals:     v.GetInt(networkKey + ".native_decimals"),
+			NativeDecimalsSet:  v.GetBool(networkKey + ".native_decimals_set"),
+			ConfirmationTarget: v.GetUint64(networkKey + ".confirmation_target"),
+			Explorer:           v.GetString(networkKey + ".explorer"),
+			IsActive:           v.GetBool(networkKey + ".is_active"),
+			RegistryListed:     v.GetBool(networkKey + ".registry_listed"),
+			IdentityValidated:  v.GetBool(networkKey + ".identity_validated"),
+			Tracking:           v.GetString(networkKey + ".tracking"),
 		}
 		cfg.Networks[key] = network
 	}
@@ -203,8 +238,9 @@ func LoadConfig(appDir string) (*Config, error) {
 	if legacy := os.Getenv("BLOCO_WALLET_DATABASE_TYPE"); legacy != "" {
 		cfg.Database.Type = legacy
 	}
-	if legacy := os.Getenv("BLOCO_WALLET_DATABASE_DSN"); legacy != "" {
-		cfg.Database.DSN = legacy
+	if _, exists := os.LookupEnv("BLOCO_WALLET_DATABASE_DSN"); exists {
+		cfg.Database.DSN = ""
+		cfg.Database.DSNRef = "env:BLOCO_WALLET_DATABASE_DSN"
 	}
 
 	// Set default values for security if not provided
@@ -223,7 +259,13 @@ func LoadConfig(appDir string) (*Config, error) {
 	if cfg.Security.SaltLength == 0 {
 		cfg.Security.SaltLength = 16
 	}
+	if cfg.Security.TransactionAuthorizationMode == "" {
+		cfg.Security.TransactionAuthorizationMode = "password_per_transaction"
+	}
 
+	if _, err := marshalPersistentConfig(cfg); err != nil {
+		return nil, fmt.Errorf("invalid configuration: %w", err)
+	}
 	return cfg, nil
 }
 

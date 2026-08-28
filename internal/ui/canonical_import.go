@@ -105,11 +105,15 @@ func newCanonicalImportState(method wallet.ImportMethod) *canonicalImportState {
 			newCanonicalField("encrypted_path", "Absolute Bloco encrypted export path", false, false, 1024),
 			newCanonicalField("source_password", "Encrypted export password", false, true, constants.PasswordCharLimit),
 		)
+	case wallet.ImportMethodWatchOnly:
+		state.fields = append(state.fields, newCanonicalField("address", "EVM address", false, false, 42))
 	}
-	state.fields = append(state.fields,
-		newCanonicalField("storage_password", "New vault storage password", false, true, constants.PasswordCharLimit),
-		newCanonicalField("confirm_password", "Confirm vault storage password", false, true, constants.PasswordCharLimit),
-	)
+	if method != wallet.ImportMethodWatchOnly {
+		state.fields = append(state.fields,
+			newCanonicalField("storage_password", "New vault storage password", false, true, constants.PasswordCharLimit),
+			newCanonicalField("confirm_password", "Confirm vault storage password", false, true, constants.PasswordCharLimit),
+		)
+	}
 	state.fields[0].input.Focus()
 	return state
 }
@@ -217,6 +221,9 @@ func (m *CLIModel) updateCanonicalImport(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.startCanonicalPreview()
 	}
+	if state.preview != nil {
+		return m, nil
+	}
 	var command tea.Cmd
 	state.fields[state.stage].input, command = state.fields[state.stage].input.Update(msg)
 	return m, command
@@ -268,15 +275,17 @@ func prepareCanonicalImportPreview(ctx context.Context, vault *wallet.WalletVaul
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	storagePassword := state.value("storage_password")
-	confirmation := state.value("confirm_password")
-	if !wallet.SecureCompare(storagePassword, confirmation) {
-		return wallet.ErrStoragePasswordConfirmation
-	}
-	storagePasswordBytes := []byte(storagePassword)
-	defer clear(storagePasswordBytes)
-	if err := wallet.ValidateStoragePassword(storagePasswordBytes); err != nil {
-		return err
+	if state.method != wallet.ImportMethodWatchOnly {
+		storagePassword := state.value("storage_password")
+		confirmation := state.value("confirm_password")
+		if !wallet.SecureCompare(storagePassword, confirmation) {
+			return wallet.ErrStoragePasswordConfirmation
+		}
+		storagePasswordBytes := []byte(storagePassword)
+		defer clear(storagePasswordBytes)
+		if err := wallet.ValidateStoragePassword(storagePasswordBytes); err != nil {
+			return err
+		}
 	}
 	var preview wallet.ImportPreview
 	var err error
@@ -290,6 +299,8 @@ func prepareCanonicalImportPreview(ctx context.Context, vault *wallet.WalletVaul
 		})
 	case wallet.ImportMethodPrivateKey:
 		preview, err = wallet.PreviewPrivateKeyImport(wallet.PrivateKeyImportRequest{PrivateKey: state.value("private_key")})
+	case wallet.ImportMethodWatchOnly:
+		preview, err = wallet.PreviewWatchOnlyImport(wallet.WatchOnlyImportRequest{Address: state.value("address")})
 	case wallet.ImportMethodKeystore:
 		state.data, err = readCanonicalKeystore(state.value("keystore_path"))
 		if err == nil {
@@ -409,6 +420,15 @@ func executeCanonicalImport(ctx context.Context, vault *wallet.WalletVault, stat
 			StoragePassword:        storagePassword,
 			ConfirmStoragePassword: confirmation,
 		})
+	case wallet.ImportMethodWatchOnly:
+		address := state.value("address")
+		if state.preview != nil && state.preview.SignerKind == wallet.SignerKindWatchOnly && state.preview.Address != "" {
+			address = state.preview.Address
+		}
+		summary, err = vault.ImportWatchOnly(ctx, wallet.WatchOnlyImportRequest{
+			Name:    strings.TrimSpace(state.value("name")),
+			Address: address,
+		})
 	case wallet.ImportMethodKeystore:
 		sourcePassword := []byte(state.value("source_password"))
 		summary, err = vault.ImportKeystore(ctx, wallet.KeystoreImportRequest{
@@ -482,7 +502,7 @@ func (m *CLIModel) viewCanonicalImport() string {
 		return title + "\n\nProcessing bounded cryptographic work. Press Esc to cancel."
 	}
 	if len(state.resultLines) > 0 {
-		return title + "\n\n" + strings.Join(state.resultLines, "\n") + "\n\nPress Enter to return to the account list."
+		return title + "\n\n" + strings.Join(safeLines(state.resultLines), "\n") + "\n\nPress Enter to return to the account list."
 	}
 	if state.preview != nil && state.method == canonicalBatchMethod {
 		var view strings.Builder
@@ -492,21 +512,25 @@ func (m *CLIModel) viewCanonicalImport() string {
 			if item.err != "" {
 				status = "ERROR: " + item.err
 			}
-			_, _ = fmt.Fprintf(&view, "%s | %s | sha256:%s\n", item.name, status, item.digest[:16])
+			_, _ = fmt.Fprintf(&view, "%s | %s | sha256:%s\n", safeShort(item.name), safeInline(status), safeShort(item.digest[:16]))
 		}
 		view.WriteString("\nPress Enter to commit these exact bytes or Esc to cancel.")
 		return view.String()
 	}
 	if state.preview != nil {
 		preview := state.preview
-		return fmt.Sprintf("%s\n\nSource: %s\nAddress: %s\nType: %s\nPath: %s\nLanguage: %s\nPassphrase present: %t\n\nPress Enter to commit or Esc to cancel.",
-			title, preview.SourceFormat, preview.Address, preview.SecretType, preview.DerivationPath, preview.BIP39Language, preview.HasBIP39Passphrase)
+		secretType := string(preview.SecretType)
+		if secretType == "" {
+			secretType = "none"
+		}
+		return fmt.Sprintf("%s\n\nSource: %s\nAddress: %s\nSigner: %s\nSecret material: %s\nPath: %s\nLanguage: %s\nPassphrase present: %t\n\nPress Enter to commit or Esc to cancel.",
+			title, safeShort(preview.SourceFormat), safeShort(preview.Address), safeShort(string(preview.SignerKind)), safeShort(secretType), safeShort(preview.DerivationPath), safeShort(string(preview.BIP39Language)), preview.HasBIP39Passphrase)
 	}
 	field := state.fields[state.stage]
 	view := fmt.Sprintf("%s\n\nStep %d/%d\n%s:\n%s\n\nPress Enter to continue or Esc to cancel.",
 		title, state.stage+1, len(state.fields), field.label, field.input.View())
 	if state.err != "" {
-		view += "\n\n" + m.styles.ErrorStyle.Render(state.err)
+		view += "\n\n" + m.styles.ErrorStyle.Render(safeInline(state.err))
 	}
 	return view
 }

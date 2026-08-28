@@ -1,16 +1,21 @@
 package localization
 
 import (
+	"blocowallet/internal/terminal"
 	"blocowallet/pkg/config"
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/BurntSushi/toml"
 	"github.com/nicksnyder/go-i18n/v2/i18n"
 	"golang.org/x/text/language"
 )
+
+var languageCodePattern = regexp.MustCompile(`^[a-z]{2,3}(-[A-Z]{2}|-[0-9]{3})?$`)
 
 var (
 	bundle    *i18n.Bundle
@@ -195,9 +200,9 @@ func getEnglishMessages() map[string]string {
 		"enter_password":             "Enter a password to encrypt the wallet:",
 		"press_enter":                "Press Enter to continue.",
 		"import_wallet_title":        "Import an existing Wallet",
-		"wallet_list_instructions":   "Use the arrow keys to navigate, Enter to view details, 'd' to delete a wallet, 'esc' to return to the menu.",
+		"wallet_list_instructions":   "Use the arrow keys to navigate, Enter to view details, and 'esc' to return to the menu.",
 		"status_bar_instructions":    "View: {{.View}} | Press 'esc' to return | 'q' to quit",
-		"wallet_list_status_bar":     "View: {{.View}} | Press 'd' to delete | 'esc' to return | 'q' to quit",
+		"wallet_list_status_bar":     "View: {{.View}} | Press 'esc' to return | 'q' to quit",
 		"enter_wallet_password":      "Enter the wallet password:",
 		"select_wallet_prompt":       "Select a wallet and enter the password to view the details.",
 		"wallet_details_title":       "Wallet Details",
@@ -224,6 +229,8 @@ func getEnglishMessages() map[string]string {
 		"import_private_key_desc":    "Import using a private key",
 		"import_keystore":            "Keystore File",
 		"import_keystore_desc":       "Import using a KeyStoreV3 file",
+		"import_watch_only":          "Watch-only Address",
+		"import_watch_only_desc":     "Track an EVM address without storing signing secrets",
 		"keystore_title":             "Import Wallet via Keystore File",
 		"enter_keystore_path":        "Enter the path to the KeyStoreV3 file:",
 		"invalid_keystore":           "Invalid keystore file. Please check the path and try again.",
@@ -275,9 +282,9 @@ func getPortugueseMessages() map[string]string {
 		"enter_password":             "Digite uma senha para criptografar a carteira:",
 		"press_enter":                "Pressione Enter para continuar.",
 		"import_wallet_title":        "Importar uma Carteira existente",
-		"wallet_list_instructions":   "Use as setas para navegar, Enter para ver detalhes, 'd' para deletar uma carteira, 'esc' para voltar ao menu.",
+		"wallet_list_instructions":   "Use as setas para navegar, Enter para ver detalhes e 'esc' para voltar ao menu.",
 		"status_bar_instructions":    "Visualização: {{.View}} | Pressione 'esc' para voltar | 'q' para sair",
-		"wallet_list_status_bar":     "Visualização: {{.View}} | Pressione 'd' para deletar | 'esc' para voltar | 'q' para sair",
+		"wallet_list_status_bar":     "Visualização: {{.View}} | Pressione 'esc' para voltar | 'q' para sair",
 		"enter_wallet_password":      "Digite a senha da carteira:",
 		"select_wallet_prompt":       "Selecione uma carteira e digite a senha para ver os detalhes.",
 		"wallet_details_title":       "Detalhes da Carteira",
@@ -304,6 +311,8 @@ func getPortugueseMessages() map[string]string {
 		"import_private_key_desc":    "Importar usando uma chave privada",
 		"import_keystore":            "Arquivo KeyStore",
 		"import_keystore_desc":       "Importar arquivo KeyStore V3",
+		"import_watch_only":          "Endereço somente leitura",
+		"import_watch_only_desc":     "Acompanhar um endereço EVM sem armazenar segredos de assinatura",
 		"keystore_title":             "Importar Carteira via Arquivo KeyStore",
 		"enter_keystore_path":        "Digite o caminho para o arquivo KeyStore V3:",
 		"invalid_keystore":           "Arquivo keystore inválido. Verifique o caminho e tente novamente.",
@@ -355,9 +364,9 @@ func getSpanishMessages() map[string]string {
 		"enter_password":             "Ingrese una contraseña para cifrar la cartera:",
 		"press_enter":                "Presione Enter para continuar.",
 		"import_wallet_title":        "Importar una Cartera existente",
-		"wallet_list_instructions":   "Use las flechas para navegar, Enter para ver detalles, 'd' para eliminar una cartera, 'esc' para volver al menú.",
+		"wallet_list_instructions":   "Use las flechas para navegar, Enter para ver detalles y 'esc' para volver al menú.",
 		"status_bar_instructions":    "Vista: {{.View}} | Presione 'esc' para volver | 'q' para salir",
-		"wallet_list_status_bar":     "Vista: {{.View}} | Presione 'd' para eliminar | 'esc' para volver | 'q' para salir",
+		"wallet_list_status_bar":     "Vista: {{.View}} | Presione 'esc' para volver | 'q' para salir",
 		"enter_wallet_password":      "Ingrese la contraseña de la cartera:",
 		"select_wallet_prompt":       "Seleccione una cartera e ingrese la contraseña para ver los detalles.",
 		"wallet_details_title":       "Detalles de la Cartera",
@@ -384,6 +393,8 @@ func getSpanishMessages() map[string]string {
 		"import_private_key_desc":    "Importar usando una clave privada",
 		"import_keystore":            "Archivo Keystore",
 		"import_keystore_desc":       "Importar usando un archivo KeyStoreV3",
+		"import_watch_only":          "Dirección de solo lectura",
+		"import_watch_only_desc":     "Seguir una dirección EVM sin guardar secretos de firma",
 		"keystore_title":             "Importar Cartera vía Archivo Keystore",
 		"enter_keystore_path":        "Ingrese la ruta al archivo KeyStoreV3:",
 		"invalid_keystore":           "Archivo keystore inválido. Verifique la ruta e intente nuevamente.",
@@ -438,7 +449,7 @@ func populateLabelsMap() error {
 	// Adiciona cada mensagem ao mapa Labels
 	for _, key := range messageKeys {
 		localizedString := Get(key)
-		Labels[key] = localizedString
+		Labels[key] = terminal.SanitizeInline(localizedString, 2048)
 	}
 
 	// Add keystore validation messages
@@ -521,9 +532,11 @@ func GetAvailableLanguages(localeDir string) []string {
 		filename := filepath.Base(file)
 		// Expected format: language.{lang}.toml
 		parts := strings.Split(filename, ".")
-		if len(parts) >= 3 && parts[0] == "language" && parts[2] == "toml" {
+		if len(parts) == 3 && parts[0] == "language" && parts[2] == "toml" {
 			lang := parts[1]
-			availableLanguages[lang] = true
+			if languageCodePattern.MatchString(lang) {
+				availableLanguages[lang] = true
+			}
 		}
 	}
 
@@ -532,7 +545,7 @@ func GetAvailableLanguages(localeDir string) []string {
 	for lang := range availableLanguages {
 		result = append(result, lang)
 	}
-
+	sort.Strings(result)
 	return result
 }
 
@@ -546,6 +559,6 @@ func GetLanguageName(code string) string {
 	case "es":
 		return "Spanish"
 	default:
-		return code
+		return terminal.SanitizeInline(code, 16)
 	}
 }

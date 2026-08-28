@@ -1,15 +1,18 @@
 package ui
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode"
 
 	"blocowallet/internal/blockchain"
+	"blocowallet/pkg/config"
 	"blocowallet/pkg/localization"
 	"blocowallet/pkg/logger"
 
@@ -20,6 +23,8 @@ import (
 )
 
 // Architecture and logging helpers for UI input handling
+var lastAddNetworkID atomic.Uint64
+
 var (
 	// archDetector allows tests to mock architecture; defaults to runtime.GOARCH
 	archDetector = func() string { return runtime.GOARCH }
@@ -41,6 +46,7 @@ type AddNetworkComponent struct {
 	searchInput      textinput.Model
 	chainIDInput     textinput.Model
 	rpcEndpointInput textinput.Model
+	decimalsInput    textinput.Model
 	symbolInput      textinput.Model
 	nameInput        textinput.Model
 
@@ -49,6 +55,8 @@ type AddNetworkComponent struct {
 	inputs             []textinput.Model
 	selectedSuggestion int
 	isSearchFocused    bool
+	nativeDecimals     int
+	nativeDecimalsSet  bool
 
 	// Chain service for suggestions
 	chainListService *blockchain.ChainListService
@@ -58,7 +66,9 @@ type AddNetworkComponent struct {
 	suggestionList     list.Model // Interactive suggestion list
 	loadingSuggestions bool
 	// lastSearchTerm     string // Currently unused but may be needed for debouncing
-	typingDebounce time.Time
+	searchGeneration uint64
+	operationContext context.Context
+	cancelOperations context.CancelFunc
 }
 
 // networkSuggestionItem is a wrapper for NetworkSuggestion to implement list.Item
@@ -67,22 +77,25 @@ type networkSuggestionItem struct {
 }
 
 func (i networkSuggestionItem) Title() string {
-	return i.suggestion.Name
+	return safeShort(i.suggestion.Name)
 }
 
 func (i networkSuggestionItem) Description() string {
-	return fmt.Sprintf("Chain ID: %d, Symbol: %s", i.suggestion.ChainID, i.suggestion.Symbol)
+	return fmt.Sprintf("Chain ID: %d, Symbol: %s", i.suggestion.ChainID, safeShort(i.suggestion.Symbol))
 }
 
 func (i networkSuggestionItem) FilterValue() string {
-	return i.suggestion.Name
+	return safeShort(i.suggestion.Name)
 }
 
 // NewAddNetworkComponent creates a new add network component
 func NewAddNetworkComponent() AddNetworkComponent {
+	operationContext, cancelOperations := context.WithCancel(context.Background())
 	c := AddNetworkComponent{
-		id:               "add-network",
-		chainListService: blockchain.NewChainListService(),
+		id:               fmt.Sprintf("add-network-%d", lastAddNetworkID.Add(1)),
+		chainListService: getChainListService(),
+		operationContext: operationContext,
+		cancelOperations: cancelOperations,
 	}
 	c.initInputs()
 	return c
@@ -94,6 +107,7 @@ func (c *AddNetworkComponent) initInputs() {
 	c.searchInput = textinput.New()
 	c.searchInput.Placeholder = localization.Labels["search_networks_placeholder"]
 	c.searchInput.Width = 60
+	c.searchInput.CharLimit = 128
 	c.searchInput.ShowSuggestions = true
 	c.searchInput.Focus()
 	c.isSearchFocused = true
@@ -102,21 +116,31 @@ func (c *AddNetworkComponent) initInputs() {
 	c.nameInput = textinput.New()
 	c.nameInput.Placeholder = localization.Labels["network_name_placeholder"]
 	c.nameInput.Width = 60
+	c.nameInput.CharLimit = 128
 
 	// Chain ID input
 	c.chainIDInput = textinput.New()
 	c.chainIDInput.Placeholder = localization.Labels["chain_id_placeholder"]
 	c.chainIDInput.Width = 60
+	c.chainIDInput.CharLimit = 20
 
 	// Symbol input
 	c.symbolInput = textinput.New()
 	c.symbolInput.Placeholder = localization.Labels["symbol_placeholder"]
 	c.symbolInput.Width = 60
+	c.symbolInput.CharLimit = 16
+
+	// Native currency decimals input
+	c.decimalsInput = textinput.New()
+	c.decimalsInput.Placeholder = "Native currency decimals (0-36)"
+	c.decimalsInput.Width = 60
+	c.decimalsInput.CharLimit = 2
 
 	// RPC endpoint input
 	c.rpcEndpointInput = textinput.New()
-	c.rpcEndpointInput.Placeholder = localization.Labels["rpc_endpoint_placeholder"]
+	c.rpcEndpointInput.Placeholder = localization.Labels["rpc_endpoint_placeholder"] + " or env:VARIABLE_NAME"
 	c.rpcEndpointInput.Width = 60
+	c.rpcEndpointInput.CharLimit = 4096
 
 	// Initialize inputs slice for easy navigation
 	c.inputs = []textinput.Model{
@@ -124,6 +148,7 @@ func (c *AddNetworkComponent) initInputs() {
 		c.nameInput,
 		c.chainIDInput,
 		c.symbolInput,
+		c.decimalsInput,
 		c.rpcEndpointInput,
 	}
 
@@ -137,7 +162,6 @@ func (c *AddNetworkComponent) initInputs() {
 
 	// Initialize other fields
 	c.selectedSuggestion = -1
-	c.typingDebounce = time.Time{}
 }
 
 // SetSize updates the component size
@@ -184,12 +208,26 @@ func (c *AddNetworkComponent) GetRPCEndpoint() string {
 	return c.rpcEndpointInput.Value()
 }
 
+func (c *AddNetworkComponent) clearNativeDecimalsProvenance() {
+	if c.nativeDecimalsSet {
+		c.nativeDecimals = 0
+		c.nativeDecimalsSet = false
+		c.decimalsInput.SetValue("")
+	}
+}
+
 // Reset clears all inputs
 func (c *AddNetworkComponent) Reset() {
+	if c.cancelOperations != nil {
+		c.cancelOperations()
+	}
+	c.operationContext, c.cancelOperations = context.WithCancel(context.Background())
+	c.searchGeneration++
 	c.searchInput.SetValue("")
 	c.nameInput.SetValue("")
 	c.chainIDInput.SetValue("")
 	c.symbolInput.SetValue("")
+	c.decimalsInput.SetValue("")
 	c.rpcEndpointInput.SetValue("")
 	c.err = nil
 	c.adding = false
@@ -198,66 +236,98 @@ func (c *AddNetworkComponent) Reset() {
 	c.focusIndex = 0
 	c.selectedSuggestion = -1
 	c.isSearchFocused = true
+	c.nativeDecimals = 0
+	c.nativeDecimalsSet = false
 	c.initInputs()
 }
 
 // searchNetworks searches for networks based on the query
 func (c *AddNetworkComponent) searchNetworks(query string) tea.Cmd {
+	operationContext := c.operationContext
+	generation := c.searchGeneration
 	return func() tea.Msg {
 		query = strings.TrimSpace(query)
 
 		// If empty query, return popular networks
 		if query == "" {
 			popular := []blockchain.NetworkSuggestion{
-				{ChainID: 1, Name: "Ethereum Mainnet", Symbol: "ETH"},
-				{ChainID: 137, Name: "Polygon Mainnet", Symbol: "MATIC"},
-				{ChainID: 56, Name: "Binance Smart Chain", Symbol: "BNB"},
-				{ChainID: 42161, Name: "Arbitrum One", Symbol: "ETH"},
+				{ChainID: 1, Name: "Ethereum Mainnet"},
+				{ChainID: 137, Name: "Polygon"},
+				{ChainID: 56, Name: "BNB Smart Chain"},
+				{ChainID: 42161, Name: "Arbitrum One"},
 			}
 			// Debug log removed
-			return networkSuggestionsMsg(popular)
+			return networkSearchResultMsg{generation: generation, suggestions: popular}
 		}
 
 		// Debug log removed
-		suggestions, err := c.chainListService.SearchNetworksByName(query)
+		suggestions, err := c.chainListService.SearchNetworksByNameContext(operationContext, query)
 		if err != nil {
 			// Provide a localized, context-aware error message
-			return errorMsg(c.generateErrorMessage(err, "search"))
+			return networkSearchResultMsg{generation: generation, err: err}
 		}
 
 		// Debug log removed
-		return networkSuggestionsMsg(suggestions)
+		return networkSearchResultMsg{generation: generation, suggestions: suggestions}
 	}
+}
+
+func (c *AddNetworkComponent) scheduleSearch(query string) tea.Cmd {
+	c.searchGeneration++
+	generation := c.searchGeneration
+	return tea.Tick(300*time.Millisecond, func(time.Time) tea.Msg {
+		return debouncedNetworkSearchMsg{query: query, generation: generation}
+	})
+}
+
+type debouncedNetworkSearchMsg struct {
+	query      string
+	generation uint64
 }
 
 // networkDetailsFetchedMsg carries async fetched RPC details for a suggestion
 type networkDetailsFetchedMsg struct {
+	Generation  uint64
 	Suggestion  blockchain.NetworkSuggestion
+	ChainInfo   *blockchain.ChainInfo
 	RPCEndpoint string
-	Err         string
+	Err         error
 }
 
 // fetchChainInfoCmd fetches chain info asynchronously
 func (c *AddNetworkComponent) fetchChainInfoCmd(suggestion blockchain.NetworkSuggestion) tea.Cmd {
+	c.searchGeneration++
+	operationContext := c.operationContext
+	generation := c.searchGeneration
 	return func() tea.Msg {
-		_, rpcURL, err := c.chainListService.GetChainInfoWithRetry(suggestion.ChainID)
+		chainInfo, rpcURL, err := c.chainListService.GetChainInfoWithRetryContext(operationContext, suggestion.ChainID)
 		if err != nil {
-			return networkDetailsFetchedMsg{Suggestion: suggestion, Err: c.generateErrorMessage(err, "search")}
+			return networkDetailsFetchedMsg{Generation: generation, Suggestion: suggestion, Err: err}
 		}
-		return networkDetailsFetchedMsg{Suggestion: suggestion, RPCEndpoint: rpcURL}
+		return networkDetailsFetchedMsg{Generation: generation, Suggestion: suggestion, ChainInfo: chainInfo, RPCEndpoint: rpcURL}
 	}
 }
 
 // fillNetworkData fills the form with network data when a suggestion is selected
 func (c *AddNetworkComponent) fillNetworkData(suggestion blockchain.NetworkSuggestion, rpcURL string) {
 	// Update input values directly
-	c.nameInput.SetValue(suggestion.Name)
+	c.nameInput.SetValue(safeShort(suggestion.Name))
 	c.chainIDInput.SetValue(strconv.Itoa(suggestion.ChainID))
-	c.symbolInput.SetValue(suggestion.Symbol)
+	c.symbolInput.SetValue(safeShort(suggestion.Symbol))
+	if c.nativeDecimalsSet {
+		c.decimalsInput.SetValue(strconv.Itoa(c.nativeDecimals))
+	} else {
+		c.decimalsInput.SetValue("")
+	}
+	if safeInline(rpcURL) != rpcURL {
+		c.err = fmt.Errorf("RPC endpoint contains unsafe display characters")
+		c.rpcEndpointInput.SetValue("")
+		return
+	}
 	c.rpcEndpointInput.SetValue(rpcURL)
 
 	// Update search input with the selected name
-	c.searchInput.SetValue(suggestion.Name)
+	c.searchInput.SetValue(safeShort(suggestion.Name))
 
 	// Clear error message
 	c.err = nil
@@ -293,6 +363,37 @@ func (c *AddNetworkComponent) Update(msg tea.Msg) (*AddNetworkComponent, tea.Cmd
 		c.Reset()
 		return c, func() tea.Msg { return BackToNetworkListMsg{} }
 
+	case debouncedNetworkSearchMsg:
+		if msg.generation != c.searchGeneration {
+			return c, nil
+		}
+		c.loadingSuggestions = true
+		c.selectedSuggestion = -1
+		return c, c.searchNetworks(msg.query)
+
+	case networkSearchResultMsg:
+		if msg.generation != c.searchGeneration {
+			return c, nil
+		}
+		if msg.err != nil {
+			c.SetError(fmt.Errorf("%s", c.generateErrorMessage(msg.err, "search")))
+			c.loadingSuggestions = false
+			return c, nil
+		}
+		c.suggestions = append([]blockchain.NetworkSuggestion(nil), msg.suggestions...)
+		c.loadingSuggestions = false
+		items := make([]list.Item, 0, len(c.suggestions))
+		for _, suggestion := range c.suggestions {
+			items = append(items, networkSuggestionItem{suggestion: suggestion})
+		}
+		c.suggestionList.SetItems(items)
+		c.suggestionList.Select(0)
+		if len(c.suggestions) > 0 {
+			c.selectedSuggestion = 0
+		} else {
+			c.selectedSuggestion = -1
+		}
+
 	case networkSuggestionsMsg:
 		c.suggestions = []blockchain.NetworkSuggestion(msg)
 		c.loadingSuggestions = false
@@ -311,18 +412,41 @@ func (c *AddNetworkComponent) Update(msg tea.Msg) (*AddNetworkComponent, tea.Cmd
 		}
 
 	case networkDetailsFetchedMsg:
+		if msg.Generation != c.searchGeneration {
+			return c, nil
+		}
 		c.loadingSuggestions = false
-		if msg.Err != "" {
-			c.err = fmt.Errorf("%s: %s", localization.Labels["failed_to_get_network_details"], msg.Err)
+		if msg.Err != nil {
+			c.err = fmt.Errorf("%s: %s", localization.Labels["failed_to_get_network_details"], c.generateErrorMessage(msg.Err, "search"))
 			// Prefill what we can; leave RPC empty for manual entry
-			c.nameInput.SetValue(msg.Suggestion.Name)
+			c.nameInput.SetValue(safeShort(msg.Suggestion.Name))
 			c.chainIDInput.SetValue(strconv.Itoa(msg.Suggestion.ChainID))
-			c.symbolInput.SetValue(msg.Suggestion.Symbol)
+			c.symbolInput.SetValue(safeShort(msg.Suggestion.Symbol))
+			c.decimalsInput.SetValue("")
+			c.nativeDecimals = 0
+			c.nativeDecimalsSet = false
 			c.rpcEndpointInput.SetValue("")
 			return c, nil
 		}
+		if msg.ChainInfo != nil {
+			msg.Suggestion.Name = msg.ChainInfo.Name
+			msg.Suggestion.Symbol = msg.ChainInfo.NativeCurrency.Symbol
+			c.nativeDecimals = msg.ChainInfo.NativeCurrency.Decimals
+			c.nativeDecimalsSet = true
+		} else {
+			c.nativeDecimals = 0
+			c.nativeDecimalsSet = false
+		}
 		c.fillNetworkData(msg.Suggestion, msg.RPCEndpoint)
 		return c, nil
+
+	case addNetworkErrorMsg:
+		if msg.componentID != c.id || msg.operationID != c.searchGeneration {
+			return c, nil
+		}
+		c.SetError(msg.err)
+		c.loadingSuggestions = false
+		c.adding = false
 
 	case errorMsg:
 		c.SetError(fmt.Errorf("%s", string(msg)))
@@ -331,10 +455,17 @@ func (c *AddNetworkComponent) Update(msg tea.Msg) (*AddNetworkComponent, tea.Cmd
 
 	case tea.KeyMsg:
 		// Debug log removed
+		if c.adding && msg.String() != "esc" {
+			return c, nil
+		}
 
 		// Global key handling for navigation and submission
 		switch msg.String() {
 		case "esc":
+			if c.cancelOperations != nil {
+				c.cancelOperations()
+			}
+			c.searchGeneration++
 			return c, func() tea.Msg { return BackToNetworkMenuMsg{} }
 		case "tab":
 			c.nextInput()
@@ -353,28 +484,56 @@ func (c *AddNetworkComponent) Update(msg tea.Msg) (*AddNetworkComponent, tea.Cmd
 			}
 			if !c.isSearchFocused && c.validateInputs() {
 				c.adding = true
+				c.searchGeneration++
+				operationID := c.searchGeneration
+				componentID := c.id
+				operationContext := c.operationContext
+				enteredEndpoint := c.GetRPCEndpoint()
+				name := c.GetNetworkName()
+				chainIDValue := c.chainIDInput.Value()
+				symbol := c.GetSymbol()
+				nativeDecimals := c.nativeDecimals
+				nativeDecimalsSet := c.nativeDecimalsSet
 				return c, func() tea.Msg {
-					rpcURL := c.GetRPCEndpoint()
-					if err := c.chainListService.ValidateRPCEndpoint(rpcURL); err != nil {
-						return errorMsg(c.generateErrorMessage(err, "validate"))
+					rpcURL := enteredEndpoint
+					rpcReference := ""
+					if strings.HasPrefix(enteredEndpoint, "env:") {
+						resolved, err := (config.EnvironmentCredentialProvider{}).Resolve(enteredEndpoint)
+						if err != nil {
+							return addNetworkErrorMsg{componentID: componentID, operationID: operationID, err: fmt.Errorf("RPC credential reference is unavailable")}
+						}
+						rpcURL = resolved
+						rpcReference = enteredEndpoint
 					}
-					chainIDStr := c.chainIDInput.Value()
+					if err := c.chainListService.ValidateRPCEndpointContext(operationContext, rpcURL); err != nil {
+						return addNetworkErrorMsg{componentID: componentID, operationID: operationID, err: fmt.Errorf("RPC endpoint validation failed: %w", err)}
+					}
+					chainIDStr := chainIDValue
 					expectedChainID, err := strconv.ParseInt(chainIDStr, 10, 64)
 					if err != nil {
-						return errorMsg(localization.Labels["invalid_chain_id"])
+						return addNetworkErrorMsg{componentID: componentID, operationID: operationID, err: fmt.Errorf("invalid chain ID")}
 					}
-					actualChainID, err := c.chainListService.GetChainIDFromRPC(rpcURL)
+					actualChainID, err := c.chainListService.GetChainIDFromRPCContext(operationContext, rpcURL)
 					if err != nil {
-						return errorMsg(c.generateErrorMessage(err, "validate"))
+						return addNetworkErrorMsg{componentID: componentID, operationID: operationID, err: fmt.Errorf("RPC endpoint validation failed: %w", err)}
 					}
 					if int64(actualChainID) != expectedChainID {
-						return errorMsg(fmt.Sprintf("%s: expected %d, got %d", localization.Labels["chain_id_mismatch"], expectedChainID, actualChainID))
+						return addNetworkErrorMsg{componentID: componentID, operationID: operationID, err: fmt.Errorf("chain ID mismatch: expected %d, got %d", expectedChainID, actualChainID)}
+					}
+					persistedEndpoint := enteredEndpoint
+					if rpcReference != "" {
+						persistedEndpoint = ""
 					}
 					return AddNetworkRequestMsg{
-						Name:        c.GetNetworkName(),
-						ChainID:     c.chainIDInput.Value(),
-						Symbol:      c.GetSymbol(),
-						RPCEndpoint: c.GetRPCEndpoint(),
+						componentID:       componentID,
+						operationID:       operationID,
+						Name:              name,
+						ChainID:           chainIDValue,
+						Symbol:            symbol,
+						NativeDecimals:    nativeDecimals,
+						NativeDecimalsSet: nativeDecimalsSet,
+						RPCEndpoint:       persistedEndpoint,
+						RPCEndpointRef:    rpcReference,
 					}
 				}
 			}
@@ -408,64 +567,6 @@ func (c *AddNetworkComponent) Update(msg tea.Msg) (*AddNetworkComponent, tea.Cmd
 				}
 			}
 
-			// Handle global special keys
-			switch msg.String() {
-			case "esc":
-				return c, func() tea.Msg { return BackToNetworkMenuMsg{} }
-
-			case "enter":
-				// Submit form if not in search mode
-				if !c.isSearchFocused && c.validateInputs() {
-					c.adding = true
-					// Do not set an error for validation status; loading indicator will show
-
-					return c, func() tea.Msg {
-						// Validate RPC endpoint before submitting
-						rpcURL := c.GetRPCEndpoint()
-						if err := c.chainListService.ValidateRPCEndpoint(rpcURL); err != nil {
-							return errorMsg(fmt.Sprintf("%s: %v", localization.Labels["rpc_validation_failed"], err))
-						}
-
-						// Verify chain ID matches
-						chainIDStr := c.chainIDInput.Value()
-						expectedChainID, err := strconv.ParseInt(chainIDStr, 10, 64)
-						if err != nil {
-							return errorMsg(localization.Labels["invalid_chain_id"])
-						}
-
-						actualChainID, err := c.chainListService.GetChainIDFromRPC(rpcURL)
-						if err != nil {
-							return errorMsg(fmt.Sprintf("%s: %v", localization.Labels["failed_to_get_chain_id_from_rpc"], err))
-						}
-
-						if int64(actualChainID) != expectedChainID {
-							return errorMsg(fmt.Sprintf("%s: expected %d, got %d", localization.Labels["chain_id_mismatch"], expectedChainID, actualChainID))
-						}
-
-						return AddNetworkRequestMsg{
-							Name:        c.GetNetworkName(),
-							ChainID:     c.chainIDInput.Value(),
-							Symbol:      c.GetSymbol(),
-							RPCEndpoint: c.GetRPCEndpoint(),
-						}
-					}
-				}
-
-			case "tab":
-				// Move to next input (handled separately if search is focused)
-				if !c.isSearchFocused {
-					// Debug log removed
-					c.nextInput()
-					return c, nil
-				}
-
-			case "shift+tab":
-				// Move to previous input
-				// Debug log removed
-				c.prevInput()
-				return c, nil
-			}
-
 			// Handle number key selection for suggestions
 			if msg.Type == tea.KeyRunes && len(msg.Runes) == 1 {
 				key := string(msg.Runes[0])
@@ -490,12 +591,12 @@ func (c *AddNetworkComponent) Update(msg tea.Msg) (*AddNetworkComponent, tea.Cmd
 						c.searchInput.SetValue(newVal)
 						if uiLogger != nil {
 							uiLogger.Debug("input_key_arm64_backspace",
-								logger.String("value", newVal),
+								logger.Int("length", len([]rune(newVal))),
 							)
 						}
 						c.loadingSuggestions = true
 						c.selectedSuggestion = -1
-						cmds = append(cmds, c.searchNetworks(newVal))
+						cmds = append(cmds, c.scheduleSearch(newVal))
 						break
 					}
 					if msg.Type == tea.KeyRunes && len(msg.Runes) > 0 {
@@ -516,14 +617,13 @@ func (c *AddNetworkComponent) Update(msg tea.Msg) (*AddNetworkComponent, tea.Cmd
 							c.searchInput.SetValue(newVal)
 							if uiLogger != nil {
 								uiLogger.Debug("input_key_arm64_runes",
-									logger.String("key", msg.String()),
 									logger.Int("runes", len(msg.Runes)),
-									logger.String("value", newVal),
+									logger.Int("length", len([]rune(newVal))),
 								)
 							}
 							c.loadingSuggestions = true
 							c.selectedSuggestion = -1
-							cmds = append(cmds, c.searchNetworks(newVal))
+							cmds = append(cmds, c.scheduleSearch(newVal))
 							break
 						}
 					}
@@ -536,12 +636,12 @@ func (c *AddNetworkComponent) Update(msg tea.Msg) (*AddNetworkComponent, tea.Cmd
 				// Trigger search if value changed
 				if oldValue != newValue {
 					if uiLogger != nil {
-						uiLogger.Debug("input_key_default", logger.String("key", msg.String()), logger.String("value", newValue))
+						uiLogger.Debug("input_key_default", logger.Int("length", len([]rune(newValue))))
 					}
 					// Auto-search after a short delay
 					c.loadingSuggestions = true
 					c.selectedSuggestion = -1
-					cmds = append(cmds, c.searchNetworks(newValue))
+					cmds = append(cmds, c.scheduleSearch(newValue))
 				}
 
 			case 1: // Name input
@@ -556,7 +656,11 @@ func (c *AddNetworkComponent) Update(msg tea.Msg) (*AddNetworkComponent, tea.Cmd
 				c.symbolInput, cmd = c.symbolInput.Update(msg)
 				cmds = append(cmds, cmd)
 
-			case 4: // RPC endpoint input
+			case 4: // Native decimals input
+				c.decimalsInput, cmd = c.decimalsInput.Update(msg)
+				cmds = append(cmds, cmd)
+
+			case 5: // RPC endpoint input
 				c.rpcEndpointInput, cmd = c.rpcEndpointInput.Update(msg)
 				cmds = append(cmds, cmd)
 			}
@@ -569,11 +673,21 @@ func (c *AddNetworkComponent) Update(msg tea.Msg) (*AddNetworkComponent, tea.Cmd
 			case 1:
 				c.nameInput, cmd = c.nameInput.Update(msg)
 			case 2:
+				oldValue := c.chainIDInput.Value()
 				c.chainIDInput, cmd = c.chainIDInput.Update(msg)
+				if oldValue != c.chainIDInput.Value() {
+					c.clearNativeDecimalsProvenance()
+				}
 			case 3:
 				c.symbolInput, cmd = c.symbolInput.Update(msg)
 			case 4:
+				c.decimalsInput, cmd = c.decimalsInput.Update(msg)
+			case 5:
+				oldValue := c.rpcEndpointInput.Value()
 				c.rpcEndpointInput, cmd = c.rpcEndpointInput.Update(msg)
+				if oldValue != c.rpcEndpointInput.Value() {
+					c.clearNativeDecimalsProvenance()
+				}
 			default:
 				c.searchInput, cmd = c.searchInput.Update(msg)
 			}
@@ -607,6 +721,7 @@ func (c *AddNetworkComponent) updateFocus() {
 	c.nameInput.Blur()
 	c.chainIDInput.Blur()
 	c.symbolInput.Blur()
+	c.decimalsInput.Blur()
 	c.rpcEndpointInput.Blur()
 
 	// Track if search is focused
@@ -623,6 +738,8 @@ func (c *AddNetworkComponent) updateFocus() {
 	case 3:
 		c.symbolInput.Focus()
 	case 4:
+		c.decimalsInput.Focus()
+	case 5:
 		c.rpcEndpointInput.Focus()
 	}
 }
@@ -650,6 +767,15 @@ func (c *AddNetworkComponent) validateInputs() bool {
 		return false
 	}
 
+	decimalsValue := strings.TrimSpace(c.decimalsInput.Value())
+	decimals, err := strconv.Atoi(decimalsValue)
+	if err != nil || decimals < 0 || decimals > 36 {
+		c.err = errors.New("native currency decimals must be between 0 and 36")
+		return false
+	}
+	c.nativeDecimals = decimals
+	c.nativeDecimalsSet = true
+
 	if strings.TrimSpace(c.rpcEndpointInput.Value()) == "" {
 		c.err = errors.New(localization.Labels["rpc_endpoint_required"])
 		return false
@@ -657,7 +783,12 @@ func (c *AddNetworkComponent) validateInputs() bool {
 
 	// Basic URL validation
 	rpc := strings.TrimSpace(c.rpcEndpointInput.Value())
-	if !strings.HasPrefix(rpc, "http://") && !strings.HasPrefix(rpc, "https://") {
+	if strings.HasPrefix(rpc, "env:") {
+		if err := config.ValidateCredentialReference(rpc); err != nil {
+			c.err = errors.New(localization.Labels["invalid_rpc_endpoint"])
+			return false
+		}
+	} else if !strings.HasPrefix(rpc, "http://") && !strings.HasPrefix(rpc, "https://") {
 		c.err = errors.New(localization.Labels["invalid_rpc_endpoint"])
 		return false
 	}
@@ -673,15 +804,15 @@ func (c *AddNetworkComponent) generateErrorMessage(err error, operation string) 
 	detail := ""
 	if errors.As(err, &opErr) {
 		if opErr.Cause != nil {
-			detail = opErr.Cause.Error()
+			detail = safeError(opErr.Cause)
 		} else if opErr.Message != "" {
-			detail = opErr.Message
+			detail = safeInline(opErr.Message)
 		}
 		if operation == "" {
 			operation = opErr.Operation
 		}
 	} else if err != nil {
-		detail = err.Error()
+		detail = safeError(err)
 	}
 
 	switch operation {
@@ -827,11 +958,24 @@ func (c *AddNetworkComponent) View() string {
 	b.WriteString(symbolFieldStyle.Render(c.symbolInput.View()))
 	b.WriteString("\n")
 
+	// Native decimals field
+	b.WriteString(labelStyle.Render("Native currency decimals:"))
+	b.WriteString("\n")
+	decimalsFieldStyle := fieldStyle
+	if c.focusIndex == 4 {
+		decimalsFieldStyle = fieldStyle.
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("#874BFD")).
+			PaddingLeft(1).PaddingRight(1)
+	}
+	b.WriteString(decimalsFieldStyle.Render(c.decimalsInput.View()))
+	b.WriteString("\n")
+
 	// RPC Endpoint field
 	b.WriteString(labelStyle.Render(localization.Labels["rpc_endpoint"] + ":"))
 	b.WriteString("\n")
 	rpcFieldStyle := fieldStyle
-	if c.focusIndex == 4 {
+	if c.focusIndex == 5 {
 		rpcFieldStyle = fieldStyle.
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("#874BFD")).
@@ -846,7 +990,7 @@ func (c *AddNetworkComponent) View() string {
 		b.WriteString(loadingStyle.Render("⏳ " + localization.Labels["adding_network"] + "..."))
 	} else if c.err != nil {
 		b.WriteString("\n")
-		b.WriteString(errorStyle.Render("❌ " + localization.Labels["error_title"] + ": " + c.err.Error()))
+		b.WriteString(errorStyle.Render("❌ " + localization.Labels["error_title"] + ": " + safeInline(c.err.Error())))
 	}
 
 	// Instructions
@@ -868,14 +1012,31 @@ func (c *AddNetworkComponent) View() string {
 
 // AddNetworkRequestMsg is sent when the user wants to add a network
 type AddNetworkRequestMsg struct {
-	Name        string
-	ChainID     string
-	Symbol      string
-	RPCEndpoint string
+	componentID       string
+	operationID       uint64
+	Name              string
+	ChainID           string
+	Symbol            string
+	NativeDecimals    int
+	NativeDecimalsSet bool
+	RPCEndpoint       string
+	RPCEndpointRef    string
+}
+
+type networkSearchResultMsg struct {
+	generation  uint64
+	suggestions []blockchain.NetworkSuggestion
+	err         error
 }
 
 // networkSuggestionsMsg is sent when network suggestions are loaded
 type networkSuggestionsMsg []blockchain.NetworkSuggestion
+
+type addNetworkErrorMsg struct {
+	componentID string
+	operationID uint64
+	err         error
+}
 
 // errorMsg is sent when an error occurs
 type errorMsg string

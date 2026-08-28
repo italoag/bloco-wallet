@@ -5,11 +5,14 @@ import (
 	"blocowallet/internal/constants"
 	"blocowallet/pkg/config"
 	"blocowallet/pkg/localization"
+	"context"
 	"errors"
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -76,24 +79,52 @@ func (m *CLIModel) initAddNetwork() {
 
 // viewNetworkList renders the network list view
 func (m *CLIModel) viewNetworkList() string {
-	// Update the component size
-	// Only call SetSize if the component is initialized and has rows
-	rows := m.networkListComponent.table.Rows()
-	if len(rows) > 0 {
-		m.networkListComponent.SetSize(m.width, m.height)
-	}
-
-	// Render the component
 	return m.networkListComponent.View()
 }
 
 // viewAddNetwork renders the add network view
 func (m *CLIModel) viewAddNetwork() string {
-	// Update the component size
-	m.addNetworkComponent.SetSize(m.width, m.height)
-
-	// Render the component
 	return m.addNetworkComponent.View()
+}
+
+type networkListReloadMsg struct {
+	config *config.Config
+	info   map[string]NetworkInfo
+	status string
+	err    error
+}
+
+func networkListReloadCmd(networkKey string, network *config.Network) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if network != nil {
+			if err := getNetworkManager().UpdateNetworkContext(ctx, networkKey, *network); err != nil {
+				return networkListReloadMsg{err: err}
+			}
+		}
+		cfg, err := getConfigurationManager().ReloadConfiguration()
+		if err != nil {
+			return networkListReloadMsg{err: err}
+		}
+		info, err := getNetworkManager().ListNetworks()
+		if err != nil {
+			return networkListReloadMsg{err: err}
+		}
+		status := "Network information refreshed"
+		if network != nil {
+			for key, networkInfo := range info {
+				if networkInfo.Network.ChainID == network.ChainID {
+					networkInfo.IsValidated = true
+					networkInfo.PreviouslyValidated = true
+					networkInfo.CurrentHealth = "reachable and chain ID verified now"
+					info[key] = networkInfo
+				}
+			}
+			status = "Network provider and chain identity revalidated"
+		}
+		return networkListReloadMsg{config: cfg, info: info, status: status}
+	}
 }
 
 // updateNetworkList handles updates to the network list view
@@ -102,13 +133,13 @@ func (m *CLIModel) updateNetworkList(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "a":
+		switch {
+		case key.Matches(msg, m.networkListComponent.keys.Add):
 			// Add a new network
 			m.initAddNetwork()
 			return m, nil
 
-		case "e":
+		case key.Matches(msg, m.networkListComponent.keys.Edit):
 			// Edit the selected network
 			key := m.networkListComponent.GetSelectedNetworkKey()
 			if key == "" {
@@ -142,7 +173,16 @@ func (m *CLIModel) updateNetworkList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.addNetworkComponent.nameInput.SetValue(network.Name)
 			m.addNetworkComponent.chainIDInput.SetValue(strconv.FormatInt(network.ChainID, 10))
 			m.addNetworkComponent.symbolInput.SetValue(network.Symbol)
-			m.addNetworkComponent.rpcEndpointInput.SetValue(network.RPCEndpoint)
+			if network.NativeDecimalsSet {
+				m.addNetworkComponent.decimalsInput.SetValue(strconv.Itoa(network.NativeDecimals))
+				m.addNetworkComponent.nativeDecimals = network.NativeDecimals
+				m.addNetworkComponent.nativeDecimalsSet = true
+			}
+			endpointValue := network.RPCEndpoint
+			if network.RPCEndpointRef != "" {
+				endpointValue = network.RPCEndpointRef
+			}
+			m.addNetworkComponent.rpcEndpointInput.SetValue(endpointValue)
 
 			// Store the key for updating later
 			m.editingNetworkKey = key
@@ -151,7 +191,7 @@ func (m *CLIModel) updateNetworkList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.currentView = constants.AddNetworkView
 			return m, nil
 
-		case "d":
+		case key.Matches(msg, m.networkListComponent.keys.Delete):
 			// Delete the selected network
 			key := m.networkListComponent.GetSelectedNetworkKey()
 			if key == "" {
@@ -189,13 +229,51 @@ func (m *CLIModel) updateNetworkList(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			return m, nil
 
-		case "esc", "backspace":
+		case key.Matches(msg, m.networkListComponent.keys.Refresh):
+			m.networkListComponent.SetBusy("Reloading stored network information...")
+			m.networkListComponent.updateKeyAvailability()
+			return m, networkListReloadCmd("", nil)
+
+		case key.Matches(msg, m.networkListComponent.keys.Revalidate):
+			networkKey := m.networkListComponent.GetSelectedNetworkKey()
+			if networkKey == "" || m.currentConfig == nil {
+				m.networkListComponent.SetError(errors.New(localization.Labels["no_network_selected"]))
+				return m, nil
+			}
+			network, exists := m.currentConfig.Networks[networkKey]
+			if !exists {
+				m.networkListComponent.SetError(fmt.Errorf("network not found"))
+				return m, nil
+			}
+			m.networkListComponent.SetBusy("Revalidating provider, chain identity, registry metadata, and privacy information...")
+			m.networkListComponent.updateKeyAvailability()
+			return m, networkListReloadCmd(networkKey, &network)
+
+		case key.Matches(msg, m.networkListComponent.keys.ToggleHelp):
+			networkList, cmd := m.networkListComponent.Update(msg)
+			m.networkListComponent = *networkList
+			return m, cmd
+
+		case key.Matches(msg, m.networkListComponent.keys.Back):
 			// Return to the network menu
 			m.menuItems = NewNetworkMenu()
 			m.selectedMenu = 0
 			m.currentView = constants.NetworkMenuView
 			return m, nil
 		}
+
+	case networkListReloadMsg:
+		if msg.err != nil {
+			m.networkListComponent.SetError(msg.err)
+			m.networkListComponent.updateKeyAvailability()
+			return m, nil
+		}
+		m.currentConfig = msg.config
+		m.balanceConfig = msg.config
+		m.networkListComponent.UpdateNetworksWithInfo(msg.config, msg.info)
+		m.networkListComponent.SetStatus(msg.status)
+		m.networkListComponent.updateKeyAvailability()
+		return m, nil
 
 	case BackToNetworkListMsg:
 		// Return to the network list view
@@ -247,18 +325,64 @@ func (m *CLIModel) saveConfigToFile() error {
 	return nil
 }
 
+type networkCommitResultMsg struct {
+	componentID    string
+	operationID    uint64
+	classification *blockchain.NetworkClassification
+	config         *config.Config
+	edited         bool
+	err            error
+}
+
 // updateAddNetwork handles updates to the add network view
 func (m *CLIModel) updateAddNetwork(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 
 	switch msg := msg.(type) {
 	case BackToNetworkMenuMsg:
+		m.editingNetworkKey = ""
 		// Return to the network menu
 		m.menuItems = NewNetworkMenu()
 		m.selectedMenu = 0
 		m.currentView = constants.NetworkMenuView
 		return m, nil
+	case networkCommitResultMsg:
+		if msg.componentID != m.addNetworkComponent.id || msg.operationID != m.addNetworkComponent.searchGeneration {
+			return m, nil
+		}
+		m.addNetworkComponent.adding = false
+		if msg.err != nil {
+			m.addNetworkComponent.SetError(fmt.Errorf("network operation failed: %w", msg.err))
+			return m, nil
+		}
+		feedback := "Network added successfully"
+		if msg.edited {
+			feedback = "Network updated successfully"
+		} else if msg.classification != nil && msg.classification.Type == blockchain.NetworkTypeStandard {
+			feedback = "Network added as a registry-listed network"
+		} else if msg.classification != nil && msg.classification.Type == blockchain.NetworkTypeCustom {
+			feedback = "Network added as a custom network"
+		}
+		m.lastOperationNotice = feedback
+		m.editingNetworkKey = ""
+		m.currentConfig = msg.config
+		if m.networkListComponent.table.Rows() == nil {
+			m.networkListComponent = NewNetworkListComponent()
+		}
+		m.networkListComponent.UpdateNetworks(m.currentConfig)
+		m.currentView = constants.NetworkListView
+		return m, nil
+	case addNetworkErrorMsg:
+		if msg.componentID != m.addNetworkComponent.id || msg.operationID != m.addNetworkComponent.searchGeneration {
+			return m, nil
+		}
+		m.addNetworkComponent.adding = false
+		m.addNetworkComponent.SetError(msg.err)
+		return m, nil
 	case AddNetworkRequestMsg:
+		if msg.componentID != m.addNetworkComponent.id || msg.operationID != m.addNetworkComponent.searchGeneration {
+			return m, nil
+		}
 		// Parse and validate chain ID
 		chainID, err := strconv.ParseInt(msg.ChainID, 10, 64)
 		if err != nil {
@@ -272,8 +396,8 @@ func (m *CLIModel) updateAddNetwork(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		if strings.TrimSpace(msg.RPCEndpoint) == "" {
-			m.addNetworkComponent.SetError(fmt.Errorf("RPC endpoint cannot be empty"))
+		if strings.TrimSpace(msg.RPCEndpoint) == "" && strings.TrimSpace(msg.RPCEndpointRef) == "" {
+			m.addNetworkComponent.SetError(fmt.Errorf("RPC endpoint or credential reference cannot be empty"))
 			return m, nil
 		}
 
@@ -284,70 +408,39 @@ func (m *CLIModel) updateAddNetwork(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Create network configuration
 		network := config.Network{
-			Name:        strings.TrimSpace(msg.Name),
-			RPCEndpoint: strings.TrimSpace(msg.RPCEndpoint),
-			ChainID:     chainID,
-			Symbol:      strings.TrimSpace(msg.Symbol),
-			IsActive:    true,
+			Name:              strings.TrimSpace(msg.Name),
+			RPCEndpoint:       strings.TrimSpace(msg.RPCEndpoint),
+			RPCEndpointRef:    strings.TrimSpace(msg.RPCEndpointRef),
+			ChainID:           chainID,
+			Symbol:            strings.TrimSpace(msg.Symbol),
+			NativeDecimals:    msg.NativeDecimals,
+			NativeDecimalsSet: msg.NativeDecimalsSet,
+			IsActive:          true,
+		}
+		if m.currentConfig != nil {
+			if existing, exists := m.currentConfig.Networks[m.editingNetworkKey]; exists {
+				network.IsActive = existing.IsActive
+				network.Explorer = existing.Explorer
+			}
 		}
 
-		// Get the network manager to perform classification and validation
-		nm := getNetworkManager()
-
-		// First, validate the network configuration
-		if err := nm.ValidateNetwork(network); err != nil {
-			m.addNetworkComponent.SetError(fmt.Errorf("%s: %v", localization.Labels["network_validation_failed"], err))
-			return m, nil
-		}
-
-		// Add the network using NetworkManager with classification info
-		classificationInfo, err := addNetworkWithClassificationInfo(network)
-		if err != nil {
-			m.addNetworkComponent.SetError(fmt.Errorf("failed to add network: %v", err))
-			return m, nil
-		}
-
-		// Provide user feedback about the classification
-		var feedbackMsg string
-		switch classificationInfo.Type {
-		case blockchain.NetworkTypeStandard:
-			if classificationInfo.ChainInfo != nil {
-				feedbackMsg = fmt.Sprintf("Network added successfully as standard network (found in ChainList: %s)", classificationInfo.ChainInfo.Name)
+		networkManager := getNetworkManager()
+		operationContext := m.addNetworkComponent.operationContext
+		componentID := msg.componentID
+		operationID := msg.operationID
+		editingKey := m.editingNetworkKey
+		return m, func() tea.Msg {
+			result := networkCommitResultMsg{componentID: componentID, operationID: operationID, edited: editingKey != ""}
+			if editingKey != "" {
+				result.err = networkManager.UpdateNetworkContext(operationContext, editingKey, network)
 			} else {
-				feedbackMsg = "Network added successfully as standard network"
+				result.classification, result.err = networkManager.AddNetworkWithClassificationContext(operationContext, network)
 			}
-		case blockchain.NetworkTypeCustom:
-			feedbackMsg = "Network added successfully as custom network (not found in ChainList)"
-			if classificationInfo.Source == "manual_offline" {
-				feedbackMsg += " - " + localization.Labels["chainlist_unavailable_warning"]
+			if result.err == nil {
+				result.config, result.err = networkManager.configManager.LoadConfiguration()
 			}
-		default:
-			feedbackMsg = "Network added successfully"
+			return result
 		}
-
-		// Set success message (if the component supports it)
-		if setter, ok := interface{}(m.addNetworkComponent).(interface{ SetSuccessMessage(string) }); ok {
-			setter.SetSuccessMessage(feedbackMsg)
-		}
-
-		// Reload configuration to get the updated networks
-		if err := m.ensureConfigAndNetworksLoaded(); err != nil {
-			m.addNetworkComponent.SetError(fmt.Errorf("failed to reload configuration: %v", err))
-			return m, nil
-		}
-
-		// Initialize the network list component if it hasn't been initialized yet
-		if m.networkListComponent.table.Rows() == nil {
-			m.networkListComponent = NewNetworkListComponent()
-		}
-
-		// Update the network list
-		m.networkListComponent.UpdateNetworks(m.currentConfig)
-
-		// Return to the network list view
-		m.currentView = constants.NetworkListView
-
-		return m, nil
 	}
 
 	// Update the add network component

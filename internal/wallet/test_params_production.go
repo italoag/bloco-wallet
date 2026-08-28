@@ -3,13 +3,18 @@
 
 package wallet
 
-import "github.com/ethereum/go-ethereum/accounts/keystore"
+import (
+	"time"
+
+	"github.com/ethereum/go-ethereum/accounts/keystore"
+)
 
 // Production scrypt parameters - secure but slower
 const (
 	// Use standard secure parameters in production
-	TestScryptN = keystore.StandardScryptN // 262144
-	TestScryptP = keystore.StandardScryptP // 1
+	TestScryptN          = keystore.StandardScryptN // 262144
+	TestScryptP          = keystore.StandardScryptP // 1
+	TestOperationTimeout = 45 * time.Second
 
 	// Medium parameters are same as standard in production
 	TestScryptNMedium = keystore.StandardScryptN

@@ -27,6 +27,10 @@ type = "sqlite"
 # - "/caminho/absoluto/para/arquivo.db" para um arquivo específico
 # - Deixe em branco para usar o valor em database_path
 dsn = ""
+dsn_ref = ""
+
+[network_policy]
+allowed_local_targets = []
 
 # Security Settings
 [security]
@@ -36,6 +40,7 @@ argon2_memory = 65536   # Uso de memória em KB (64MB)
 argon2_threads = 4      # Número de threads
 argon2_key_len = 32     # Tamanho da chave derivada em bytes
 salt_length = 16        # Tamanho do salt em bytes
+transaction_authorization_mode = "password_per_transaction"
 
 # Font Settings
 [fonts]

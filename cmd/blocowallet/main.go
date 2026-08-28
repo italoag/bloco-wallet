@@ -1,13 +1,17 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
+	"blocowallet/internal/blockchain"
+	"blocowallet/internal/evm"
 	"blocowallet/internal/storage"
 	"blocowallet/internal/ui"
 	"blocowallet/internal/wallet"
@@ -44,6 +48,7 @@ func main() {
 		log.Printf("Failed to load configuration: %v", err)
 		os.Exit(1)
 	}
+	ui.ConfigureConfigurationManager(configManager)
 
 	// Initialize file-based logger (no terminal output)
 	logDir := filepath.Join(cfg.AppDir, "logs")
@@ -108,6 +113,21 @@ func main() {
 	}
 	defer vault.Close()
 	lgr.Info("Wallet vault initialized")
+	rpcGateway := blockchain.NewRPCGateway(blockchain.RPCGatewayOptions{AllowedLocalTargets: cfg.NetworkPolicy.AllowedLocalTargets})
+	ui.ConfigureRPCGateway(rpcGateway)
+	balanceProvider := blockchain.NewMultiProvider(rpcGateway, config.EnvironmentCredentialProvider{})
+	defer balanceProvider.Close()
+	softwareSigner, err := wallet.NewSoftwareSignerWithApprovalVerifier(vault, repo)
+	if err != nil {
+		log.Printf("Failed to initialize transaction signer: %v", err)
+		os.Exit(1)
+	}
+	transactionAuthorizer, err := wallet.NewTransactionAuthorizer(vault, wallet.TransactionAuthorizationMode(cfg.Security.TransactionAuthorizationMode))
+	if err != nil {
+		log.Printf("Failed to initialize transaction authorizer: %v", err)
+		os.Exit(1)
+	}
+	defer transactionAuthorizer.Close()
 
 	// Initialize and start the TUI application
 	app, err := ui.NewCLIModel(vault)
@@ -115,6 +135,66 @@ func main() {
 		log.Printf("Failed to initialize TUI: %v", err)
 		os.Exit(1)
 	}
+	app.ConfigureBalanceProvider(balanceProvider, cfg)
+	app.ConfigureHistoryReader(repo)
+	app.ConfigureTransactionAuthorizer(transactionAuthorizer)
+	app.ConfigureMessageSigningFactory(func(context.Context) (ui.MessageSigningService, error) {
+		return evm.NewMessageSigningService(repo, softwareSigner, evm.MessageSigningOptions{ApprovalTTL: 2 * time.Minute})
+	})
+	createEngine := func(ctx context.Context, network config.Network) (*evm.Engine, error) {
+		endpoint, err := network.ResolveRPCEndpoint(config.EnvironmentCredentialProvider{})
+		if err != nil {
+			return nil, err
+		}
+		session, err := rpcGateway.ValidateChain(ctx, endpoint, network.ChainID)
+		if err != nil {
+			return nil, err
+		}
+		rpc, err := blockchain.NewEVMRPC(rpcGateway, session)
+		if err != nil {
+			return nil, err
+		}
+		return evm.NewEngine(repo, rpc, softwareSigner, evm.EngineOptions{
+			ReservationTTL: 5 * time.Minute,
+			ApprovalTTL:    2 * time.Minute,
+		})
+	}
+	app.ConfigureTransactionEngineFactory(func(ctx context.Context, network config.Network) (ui.TransactionEngine, error) {
+		return createEngine(ctx, network)
+	})
+	recovery, err := evm.NewRecoverySupervisor(repo, func(ctx context.Context, chainID uint64) (evm.RecoveryTracker, error) {
+		for _, network := range cfg.Networks {
+			if network.IsActive && network.ChainID > 0 && uint64(network.ChainID) == chainID {
+				return createEngine(ctx, network)
+			}
+		}
+		return nil, fmt.Errorf("no active provider for recoverable chain")
+	}, 2*time.Minute)
+	if err != nil {
+		log.Printf("Failed to initialize transaction recovery: %v", err)
+		os.Exit(1)
+	}
+	recoveryContext, cancelRecovery := context.WithCancel(context.Background())
+	recoveryDone := make(chan struct{})
+	go func() {
+		defer close(recoveryDone)
+		ticker := time.NewTicker(15 * time.Second)
+		defer ticker.Stop()
+		for {
+			if err := recovery.RecoverOnce(recoveryContext, 100, time.Now().UTC()); err != nil && recoveryContext.Err() == nil {
+				log.Printf("Transaction recovery pass failed: %v", err)
+			}
+			select {
+			case <-recoveryContext.Done():
+				return
+			case <-ticker.C:
+			}
+		}
+	}()
+	defer func() {
+		cancelRecovery()
+		<-recoveryDone
+	}()
 	p := tea.NewProgram(app, tea.WithAltScreen())
 
 	lgr.Info("Starting application")

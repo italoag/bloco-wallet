@@ -12,6 +12,34 @@ var globalConfigManager *config.ConfigurationManager
 // Global network manager instance
 var globalNetworkManager *NetworkManager
 
+var globalRPCGateway *blockchain.RPCGateway
+var globalChainListService *blockchain.ChainListService
+
+func ConfigureRPCGateway(gateway *blockchain.RPCGateway) {
+	globalRPCGateway = gateway
+	globalChainListService = nil
+	globalNetworkManager = nil
+}
+
+func getRPCGateway() *blockchain.RPCGateway {
+	if globalRPCGateway == nil {
+		globalRPCGateway = blockchain.NewRPCGateway(blockchain.RPCGatewayOptions{})
+	}
+	return globalRPCGateway
+}
+
+func getChainListService() *blockchain.ChainListService {
+	if globalChainListService == nil {
+		globalChainListService = blockchain.NewChainListServiceWithGateway(getRPCGateway(), "https://chainlist.org")
+	}
+	return globalChainListService
+}
+
+func ConfigureConfigurationManager(manager *config.ConfigurationManager) {
+	globalConfigManager = manager
+	globalNetworkManager = nil
+}
+
 // getConfigurationManager returns the global configuration manager instance
 func getConfigurationManager() *config.ConfigurationManager {
 	if globalConfigManager == nil {
@@ -44,7 +72,7 @@ func updateLanguageInConfig(language string) error {
 	cfg.Language = language
 
 	// Save the updated configuration
-	if err := cm.SaveConfiguration(cfg); err != nil {
+	if err := cm.SaveConfiguration(cfg); err != nil && !config.IsConfigCommitted(err) {
 		return fmt.Errorf("failed to save configuration: %w", err)
 	}
 
@@ -55,45 +83,9 @@ func updateLanguageInConfig(language string) error {
 func getNetworkManager() *NetworkManager {
 	if globalNetworkManager == nil {
 		configManager := getConfigurationManager()
-		chainListService := blockchain.NewChainListService()
-		globalNetworkManager = NewNetworkManager(configManager, chainListService)
+		globalNetworkManager = NewNetworkManager(configManager, getChainListService())
 	}
 	return globalNetworkManager
-}
-
-// addNetworkWithClassificationInfo adds a network and returns classification information
-func addNetworkWithClassificationInfo(network config.Network) (*NetworkClassificationInfo, error) {
-	nm := getNetworkManager()
-
-	// Get classification information before adding
-	classification, err := nm.classificationService.ClassifyNetwork(int(network.ChainID), network.Name, network.RPCEndpoint)
-	if err != nil {
-		return nil, fmt.Errorf("failed to classify network: %w", err)
-	}
-
-	// Add the network
-	err = nm.AddNetwork(network)
-	if err != nil {
-		return nil, err
-	}
-
-	// Return classification info
-	return &NetworkClassificationInfo{
-		Type:        classification.Type,
-		IsValidated: classification.IsValidated,
-		Source:      classification.Source,
-		Key:         classification.Key,
-		ChainInfo:   classification.ChainInfo,
-	}, nil
-}
-
-// NetworkClassificationInfo contains information about network classification
-type NetworkClassificationInfo struct {
-	Type        blockchain.NetworkType `json:"type"`
-	IsValidated bool                   `json:"is_validated"`
-	Source      string                 `json:"source"`
-	Key         string                 `json:"key"`
-	ChainInfo   *blockchain.ChainInfo  `json:"chain_info,omitempty"`
 }
 
 // removeNetworkWithManager removes a network using the NetworkManager

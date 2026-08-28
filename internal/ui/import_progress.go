@@ -28,6 +28,7 @@ type ImportProgressModel struct {
 	paused            bool
 	pauseReason       string
 	startTime         time.Time
+	elapsed           time.Duration
 	styles            Styles
 	lastUpdateTime    time.Time
 	fallbackEnabled   bool
@@ -96,6 +97,7 @@ func (m ImportProgressModel) Update(msg tea.Msg) (ImportProgressModel, tea.Cmd) 
 		m.paused = msg.Paused
 		m.pauseReason = msg.PauseReason
 		m.lastUpdateTime = time.Now()
+		m.elapsed = m.lastUpdateTime.Sub(m.startTime)
 
 		if msg.Error != nil {
 			m.errors = append(m.errors, *msg.Error)
@@ -112,14 +114,15 @@ func (m ImportProgressModel) Update(msg tea.Msg) (ImportProgressModel, tea.Cmd) 
 		return m, m.tickCmd()
 
 	case TickMsg:
+		m.elapsed = msg.Time.Sub(m.startTime)
 		// Fallback progress estimation if no updates received recently
 		if !m.completed && !m.paused && m.fallbackEnabled {
-			timeSinceLastUpdate := time.Since(m.lastUpdateTime)
+			timeSinceLastUpdate := msg.Time.Sub(m.lastUpdateTime)
 
 			// If no updates for more than 3 seconds, use fallback estimation
 			if timeSinceLastUpdate > 3*time.Second {
 				// Estimate progress based on elapsed time (assuming 30 seconds per file)
-				elapsed := time.Since(m.startTime)
+				elapsed := m.elapsed
 				estimatedTimePerFile := 30 * time.Second
 				estimatedFilesProcessed := float64(elapsed) / float64(estimatedTimePerFile)
 
@@ -173,11 +176,11 @@ func (m ImportProgressModel) View() string {
 
 	// Current file being processed
 	if m.currentFile != "" && !m.completed {
-		currentFileText := fmt.Sprintf("Processing: %s", m.currentFile)
+		currentFileText := fmt.Sprintf("Processing: %s", safeShort(m.currentFile))
 		if m.paused {
-			currentFileText = fmt.Sprintf("Paused on: %s", m.currentFile)
+			currentFileText = fmt.Sprintf("Paused on: %s", safeShort(m.currentFile))
 			if m.pauseReason != "" {
-				currentFileText += fmt.Sprintf(" (%s)", m.pauseReason)
+				currentFileText += fmt.Sprintf(" (%s)", safeInline(m.pauseReason))
 			}
 		}
 		sections = append(sections, m.styles.MenuDesc.Render(currentFileText))
@@ -185,7 +188,7 @@ func (m ImportProgressModel) View() string {
 
 	// Status section
 	if m.completed {
-		elapsed := time.Since(m.startTime)
+		elapsed := m.elapsed
 		successCount := m.processedFiles - len(m.errors)
 
 		statusText := fmt.Sprintf("✓ Import completed in %v", elapsed.Round(time.Second))
@@ -197,11 +200,11 @@ func (m ImportProgressModel) View() string {
 	} else if m.paused {
 		statusText := "⏸ Import paused"
 		if m.pauseReason != "" {
-			statusText += fmt.Sprintf(" - %s", m.pauseReason)
+			statusText += fmt.Sprintf(" - %s", safeInline(m.pauseReason))
 		}
 		sections = append(sections, m.styles.MenuDesc.Render(statusText))
 	} else {
-		elapsed := time.Since(m.startTime)
+		elapsed := m.elapsed
 		statusText := fmt.Sprintf("⏳ Importing... (elapsed: %v)", elapsed.Round(time.Second))
 		sections = append(sections, m.styles.MenuDesc.Render(statusText))
 	}
@@ -226,7 +229,7 @@ func (m ImportProgressModel) View() string {
 			if err.Skipped {
 				errorType = "Skipped"
 			}
-			errorText := fmt.Sprintf("• %s: %s - %s", errorType, err.File, err.Error.Error())
+			errorText := fmt.Sprintf("• %s: %s - %s", safeShort(errorType), safeShort(err.File), safeError(err.Error))
 			sections = append(sections, m.styles.MenuDesc.Render(errorText))
 		}
 	}
@@ -373,7 +376,7 @@ func (m ImportProgressModel) GetSummaryText() string {
 	successCount := m.processedFiles - len(m.errors)
 	failedCount := m.getFailedCount()
 	skippedCount := m.getSkippedCount()
-	elapsed := time.Since(m.startTime)
+	elapsed := m.elapsed
 
 	var parts []string
 	parts = append(parts, fmt.Sprintf("Import completed in %v", elapsed.Round(time.Second)))

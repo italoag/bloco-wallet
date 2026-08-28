@@ -15,6 +15,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/google/uuid"
 )
 
 type WalletDetails struct {
@@ -221,13 +222,46 @@ func (ws *WalletService) ImportWalletFromPrivateKey(name, privateKeyHex, passwor
 	}
 
 	// Import the private key to keystore
-	account, err := ws.KeyStore.ImportECDSA(privKey, password)
+	defer privKey.D.SetInt64(0)
+	keyID, err := uuid.NewRandom()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("generate keystore identity: %w", err)
+	}
+	n, p := GetTestKeystoreParams()
+	address := crypto.PubkeyToAddress(privKey.PublicKey)
+	encryptedKey, err := keystore.EncryptKey(&keystore.Key{Id: keyID, Address: address, PrivateKey: privKey}, password, n, p)
+	if err != nil {
+		return nil, fmt.Errorf("encrypt private key import: %w", err)
+	}
+	if err := os.MkdirAll(ws.KeyStoreDir, 0o700); err != nil {
+		return nil, fmt.Errorf("prepare keystore directory: %w", err)
+	}
+	destination, err := os.CreateTemp(ws.KeyStoreDir, address.Hex()+"-*.json")
+	if err != nil {
+		return nil, fmt.Errorf("create private key keystore: %w", err)
+	}
+	newPath := destination.Name()
+	if err := destination.Chmod(0o600); err != nil {
+		_ = destination.Close()
+		_ = os.Remove(newPath)
+		return nil, fmt.Errorf("protect private key keystore: %w", err)
+	}
+	if _, err := destination.Write(encryptedKey); err != nil {
+		_ = destination.Close()
+		_ = os.Remove(newPath)
+		return nil, fmt.Errorf("write private key keystore: %w", err)
+	}
+	if err := destination.Sync(); err != nil {
+		_ = destination.Close()
+		_ = os.Remove(newPath)
+		return nil, fmt.Errorf("sync private key keystore: %w", err)
+	}
+	if err := destination.Close(); err != nil {
+		_ = os.Remove(newPath)
+		return nil, fmt.Errorf("close private key keystore: %w", err)
 	}
 
 	// Rename the keystore file to match Ethereum address
-	newPath := account.URL.Path
 	keepKeyStore := false
 	defer func() {
 		if !keepKeyStore {
@@ -241,7 +275,7 @@ func (ws *WalletService) ImportWalletFromPrivateKey(name, privateKeyHex, passwor
 	// Create the wallet entry without mnemonic
 	wallet := &Wallet{
 		Name:         name,
-		Address:      account.Address.Hex(),
+		Address:      address.Hex(),
 		KeyStorePath: newPath,
 		Mnemonic:     nilMnemonic, // No mnemonic stored for private key imports
 		ImportMethod: string(ImportMethodPrivateKey),

@@ -70,6 +70,8 @@ func TestNetworkClassificationService_ClassifyNetwork_Standard(t *testing.T) {
 	}
 
 	mockChainList.On("GetChainInfo", 1).Return(chainInfo, nil)
+	mockChainList.On("ValidateRPCEndpoint", "https://eth.drpc.org").Return(nil)
+	mockChainList.On("GetChainIDFromRPC", "https://eth.drpc.org").Return(1, nil)
 
 	classification, err := ncs.ClassifyNetwork(1, "Ethereum Mainnet", "https://eth.drpc.org")
 
@@ -90,13 +92,15 @@ func TestNetworkClassificationService_ClassifyNetwork_Custom(t *testing.T) {
 
 	// Mock chainlist returning error (network not found)
 	mockChainList.On("GetChainInfo", 999999).Return(nil, fmt.Errorf("chain not found"))
+	mockChainList.On("ValidateRPCEndpoint", "https://custom.rpc.com").Return(nil)
+	mockChainList.On("GetChainIDFromRPC", "https://custom.rpc.com").Return(999999, nil)
 
 	classification, err := ncs.ClassifyNetwork(999999, "My Custom Network", "https://custom.rpc.com")
 
 	assert.NoError(t, err)
 	assert.NotNil(t, classification)
 	assert.Equal(t, NetworkTypeCustom, classification.Type)
-	assert.False(t, classification.IsValidated)
+	assert.True(t, classification.IsValidated)
 	assert.Nil(t, classification.ChainInfo)
 	assert.Equal(t, "custom_my_custom_network_999999", classification.Key)
 	assert.Equal(t, "manual", classification.Source)
@@ -117,6 +121,8 @@ func TestNetworkClassificationService_ValidateNetworkAgainstChainList_Success(t 
 	}
 
 	mockChainList.On("GetChainInfo", 1).Return(chainInfo, nil)
+	mockChainList.On("ValidateRPCEndpoint", "https://eth.drpc.org").Return(nil)
+	mockChainList.On("GetChainIDFromRPC", "https://eth.drpc.org").Return(1, nil)
 
 	resultChainInfo, workingRPC, err := ncs.ValidateNetworkAgainstChainList(1, "https://eth.drpc.org")
 
@@ -305,6 +311,8 @@ func TestNetworkClassificationService_ClassifyExistingNetwork_WithTypePrefix(t *
 	}
 
 	mockChainList.On("GetChainInfo", 1).Return(chainInfo, nil)
+	mockChainList.On("ValidateRPCEndpoint", "https://eth.drpc.org").Return(nil)
+	mockChainList.On("GetChainIDFromRPC", "https://eth.drpc.org").Return(1, nil)
 
 	classification, err := ncs.ClassifyExistingNetwork("standard_ethereum_mainnet_1", 1, "Ethereum Mainnet", "https://eth.drpc.org")
 
@@ -322,15 +330,24 @@ func TestNetworkClassificationService_ClassifyExistingNetwork_LegacyFormat(t *te
 
 	// Mock chainlist returning error (network not found)
 	mockChainList.On("GetChainInfo", 999).Return(nil, fmt.Errorf("chain not found"))
+	mockChainList.On("ValidateRPCEndpoint", "https://legacy.rpc").Return(nil)
+	mockChainList.On("GetChainIDFromRPC", "https://legacy.rpc").Return(999, nil)
 
 	classification, err := ncs.ClassifyExistingNetwork("legacy_network_999", 999, "Legacy Network", "https://legacy.rpc")
 
 	assert.NoError(t, err)
 	assert.Equal(t, NetworkTypeCustom, classification.Type)
-	assert.False(t, classification.IsValidated)
+	assert.True(t, classification.IsValidated)
 	assert.Equal(t, "legacy_network_999", classification.Key) // Preserves original key for backward compatibility
 
 	mockChainList.AssertExpectations(t)
+}
+
+func TestNetworkClassificationService_ClassifyNetwork_NoServiceFailsClosed(t *testing.T) {
+	ncs := NewNetworkClassificationService(nil)
+	if _, err := ncs.ClassifyNetwork(1, "Ethereum", "https://rpc.example.com"); err == nil {
+		t.Fatal("classification without validation service succeeded")
+	}
 }
 
 func TestNetworkClassificationService_ValidateNetworkAgainstChainList_NoService(t *testing.T) {

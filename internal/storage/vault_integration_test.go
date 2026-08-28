@@ -5,12 +5,25 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
+	"time"
 
+	"blocowallet/internal/evm"
 	"blocowallet/internal/wallet"
 	"blocowallet/pkg/config"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 )
+
+type restartApprovalVerifier struct{}
+
+func (*restartApprovalVerifier) VerifyTransactionApproval(context.Context, wallet.TransactionApprovalBinding) error {
+	return nil
+}
+
+func (*restartApprovalVerifier) VerifyMessageApproval(context.Context, wallet.MessageApprovalBinding) error {
+	return nil
+}
 
 func TestVaultSurvivesRepositoryRestart(t *testing.T) {
 	root := t.TempDir()
@@ -73,18 +86,39 @@ func TestVaultSurvivesRepositoryRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	signer, err := wallet.NewSoftwareSigner(reopenedVault)
+	signer, err := wallet.NewSoftwareSignerWithApprovalVerifier(reopenedVault, &restartApprovalVerifier{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	digest := crypto.Keccak256([]byte("restart"))
 	var digestValue [32]byte
 	copy(digestValue[:], digest)
+	intentHash := crypto.Keccak256Hash([]byte("restart-intent"), digest)
+	now := time.Now().UTC()
+	messageApproval := evm.MessageApproval{
+		ApprovalID: "51111111-1111-4111-8111-111111111111", AccountID: summary.AccountID,
+		Signer: common.HexToAddress(summary.Address), Scheme: wallet.MessageSigningEIP191Personal,
+		Digest: digestValue, IntentHash: intentHash, PayloadSize: uint64(len(digest)),
+		AuthorizationEpoch: 1, ConfirmationLevel: evm.ConfirmationReinforced,
+		CreatedAt: now, ConfirmedAt: now, ExpiresAt: now.Add(time.Minute), State: evm.MessageApprovalPending, Revision: 1,
+	}
+	if err := reopenedRepository.IssueMessageApproval(context.Background(), messageApproval); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reopenedRepository.AuthorizeMessageSigning(context.Background(), evm.AuthorizeMessageSigningRequest{
+		SigningID: "71111111-1111-4111-8111-111111111111", ApprovalID: messageApproval.ApprovalID,
+		AccountID: summary.AccountID, Signer: messageApproval.Signer, Scheme: messageApproval.Scheme,
+		Digest: messageApproval.Digest, IntentHash: messageApproval.IntentHash, AuthorizationEpoch: 1, AuthorizedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
 	result, err := signer.Sign(context.Background(), handle, wallet.SoftwareSigningRequest{
-		AccountID:  summary.AccountID,
-		Purpose:    wallet.SigningPurposeMessage,
-		Digest:     digestValue,
-		ApprovalID: "restart-test",
+		AccountID:     summary.AccountID,
+		Purpose:       wallet.SigningPurposeMessage,
+		MessageScheme: wallet.MessageSigningEIP191Personal,
+		Digest:        digestValue,
+		IntentHash:    intentHash,
+		ApprovalID:    messageApproval.ApprovalID,
 	})
 	if err != nil {
 		t.Fatal(err)

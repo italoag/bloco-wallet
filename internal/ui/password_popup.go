@@ -99,7 +99,7 @@ func (m PasswordPopupModel) View() string {
 	// Keystore filename
 	filename := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("241")).
-		Render(fmt.Sprintf("File: %s", m.keystoreFile))
+		Render(fmt.Sprintf("File: %s", safeShort(m.keystoreFile)))
 
 	// Retry counter if there have been attempts
 	retryInfo := ""
@@ -121,7 +121,7 @@ func (m PasswordPopupModel) View() string {
 	if m.errorMessage != "" {
 		errorMsg = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("196")).
-			Render(fmt.Sprintf("Error: %s", m.errorMessage))
+			Render(fmt.Sprintf("Error: %s", safeInline(m.errorMessage)))
 	}
 
 	// Instructions

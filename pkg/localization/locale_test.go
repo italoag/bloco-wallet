@@ -5,8 +5,28 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
+
+func TestAvailableLanguagesRejectsUnsafeFilenameCodes(t *testing.T) {
+	if os.PathSeparator == '\\' {
+		t.Skip("control characters are not portable in Windows filenames")
+	}
+	root := t.TempDir()
+	unsafeCode := "xx\x1b]52;c;secret\x07"
+	if err := os.WriteFile(filepath.Join(root, "language."+unsafeCode+".toml"), []byte(""), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, languageCode := range GetAvailableLanguages(root) {
+		if strings.ContainsAny(languageCode, "\x1b\a\r\n") {
+			t.Fatalf("unsafe language code was accepted: %q", languageCode)
+		}
+	}
+	if name := GetLanguageName(unsafeCode); strings.ContainsAny(name, "\x1b\a\r\n") {
+		t.Fatalf("unsafe language name was returned: %q", name)
+	}
+}
 
 func TestInitLocalization(t *testing.T) {
 	// Create a temporary directory for testing

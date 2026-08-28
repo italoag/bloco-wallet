@@ -1,12 +1,19 @@
 package ui
 
 import (
+	"blocowallet/internal/blockchain"
 	"blocowallet/internal/constants"
+	"blocowallet/internal/evm"
 	"blocowallet/internal/wallet"
 	"blocowallet/pkg/config"
+	"context"
+	"time"
 
+	"github.com/charmbracelet/bubbles/help"
+	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/viewport"
 	"github.com/digitallyserviced/tdfgo/tdf"
 )
 
@@ -24,6 +31,30 @@ type CLIModel struct {
 	walletCount                     int
 	selectedWallet                  *wallet.Wallet
 	selectedAccount                 *wallet.AccountSummary
+	balanceProvider                 *blockchain.MultiProvider
+	balanceConfig                   *config.Config
+	balanceConfigLoader             func() (*config.Config, error)
+	networkBalances                 []blockchain.NetworkBalance
+	balanceLoading                  bool
+	balanceOperationID              uint64
+	balanceCancel                   context.CancelFunc
+	balanceError                    string
+	transactionEngineFactory        TransactionEngineFactory
+	transactionAuthorizer           TransactionAuthorizer
+	messageSigningFactory           MessageSigningServiceFactory
+	personalSign                    *personalSignState
+	personalSignGeneration          uint64
+	eip712Sign                      *eip712SignState
+	eip712SignGeneration            uint64
+	contractCall                    *contractCallState
+	contractCallGeneration          uint64
+	contractCallEngineValue         TransactionEngine
+	historyReader                   evm.HistoryReader
+	accountHistory                  *accountHistoryState
+	historyGeneration               uint64
+	nativeTransfer                  *nativeTransferState
+	nativeTransferGeneration        uint64
+	transactionNotice               string
 	deletingWallet                  *wallet.Wallet
 	err                             error
 	nameInput                       textinput.Model
@@ -31,6 +62,8 @@ type CLIModel struct {
 	createLanguageInput             textinput.Model
 	createPassphraseInput           textinput.Model
 	createDerivationPathInput       textinput.Model
+	createOptionList                list.Model
+	createCustomPath                bool
 	createOptionsStage              int
 	passwordInput                   textinput.Model
 	createPasswordConfirmationInput textinput.Model
@@ -64,7 +97,11 @@ type CLIModel struct {
 	walletTable                     table.Model
 	width                           int
 	height                          int
+	displayTime                     time.Time
 	walletDetails                   *wallet.WalletDetails
+	walletDetailsViewport           viewport.Model
+	walletDetailsHelp               help.Model
+	walletDetailsKeys               WalletDetailsKeyMap
 	styles                          Styles
 	// fontsList         []string         // Lista de nomes de fontes carregadas do arquivo externo - currently unused
 	selectedFont      *tdf.TheDrawFont // Fonte selecionada aleatoriamente

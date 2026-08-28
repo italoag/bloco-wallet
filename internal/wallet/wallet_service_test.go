@@ -476,7 +476,7 @@ func TestCancelWaitsForInFlightCommit(t *testing.T) {
 	}()
 	select {
 	case <-repo.started:
-	case <-time.After(5 * time.Second):
+	case <-time.After(TestOperationTimeout):
 		t.Fatal("import did not reach commit")
 	}
 

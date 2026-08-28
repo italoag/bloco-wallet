@@ -31,7 +31,7 @@ other = "Symbol will be filled automatically"
 other = "Network Name"
 
 [wallet_list_status_bar]
-other = "View: {{.View}} | Press 'd' to delete | 'esc' to return | 'q' to quit"
+other = "View: {{.View}} | Press 'esc' to return | 'q' to quit"
 
 [wallet_details_title]
 other = "Wallet Details"
@@ -53,6 +53,12 @@ other = "Import using a private key"
 
 [import_keystore_desc]
 other = "Import using a KeyStoreV3 file"
+
+[import_watch_only]
+other = "Watch-only Address"
+
+[import_watch_only_desc]
+other = "Track an EVM address without storing signing secrets"
 
 [invalid_keystore]
 other = "Invalid keystore file. Please check the path and try again."
@@ -237,7 +243,7 @@ other = "Blockchain Networks"
 other = "Network name is required"
 
 [wallet_list_instructions]
-other = "Use the arrow keys to navigate, Enter to view details, 'd' to delete a wallet, 'esc' to return to the menu."
+other = "Use the arrow keys to navigate, Enter to view details, and 'esc' to return to the menu."
 
 [ethereum_address]
 other = "Ethereum Address:"

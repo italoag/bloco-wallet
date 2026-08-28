@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"time"
 
+	"blocowallet/internal/terminal"
+
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -83,8 +85,11 @@ func (account *Account) Validate() error {
 			return fmt.Errorf("related account ID must be a canonical UUID v4")
 		}
 	}
-	if account.Name == "" || !common.IsHexAddress(account.Address) || common.HexToAddress(account.Address).Hex() != account.Address {
-		return fmt.Errorf("account name and checksummed address are required")
+	if account.Name == "" || terminal.SanitizeInline(account.Name, 128) != account.Name {
+		return fmt.Errorf("account name is outside display policy")
+	}
+	if !common.IsHexAddress(account.Address) || common.HexToAddress(account.Address).Hex() != account.Address {
+		return fmt.Errorf("checksummed account address is required")
 	}
 	if account.SignerKind == "" || account.SignerReference == "" || account.State == "" || account.SourceIdentity == "" || account.AuthorizationEpoch == 0 || account.BackupGeneration == 0 {
 		return fmt.Errorf("account signer, state, source identity, and authorization epoch are required")
@@ -107,8 +112,8 @@ func (account *Account) Validate() error {
 			return fmt.Errorf("private key account cannot contain mnemonic metadata")
 		}
 	case SignerKindWatchOnly:
-		if account.Capabilities&(CapabilitySignTransaction|CapabilitySignMessage|CapabilityExportSecret) != 0 || len(account.SecretEnvelope) != 0 {
-			return fmt.Errorf("watch-only account cannot sign or store secrets")
+		if account.Capabilities != 0 || account.SecretType != "" || len(account.SecretEnvelope) != 0 || account.DerivationScheme != "" || account.DerivationPath != "" || account.AccountIndex != 0 || account.ChangeIndex != 0 || account.AddressIndex != 0 || account.BIP39Language != "" || account.HasBIP39Passphrase {
+			return fmt.Errorf("watch-only account cannot sign or store custody material")
 		}
 	case SignerKindHardware, SignerKindCloud, SignerKindMultisig:
 		if len(account.SecretEnvelope) != 0 {

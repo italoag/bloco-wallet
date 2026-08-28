@@ -24,6 +24,7 @@ var (
 
 type ImportPreview struct {
 	Address            string
+	SignerKind         SignerKind
 	SecretType         SecretType
 	DerivationPath     string
 	BIP39Language      BIP39Language
@@ -54,6 +55,19 @@ type KeystoreImportRequest struct {
 	SourcePassword         []byte
 	StoragePassword        []byte
 	ConfirmStoragePassword []byte
+}
+
+type WatchOnlyImportRequest struct {
+	Name    string
+	Address string
+}
+
+func PreviewWatchOnlyImport(request WatchOnlyImportRequest) (ImportPreview, error) {
+	address, err := canonicalWatchOnlyAddress(request.Address)
+	if err != nil {
+		return ImportPreview{}, err
+	}
+	return ImportPreview{Address: address, SignerKind: SignerKindWatchOnly, SourceFormat: "watch_only_address"}, nil
 }
 
 func PreviewMnemonicImport(request MnemonicImportRequest) (ImportPreview, error) {
@@ -94,6 +108,75 @@ func PreviewKeystoreImportContext(ctx context.Context, data, sourcePassword []by
 	}
 	defer clear(secret.PrivateKey)
 	return previewForCanonicalSecret(secret, address, "keystore_v3"), nil
+}
+
+func (vault *WalletVault) ImportWatchOnly(ctx context.Context, request WatchOnlyImportRequest) (AccountSummary, error) {
+	if err := vault.beginOperation(); err != nil {
+		return AccountSummary{}, err
+	}
+	defer vault.endOperation()
+	if err := ctx.Err(); err != nil {
+		return AccountSummary{}, err
+	}
+	name := strings.TrimSpace(request.Name)
+	if name == "" {
+		return AccountSummary{}, fmt.Errorf("account name is required")
+	}
+	preview, err := PreviewWatchOnlyImport(request)
+	if err != nil {
+		return AccountSummary{}, err
+	}
+	sourceIdentity := watchOnlySourceIdentity(preview.Address)
+	accountID, err := newUUID(vault.options.Random)
+	if err != nil {
+		return AccountSummary{}, err
+	}
+	now := vault.options.Now().UTC()
+	account := &Account{
+		AccountID:          accountID,
+		Name:               name,
+		Address:            preview.Address,
+		SignerKind:         SignerKindWatchOnly,
+		SignerReference:    "watch-only:v1:" + strings.ToLower(preview.Address),
+		State:              AccountStateActive,
+		EnvelopeGeneration: 1,
+		AuthorizationEpoch: 1,
+		BackupGeneration:   1,
+		SourceIdentity:     sourceIdentity,
+		Revision:           1,
+		CreatedAt:          now,
+		UpdatedAt:          now,
+	}
+	var persisted *Account
+	if err := vault.repository.WithAccountTransaction(ctx, func(transaction AccountRepository) error {
+		if existing, findErr := transaction.FindAccountBySourceIdentity(ctx, sourceIdentity); findErr != nil && !errors.Is(findErr, ErrAccountNotFound) {
+			return findErr
+		} else if findErr == nil && existing != nil {
+			return ErrAccountConflict
+		}
+		related, err := transaction.FindAccountsByAddress(ctx, account.Address)
+		if err != nil {
+			return err
+		}
+		if len(related) > 0 {
+			account.RelatedAccountID = related[0].AccountID
+		}
+		if err := transaction.CreateAccount(ctx, account); err != nil {
+			return err
+		}
+		stored, err := transaction.GetAccount(ctx, accountID)
+		if err != nil {
+			return err
+		}
+		if stored.Address != account.Address || stored.Name != account.Name || stored.SignerKind != SignerKindWatchOnly || stored.SignerReference != account.SignerReference || stored.SourceIdentity != sourceIdentity || stored.Capabilities != 0 || stored.SecretType != "" || len(stored.SecretEnvelope) != 0 {
+			return fmt.Errorf("persisted watch-only account mismatch")
+		}
+		persisted = stored
+		return ctx.Err()
+	}); err != nil {
+		return AccountSummary{}, err
+	}
+	return summaryFromAccount(persisted), nil
 }
 
 func (vault *WalletVault) ImportMnemonic(ctx context.Context, request MnemonicImportRequest) (AccountSummary, error) {
@@ -342,9 +425,39 @@ func metadataForCanonicalSecret(accountID, address string, secret canonicalSecre
 	return metadata, nil
 }
 
+func canonicalWatchOnlyAddress(value string) (string, error) {
+	if value == "" || strings.TrimSpace(value) != value {
+		return "", fmt.Errorf("watch-only address must not contain surrounding whitespace")
+	}
+	if !strings.HasPrefix(value, "0x") {
+		if len(value) != 40 {
+			return "", fmt.Errorf("watch-only address must contain exactly 20 bytes")
+		}
+		value = "0x" + value
+	}
+	if len(value) != 42 || !common.IsHexAddress(value) {
+		return "", fmt.Errorf("watch-only address must contain exactly 20 bytes")
+	}
+	canonical := common.HexToAddress(value).Hex()
+	body := value[2:]
+	if body != strings.ToLower(body) && body != strings.ToUpper(body) && value != canonical {
+		return "", fmt.Errorf("watch-only address has an invalid EIP-55 checksum")
+	}
+	if common.HexToAddress(value) == (common.Address{}) {
+		return "", fmt.Errorf("watch-only address must not be the zero address")
+	}
+	return canonical, nil
+}
+
+func watchOnlySourceIdentity(address string) string {
+	digest := sha256.Sum256([]byte("bloco-wallet-watch-only-v1\x00" + strings.ToLower(address)))
+	return "watch-only-sha256:" + hex.EncodeToString(digest[:])
+}
+
 func previewForCanonicalSecret(secret canonicalSecretV1, address, sourceFormat string) ImportPreview {
 	return ImportPreview{
 		Address:            address,
+		SignerKind:         SignerKindSoftware,
 		SecretType:         secret.Kind,
 		DerivationPath:     secret.DerivationPath,
 		BIP39Language:      secret.BIP39Language,

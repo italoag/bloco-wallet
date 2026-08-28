@@ -14,6 +14,7 @@ const (
 	ImportMethodMnemonic   ImportMethod = "mnemonic"
 	ImportMethodPrivateKey ImportMethod = "private_key"
 	ImportMethodKeystore   ImportMethod = "keystore"
+	ImportMethodWatchOnly  ImportMethod = "watch_only"
 )
 
 // EnhancedWallet represents an enhanced wallet with import method tracking

@@ -1,6 +1,10 @@
 package blockchain
 
-import "fmt"
+import (
+	"fmt"
+
+	"blocowallet/internal/terminal"
+)
 
 // NetworkOperationError represents errors during network operations with context
 // Operation: "search", "validate", "add", etc.
@@ -16,14 +20,15 @@ func (e *NetworkOperationError) Error() string {
 	if e == nil {
 		return ""
 	}
-	if e.Message != "" && e.Cause != nil {
-		return fmt.Sprintf("%s: %v", e.Message, e.Cause)
+	message := terminal.SanitizeInline(e.Message, 256)
+	if message != "" && e.Cause != nil {
+		return fmt.Sprintf("%s: %s", message, terminal.SanitizeInline(e.Cause.Error(), 256))
 	}
-	if e.Message != "" {
-		return e.Message
+	if message != "" {
+		return message
 	}
 	if e.Cause != nil {
-		return e.Cause.Error()
+		return terminal.SanitizeInline(e.Cause.Error(), 256)
 	}
 	return "network operation error"
 }

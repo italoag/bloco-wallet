@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"context"
+
 	"blocowallet/internal/blockchain"
 	"blocowallet/pkg/config"
 	"fmt"
@@ -32,12 +34,32 @@ func NewNetworkManager(configManager ConfigurationManagerInterface, chainListSer
 	}
 }
 
+func saveNetworkConfiguration(manager ConfigurationManagerInterface, cfg *config.Config) error {
+	err := manager.SaveConfiguration(cfg)
+	if config.IsConfigCommitted(err) {
+		return nil
+	}
+	return err
+}
+
 // AddNetwork adds a new network with automatic classification
 func (nm *NetworkManager) AddNetwork(network config.Network) error {
+	_, err := nm.AddNetworkWithClassification(network)
+	return err
+}
+
+func (nm *NetworkManager) AddNetworkWithClassification(network config.Network) (*blockchain.NetworkClassification, error) {
+	return nm.AddNetworkWithClassificationContext(context.Background(), network)
+}
+
+func (nm *NetworkManager) AddNetworkWithClassificationContext(ctx context.Context, network config.Network) (*blockchain.NetworkClassification, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	// Load current configuration
 	cfg, err := nm.configManager.LoadConfiguration()
 	if err != nil {
-		return fmt.Errorf("failed to load configuration: %w", err)
+		return nil, fmt.Errorf("failed to load configuration: %w", err)
 	}
 
 	// Initialize Networks map if it's nil
@@ -45,49 +67,66 @@ func (nm *NetworkManager) AddNetwork(network config.Network) error {
 		cfg.Networks = make(map[string]config.Network)
 	}
 
-	// Classify the network
-	classification, err := nm.classificationService.ClassifyNetwork(int(network.ChainID), network.Name, network.RPCEndpoint)
+	resolvedEndpoint, err := network.ResolveRPCEndpoint(config.EnvironmentCredentialProvider{})
 	if err != nil {
-		return fmt.Errorf("failed to classify network: %w", err)
+		return nil, fmt.Errorf("failed to resolve RPC endpoint: %w", err)
+	}
+	// Classify the network
+	classification, err := nm.classificationService.ClassifyNetworkContext(ctx, int(network.ChainID), network.Name, resolvedEndpoint)
+	if err != nil {
+		return nil, fmt.Errorf("failed to classify network: %w", err)
 	}
 
 	// If the network is standard and we have chain info, enhance the network data
 	if classification.Type == blockchain.NetworkTypeStandard && classification.ChainInfo != nil {
 		// Use chainlist data to fill in missing information
-		if network.Symbol == "" {
-			network.Symbol = classification.ChainInfo.NativeCurrency.Symbol
-		}
+		network.Symbol = classification.ChainInfo.NativeCurrency.Symbol
+		network.NativeDecimals = classification.ChainInfo.NativeCurrency.Decimals
+		network.NativeDecimalsSet = true
 		if network.Explorer == "" && len(classification.ChainInfo.Explorers) > 0 {
 			network.Explorer = classification.ChainInfo.Explorers[0].URL
 		}
-		// Use a suggested RPC endpoint if available (no probing to avoid delays)
-		if classification.ChainInfo != nil && network.RPCEndpoint == "" {
-			if info, err := nm.chainListService.GetChainInfo(int(network.ChainID)); err == nil {
-				if len(info.RPC) > 0 {
-					network.RPCEndpoint = info.RPC[0].URL
-				}
+	}
+
+	network.RegistryListed = classification.Type == blockchain.NetworkTypeStandard
+	network.IdentityValidated = classification.IsValidated
+	if classification.ChainInfo != nil {
+		for _, endpoint := range classification.ChainInfo.RPC {
+			if endpoint.URL == resolvedEndpoint {
+				network.Tracking = endpoint.Tracking
+				break
 			}
 		}
 	}
 
 	// Check if network already exists
 	if _, exists := cfg.Networks[classification.Key]; exists {
-		return fmt.Errorf("network with key '%s' already exists", classification.Key)
+		return nil, fmt.Errorf("network with key '%s' already exists", classification.Key)
 	}
 
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	// Add the network to the configuration
 	cfg.Networks[classification.Key] = network
 
 	// Save the configuration
-	if err := nm.configManager.SaveConfiguration(cfg); err != nil {
-		return fmt.Errorf("failed to save configuration: %w", err)
+	if err := saveNetworkConfiguration(nm.configManager, cfg); err != nil {
+		return nil, fmt.Errorf("failed to save configuration: %w", err)
 	}
 
-	return nil
+	return classification, nil
 }
 
 // UpdateNetwork updates an existing network
 func (nm *NetworkManager) UpdateNetwork(key string, network config.Network) error {
+	return nm.UpdateNetworkContext(context.Background(), key, network)
+}
+
+func (nm *NetworkManager) UpdateNetworkContext(ctx context.Context, key string, network config.Network) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	// Load current configuration
 	cfg, err := nm.configManager.LoadConfiguration()
 	if err != nil {
@@ -104,12 +143,36 @@ func (nm *NetworkManager) UpdateNetwork(key string, network config.Network) erro
 		return fmt.Errorf("network with key '%s' not found", key)
 	}
 
+	resolvedEndpoint, err := network.ResolveRPCEndpoint(config.EnvironmentCredentialProvider{})
+	if err != nil {
+		return fmt.Errorf("failed to resolve RPC endpoint: %w", err)
+	}
 	// Classify the updated network to determine if the key should change
-	classification, err := nm.classificationService.ClassifyNetwork(int(network.ChainID), network.Name, network.RPCEndpoint)
+	classification, err := nm.classificationService.ClassifyNetworkContext(ctx, int(network.ChainID), network.Name, resolvedEndpoint)
 	if err != nil {
 		return fmt.Errorf("failed to classify updated network: %w", err)
 	}
 
+	network.RegistryListed = classification.Type == blockchain.NetworkTypeStandard
+	network.IdentityValidated = classification.IsValidated
+	if classification.ChainInfo != nil {
+		network.Symbol = classification.ChainInfo.NativeCurrency.Symbol
+		network.NativeDecimals = classification.ChainInfo.NativeCurrency.Decimals
+		network.NativeDecimalsSet = true
+	}
+	network.Tracking = ""
+	if classification.ChainInfo != nil {
+		for _, endpoint := range classification.ChainInfo.RPC {
+			if endpoint.URL == resolvedEndpoint {
+				network.Tracking = endpoint.Tracking
+				break
+			}
+		}
+	}
+
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	// If the classification results in a different key, we need to handle the migration
 	if classification.Key != key {
 		// Remove the old entry
@@ -128,7 +191,7 @@ func (nm *NetworkManager) UpdateNetwork(key string, network config.Network) erro
 	}
 
 	// Save the configuration
-	if err := nm.configManager.SaveConfiguration(cfg); err != nil {
+	if err := saveNetworkConfiguration(nm.configManager, cfg); err != nil {
 		return fmt.Errorf("failed to save configuration: %w", err)
 	}
 
@@ -157,7 +220,7 @@ func (nm *NetworkManager) RemoveNetwork(key string) error {
 	delete(cfg.Networks, key)
 
 	// Save the configuration
-	if err := nm.configManager.SaveConfiguration(cfg); err != nil {
+	if err := saveNetworkConfiguration(nm.configManager, cfg); err != nil {
 		return fmt.Errorf("failed to save configuration: %w", err)
 	}
 
@@ -205,23 +268,26 @@ func (nm *NetworkManager) ListNetworks() (map[string]NetworkInfo, error) {
 	result := make(map[string]NetworkInfo)
 
 	for key, network := range networks {
-		// Lightweight classification by key prefix only (no network calls)
-		var nType blockchain.NetworkType
-		var source string
-		if nm.classificationService.IsNetworkStandard(key) {
+		nType := blockchain.NetworkTypeCustom
+		source := "manual"
+		if network.RegistryListed {
 			nType = blockchain.NetworkTypeStandard
-			source = "chainlist"
-		} else {
-			nType = blockchain.NetworkTypeCustom
-			source = "manual"
+			source = "stored_registry_claim"
 		}
-
+		tracking := "unknown/not checked now"
+		if network.Tracking != "" {
+			tracking = "previously observed " + network.Tracking
+		}
 		result[key] = NetworkInfo{
-			Network:     network,
-			Type:        nType,
-			IsValidated: false, // avoid slow validation during listing
-			Source:      source,
-			ChainInfo:   nil,
+			Network:             network,
+			Type:                nType,
+			IsValidated:         false,
+			PreviouslyValidated: network.IdentityValidated,
+			CurrentHealth:       "not checked",
+			PrivacyTracking:     tracking,
+			QuorumConfidence:    "none (single provider)",
+			Source:              source,
+			ChainInfo:           nil,
 		}
 	}
 
@@ -230,11 +296,15 @@ func (nm *NetworkManager) ListNetworks() (map[string]NetworkInfo, error) {
 
 // NetworkInfo contains network information with classification details
 type NetworkInfo struct {
-	Network     config.Network         `json:"network"`
-	Type        blockchain.NetworkType `json:"type"`
-	IsValidated bool                   `json:"is_validated"`
-	Source      string                 `json:"source"`
-	ChainInfo   *blockchain.ChainInfo  `json:"chain_info,omitempty"`
+	Network             config.Network         `json:"network"`
+	Type                blockchain.NetworkType `json:"type"`
+	IsValidated         bool                   `json:"is_validated"`
+	PreviouslyValidated bool                   `json:"previously_validated"`
+	CurrentHealth       string                 `json:"current_health"`
+	PrivacyTracking     string                 `json:"privacy_tracking"`
+	QuorumConfidence    string                 `json:"quorum_confidence"`
+	Source              string                 `json:"source"`
+	ChainInfo           *blockchain.ChainInfo  `json:"chain_info,omitempty"`
 }
 
 // MigrateExistingNetworks migrates existing networks to the new classification system
@@ -280,7 +350,7 @@ func (nm *NetworkManager) MigrateExistingNetworks() error {
 	// Only save if migration was needed
 	if migrationNeeded {
 		cfg.Networks = newNetworks
-		if err := nm.configManager.SaveConfiguration(cfg); err != nil {
+		if err := saveNetworkConfiguration(nm.configManager, cfg); err != nil {
 			return fmt.Errorf("failed to save migrated configuration: %w", err)
 		}
 	}
@@ -298,8 +368,9 @@ func (nm *NetworkManager) ValidateNetwork(network config.Network) error {
 		return fmt.Errorf("chain ID must be positive")
 	}
 
-	if network.RPCEndpoint == "" {
-		return fmt.Errorf("RPC endpoint cannot be empty")
+	resolvedEndpoint, err := network.ResolveRPCEndpoint(config.EnvironmentCredentialProvider{})
+	if err != nil {
+		return err
 	}
 
 	if network.Symbol == "" {
@@ -307,12 +378,12 @@ func (nm *NetworkManager) ValidateNetwork(network config.Network) error {
 	}
 
 	// Validate RPC endpoint accessibility
-	if err := nm.chainListService.ValidateRPCEndpoint(network.RPCEndpoint); err != nil {
+	if err := nm.chainListService.ValidateRPCEndpoint(resolvedEndpoint); err != nil {
 		return fmt.Errorf("RPC endpoint validation failed: %w", err)
 	}
 
 	// Verify chain ID matches the RPC endpoint
-	actualChainID, err := nm.chainListService.GetChainIDFromRPC(network.RPCEndpoint)
+	actualChainID, err := nm.chainListService.GetChainIDFromRPC(resolvedEndpoint)
 	if err != nil {
 		return fmt.Errorf("failed to verify chain ID from RPC: %w", err)
 	}

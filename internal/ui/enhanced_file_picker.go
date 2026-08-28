@@ -11,7 +11,6 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/dustin/go-humanize"
 )
 
 var lastEnhancedID int64
@@ -493,7 +492,7 @@ func (m EnhancedFilePickerModel) View() string {
 	var content strings.Builder
 
 	// Header
-	header := fmt.Sprintf("📁 %s", m.CurrentDirectory)
+	header := fmt.Sprintf("📁 %s", safeInline(m.CurrentDirectory))
 	if m.MultiSelect && len(m.SelectedFiles) > 0 {
 		header += fmt.Sprintf(" (%d selected)", len(m.SelectedFiles))
 	}
@@ -560,16 +559,7 @@ func (m EnhancedFilePickerModel) View() string {
 		}
 
 		line.WriteString(icon)
-		line.WriteString(nameStyle.Render(file.Name()))
-
-		// File size for files
-		if !file.IsDir() {
-			if info, err := file.Info(); err == nil {
-				size := humanize.Bytes(uint64(info.Size()))
-				line.WriteString(" ")
-				line.WriteString(m.Styles.FileSize.Render(size))
-			}
-		}
+		line.WriteString(nameStyle.Render(safeShort(file.Name())))
 
 		content.WriteString(line.String())
 		content.WriteString("\n")

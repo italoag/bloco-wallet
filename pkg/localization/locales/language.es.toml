@@ -144,7 +144,7 @@ other = "El archivo no contiene un keystore v3 válido"
 other = "Buscando redes"
 
 [wallet_list_instructions]
-other = "Use las flechas para navegar, Enter para ver detalles, 'd' para eliminar una cartera, 'esc' para volver al menú."
+other = "Use las flechas para navegar, Enter para ver detalles y 'esc' para volver al menú."
 
 [network_name]
 other = "Nombre de Red"
@@ -183,10 +183,16 @@ other = "Formato de dirección Ethereum inválido en el keystore"
 other = "Sugerencias"
 
 [wallet_list_status_bar]
-other = "Vista: {{.View}} | Presione 'd' para eliminar | 'esc' para volver | 'q' para salir"
+other = "Vista: {{.View}} | Presione 'esc' para volver | 'q' para salir"
 
 [import_keystore_desc]
 other = "Importar usando un archivo KeyStoreV3"
+
+[import_watch_only]
+other = "Dirección de solo lectura"
+
+[import_watch_only_desc]
+other = "Seguir una dirección EVM sin guardar secretos de firma"
 
 [active]
 other = "Activo"

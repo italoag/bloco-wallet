@@ -15,6 +15,93 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
+func TestWalletVaultImportsWatchOnlyWithoutCustodyMaterial(t *testing.T) {
+	vault, repository, _ := newTestVault(t)
+	preview, err := PreviewWatchOnlyImport(WatchOnlyImportRequest{Address: "f39fd6e51aad88f6f4ce6ab8827279cfffb92266"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preview.Address != "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266" || preview.SignerKind != SignerKindWatchOnly || preview.SourceFormat != "watch_only_address" {
+		t.Fatalf("unexpected watch-only preview: %+v", preview)
+	}
+	summary, err := vault.ImportWatchOnly(context.Background(), WatchOnlyImportRequest{Name: "Observer", Address: preview.Address})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Address != preview.Address || summary.SignerKind != SignerKindWatchOnly || summary.Capabilities != 0 || summary.State != AccountStateActive {
+		t.Fatalf("unexpected watch-only summary: %+v", summary)
+	}
+	stored, err := repository.GetAccount(context.Background(), summary.AccountID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.SecretType != "" || len(stored.SecretEnvelope) != 0 || stored.DerivationScheme != "" || stored.DerivationPath != "" || stored.BIP39Language != "" || stored.HasBIP39Passphrase {
+		t.Fatalf("watch-only account persisted custody material: %+v", stored)
+	}
+	if _, err := vault.Unlock(context.Background(), summary.AccountID, []byte("irrelevant")); !errors.Is(err, ErrCapabilityDenied) {
+		t.Fatalf("watch-only account unlock returned %v", err)
+	}
+	if err := vault.RotatePassword(context.Background(), summary.AccountID, []byte("Old watch-only password 1!"), []byte("New watch-only password 2!")); !errors.Is(err, ErrCapabilityDenied) {
+		t.Fatalf("watch-only password rotation returned %v", err)
+	}
+	if err := vault.LockAccount(context.Background(), summary.AccountID); !errors.Is(err, ErrCapabilityDenied) {
+		t.Fatalf("watch-only account lock returned %v", err)
+	}
+	if _, err := vault.ImportWatchOnly(context.Background(), WatchOnlyImportRequest{Name: "Duplicate", Address: strings.ToLower(preview.Address)}); !errors.Is(err, ErrAccountConflict) {
+		t.Fatalf("duplicate watch-only import returned %v", err)
+	}
+	restarted, err := NewWalletVault(repository, vault.codec, vault.options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer restarted.Close()
+	accounts, err := restarted.ListAccounts(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(accounts) != 1 || accounts[0].AccountID != summary.AccountID || accounts[0].SignerKind != SignerKindWatchOnly {
+		t.Fatalf("watch-only account did not survive restart: %+v", accounts)
+	}
+}
+
+func TestWatchOnlyImportValidatesAddressAndLinksSameAddressAccounts(t *testing.T) {
+	for _, value := range []string{"", " 0x0000000000000000000000000000000000000001", "0x0000000000000000000000000000000000000000", "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92267", "0x1234"} {
+		if _, err := PreviewWatchOnlyImport(WatchOnlyImportRequest{Address: value}); err == nil {
+			t.Fatalf("invalid watch-only address was accepted: %q", value)
+		}
+	}
+	vault, _, _ := newTestVault(t)
+	key, err := crypto.GenerateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	privateKey := hex.EncodeToString(crypto.FromECDSA(key))
+	address := crypto.PubkeyToAddress(key.PublicKey).Hex()
+	key.D.SetInt64(0)
+	password := []byte("Strong storage password 1!")
+	software, err := vault.ImportPrivateKey(context.Background(), PrivateKeyImportRequest{
+		Name:                   "Custodial",
+		PrivateKey:             privateKey,
+		StoragePassword:        password,
+		ConfirmStoragePassword: append([]byte(nil), password...),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	observed, err := vault.ImportWatchOnly(context.Background(), WatchOnlyImportRequest{Name: "Observed alias", Address: address})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if observed.RelatedAccountID != software.AccountID {
+		t.Fatalf("same-address watch-only account was not linked: %+v", observed)
+	}
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := vault.ImportWatchOnly(cancelled, WatchOnlyImportRequest{Name: "Cancelled", Address: "0x0000000000000000000000000000000000000001"}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled watch-only import returned %v", err)
+	}
+}
+
 func TestCanonicalImportValidationAndFailurePaths(t *testing.T) {
 	if _, err := PreviewMnemonicImport(MnemonicImportRequest{Mnemonic: "invalid"}); err == nil {
 		t.Fatal("invalid mnemonic preview was accepted")

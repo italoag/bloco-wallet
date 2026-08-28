@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -363,6 +364,186 @@ func TestConfigurationManager_LegacyEnvironmentVariables(t *testing.T) {
 	assert.Equal(t, tempDir, cfg.AppDir)
 	assert.Equal(t, walletsDir, cfg.WalletsDir)
 	assert.Equal(t, dbPath, cfg.DatabasePath)
+}
+
+func TestConfigurationManagerAtomicSavePreservesPreviousConfig(t *testing.T) {
+	t.Setenv("BLOCO_WALLET_APP_APP_DIR", t.TempDir())
+	manager := NewConfigurationManager()
+	cfg, err := manager.LoadConfiguration()
+	require.NoError(t, err)
+	before, err := os.ReadFile(manager.GetConfigPath())
+	require.NoError(t, err)
+	cfg.Networks["invalid"] = Network{
+		Name:           "Invalid",
+		RPCEndpoint:    "https://rpc.example.com",
+		RPCEndpointRef: "env:BLOCO_TEST_RPC_URL",
+		ChainID:        1,
+	}
+	require.Error(t, manager.SaveConfiguration(cfg))
+	after, err := os.ReadFile(manager.GetConfigPath())
+	require.NoError(t, err)
+	assert.Equal(t, before, after)
+}
+
+func TestConfigurationManagerRejectsResolvedEnvironmentSecret(t *testing.T) {
+	t.Setenv("BLOCO_WALLET_APP_APP_DIR", t.TempDir())
+	t.Setenv("BLOCO_TEST_RPC_URL", "https://rpc.example.com/super-secret-token")
+	manager := NewConfigurationManager()
+	cfg, err := manager.LoadConfiguration()
+	require.NoError(t, err)
+	before, err := os.ReadFile(manager.GetConfigPath())
+	require.NoError(t, err)
+	cfg.Networks["leak"] = Network{Name: "Leak", RPCEndpoint: os.Getenv("BLOCO_TEST_RPC_URL"), ChainID: 1}
+	require.Error(t, manager.SaveConfiguration(cfg))
+	after, err := os.ReadFile(manager.GetConfigPath())
+	require.NoError(t, err)
+	assert.Equal(t, before, after)
+	assert.NotContains(t, string(after), "super-secret-token")
+}
+
+func TestConfigurationManagerPersistsCredentialReferenceNotSecret(t *testing.T) {
+	t.Setenv("BLOCO_WALLET_APP_APP_DIR", t.TempDir())
+	t.Setenv("BLOCO_TEST_RPC_URL", "https://rpc.example.com/super-secret-token")
+	manager := NewConfigurationManager()
+	cfg, err := manager.LoadConfiguration()
+	require.NoError(t, err)
+	cfg.Networks["referenced"] = Network{
+		Name:           "Referenced",
+		RPCEndpointRef: "env:BLOCO_TEST_RPC_URL",
+		ChainID:        1,
+		Symbol:         "ETH",
+		IsActive:       true,
+	}
+	require.NoError(t, manager.SaveConfiguration(cfg))
+	data, err := os.ReadFile(manager.GetConfigPath())
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "env:BLOCO_TEST_RPC_URL")
+	assert.NotContains(t, string(data), "super-secret-token")
+	if runtime.GOOS != "windows" {
+		info, err := os.Stat(manager.GetConfigPath())
+		require.NoError(t, err)
+		assert.Equal(t, os.FileMode(0600), info.Mode().Perm())
+	}
+}
+
+func TestConfigurationManagerBindsRevisionToLoadedSnapshot(t *testing.T) {
+	t.Setenv("BLOCO_WALLET_APP_APP_DIR", t.TempDir())
+	manager := NewConfigurationManager()
+	first, err := manager.LoadConfiguration()
+	require.NoError(t, err)
+	second, err := manager.LoadConfiguration()
+	require.NoError(t, err)
+	first.Language = "pt"
+	require.NoError(t, manager.SaveConfiguration(first))
+	second.Language = "es"
+	assert.ErrorIs(t, manager.SaveConfiguration(second), ErrConfigConflict)
+}
+
+func TestConfigurationManagerRejectsStaleConcurrentSave(t *testing.T) {
+	t.Setenv("BLOCO_WALLET_APP_APP_DIR", t.TempDir())
+	first := NewConfigurationManager()
+	second := NewConfigurationManager()
+	firstConfig, err := first.LoadConfiguration()
+	require.NoError(t, err)
+	secondConfig, err := second.LoadConfiguration()
+	require.NoError(t, err)
+	firstConfig.Language = "pt"
+	require.NoError(t, first.SaveConfiguration(firstConfig))
+	secondConfig.Language = "es"
+	err = second.SaveConfiguration(secondConfig)
+	assert.ErrorIs(t, err, ErrConfigConflict)
+	reloaded, err := first.ReloadConfiguration()
+	require.NoError(t, err)
+	assert.Equal(t, "pt", reloaded.Language)
+}
+
+func TestConfigurationManagerSerializesConcurrentWriters(t *testing.T) {
+	t.Setenv("BLOCO_WALLET_APP_APP_DIR", t.TempDir())
+	first := NewConfigurationManager()
+	second := NewConfigurationManager()
+	firstConfig, err := first.LoadConfiguration()
+	require.NoError(t, err)
+	secondConfig, err := second.LoadConfiguration()
+	require.NoError(t, err)
+	firstConfig.Language = "pt"
+	secondConfig.Language = "es"
+	start := make(chan struct{})
+	results := make(chan error, 2)
+	go func() { <-start; results <- first.SaveConfiguration(firstConfig) }()
+	go func() { <-start; results <- second.SaveConfiguration(secondConfig) }()
+	close(start)
+	firstErr := <-results
+	secondErr := <-results
+	successes := 0
+	conflicts := 0
+	for _, result := range []error{firstErr, secondErr} {
+		if result == nil {
+			successes++
+		} else if errors.Is(result, ErrConfigConflict) {
+			conflicts++
+		}
+	}
+	assert.Equal(t, 1, successes)
+	assert.Equal(t, 1, conflicts)
+}
+
+func TestConfigurationManagerRejectsCredentialBearingConfigOnLoad(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("BLOCO_WALLET_APP_APP_DIR", root)
+	manager := NewConfigurationManager()
+	_, err := manager.LoadConfiguration()
+	require.NoError(t, err)
+	malicious := `[app]
+language = "en"
+[database]
+type = "sqlite"
+[networks.leak]
+name = "Leak"
+rpc_endpoint = "https://rpc.example.com/v3/super-secret"
+chain_id = 1
+symbol = "ETH"
+is_active = true
+`
+	require.NoError(t, os.WriteFile(manager.GetConfigPath(), []byte(malicious), 0600))
+	_, err = manager.ReloadConfiguration()
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "super-secret")
+}
+
+func TestConfigurationManagerRejectsSymlinkAppDirectoryBeforeChmod(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink permissions vary on Windows")
+	}
+	target := t.TempDir()
+	require.NoError(t, os.Chmod(target, 0755))
+	link := filepath.Join(t.TempDir(), "config-link")
+	require.NoError(t, os.Symlink(target, link))
+	t.Setenv("BLOCO_WALLET_APP_APP_DIR", link)
+	_, err := NewConfigurationManager().LoadConfiguration()
+	require.Error(t, err)
+	info, err := os.Stat(target)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0755), info.Mode().Perm())
+}
+
+func TestConfigurationManagerRejectsSymlinkConfig(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink permissions vary on Windows")
+	}
+	root := t.TempDir()
+	t.Setenv("BLOCO_WALLET_APP_APP_DIR", root)
+	manager := NewConfigurationManager()
+	_, err := manager.LoadConfiguration()
+	require.NoError(t, err)
+	victim := filepath.Join(t.TempDir(), "victim.toml")
+	require.NoError(t, os.WriteFile(victim, []byte("unchanged"), 0600))
+	require.NoError(t, os.Remove(manager.GetConfigPath()))
+	require.NoError(t, os.Symlink(victim, manager.GetConfigPath()))
+	_, err = manager.LoadConfiguration()
+	require.Error(t, err)
+	data, err := os.ReadFile(victim)
+	require.NoError(t, err)
+	assert.Equal(t, "unchanged", string(data))
 }
 
 func TestConfigurationManager_SaveConfiguration_WithoutLoad(t *testing.T) {

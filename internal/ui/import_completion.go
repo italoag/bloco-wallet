@@ -419,9 +419,9 @@ func (m ImportCompletionModel) renderQuickErrorSummary() string {
 
 	for _, err := range m.summary.Errors {
 		if err.Skipped {
-			skippedFiles = append(skippedFiles, err.File)
+			skippedFiles = append(skippedFiles, safeShort(err.File))
 		} else {
-			failedFiles = append(failedFiles, err.File)
+			failedFiles = append(failedFiles, safeShort(err.File))
 		}
 	}
 
@@ -563,7 +563,7 @@ func (m ImportCompletionModel) renderSingleErrorDetails(err wallet.ImportError) 
 
 	// File information
 	fileStyle := lipgloss.NewStyle().Bold(true)
-	sections = append(sections, fileStyle.Render(fmt.Sprintf("File: %s", err.File)))
+	sections = append(sections, fileStyle.Render(fmt.Sprintf("File: %s", safeShort(err.File))))
 
 	// Error type
 	errorType := "Failed"
@@ -578,7 +578,7 @@ func (m ImportCompletionModel) renderSingleErrorDetails(err wallet.ImportError) 
 	sections = append(sections, "")
 	sections = append(sections, "Error Details:")
 
-	errorMsg := err.Error.Error()
+	errorMsg := safeError(err.Error)
 	// Wrap long error messages
 	if len(errorMsg) > 80 {
 		errorMsg = m.wrapText(errorMsg, 80)
@@ -609,7 +609,7 @@ func (m ImportCompletionModel) renderSingleErrorDetails(err wallet.ImportError) 
 func (m ImportCompletionModel) getSuggestedActions(err wallet.ImportError) []string {
 	var suggestions []string
 
-	errorMsg := strings.ToLower(err.Error.Error())
+	errorMsg := strings.ToLower(safeError(err.Error))
 
 	if err.Skipped {
 		suggestions = append(suggestions, "File was skipped due to user cancellation")

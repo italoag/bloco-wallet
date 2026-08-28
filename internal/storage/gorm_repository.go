@@ -35,10 +35,17 @@ func NewVaultRepository(cfg *config.Config) (*GORMRepository, error) {
 }
 
 func newRepository(cfg *config.Config, includeLegacy bool) (*GORMRepository, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("configuração é obrigatória")
+	}
 	// Usar apenas SQLite para testes e desenvolvimento
 	dbPath := cfg.DatabasePath
-	if cfg.Database.DSN != "" {
-		dbPath = cfg.Database.DSN
+	resolvedDSN, err := cfg.Database.ResolveDSN(config.EnvironmentCredentialProvider{})
+	if err != nil {
+		return nil, fmt.Errorf("resolver referência de DSN: %w", err)
+	}
+	if resolvedDSN != "" {
+		dbPath = resolvedDSN
 	}
 
 	diskPath, isDisk, err := sqliteDiskPath(dbPath)
@@ -64,10 +71,11 @@ func newRepository(cfg *config.Config, includeLegacy bool) (*GORMRepository, err
 	}
 
 	// Usar o driver SQLite apropriado para o ambiente
-	dialector := createSQLiteDialector(dbPath)
+	dialector := createSQLiteDialector(sqliteDSNWithPragmas(dbPath))
 
 	db, err := gorm.Open(dialector, &gorm.Config{
-		Logger: gormlogger.Default.LogMode(gormlogger.Silent),
+		Logger:         gormlogger.Default.LogMode(gormlogger.Silent),
+		TranslateError: true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("falha ao conectar ao banco de dados: %w", err)
@@ -106,6 +114,33 @@ func newRepository(cfg *config.Config, includeLegacy bool) (*GORMRepository, err
 
 	keepOpen = true
 	return &GORMRepository{db: db}, nil
+}
+
+func sqliteDSNWithPragmas(dsn string) string {
+	var parsed *url.URL
+	if strings.HasPrefix(dsn, "file:") {
+		value, err := url.Parse(dsn)
+		if err == nil {
+			parsed = value
+		}
+	} else if dsn == "" || dsn == ":memory:" {
+		return ":memory:"
+	} else {
+		parsed = &url.URL{Scheme: "file", Path: dsn}
+	}
+	if parsed == nil {
+		return dsn
+	}
+	query := parsed.Query()
+	query.Set("_foreign_keys", "on")
+	query.Set("_busy_timeout", "5000")
+	query.Set("_txlock", "immediate")
+	query.Set("_synchronous", "FULL")
+	if parsed.Path == ":memory:" {
+		query.Set("cache", "shared")
+	}
+	parsed.RawQuery = query.Encode()
+	return parsed.String()
 }
 
 func sqliteDiskPath(dsn string) (string, bool, error) {
@@ -306,6 +341,9 @@ func (repo *GORMRepository) UpdateAccount(ctx context.Context, account *wallet.A
 	result := repo.db.WithContext(ctx).
 		Model(&wallet.Account{}).
 		Where("account_id = ? AND revision = ?", account.AccountID, account.Revision).
+		Where("address = ? AND signer_kind = ? AND signer_reference = ? AND secret_type = ?", account.Address, account.SignerKind, account.SignerReference, account.SecretType).
+		Where("derivation_scheme = ? AND derivation_path = ? AND account_index = ? AND change_index = ? AND address_index = ?", account.DerivationScheme, account.DerivationPath, account.AccountIndex, account.ChangeIndex, account.AddressIndex).
+		Where("b_ip39_language = ? AND has_b_ip39_passphrase = ? AND source_identity = ? AND related_account_id = ?", account.BIP39Language, account.HasBIP39Passphrase, account.SourceIdentity, account.RelatedAccountID).
 		Updates(map[string]any{
 			"name":                account.Name,
 			"state":               account.State,

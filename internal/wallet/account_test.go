@@ -46,6 +46,7 @@ func TestAccountValidation(t *testing.T) {
 		func(account *Account) { account.AccountID = "invalid" },
 		func(account *Account) { account.RelatedAccountID = "invalid" },
 		func(account *Account) { account.Name = "" },
+		func(account *Account) { account.Name = "unsafe\x1b]52;c;secret\x07" },
 		func(account *Account) { account.Address = "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266" },
 		func(account *Account) { account.SignerReference = "" },
 		func(account *Account) { account.State = "unknown" },
@@ -66,10 +67,47 @@ func TestAccountValidation(t *testing.T) {
 		account.SecretEnvelope = nil
 		account.SecretType = ""
 		if signerKind == SignerKindWatchOnly {
+			account.DerivationScheme = ""
+			account.DerivationPath = ""
+			account.BIP39Language = ""
 			account.Capabilities = 0
 		}
 		if err := account.Validate(); err != nil {
 			t.Fatalf("external signer %s was rejected: %v", signerKind, err)
+		}
+	}
+}
+
+func TestWatchOnlyAccountRejectsCustodyMaterialAndCapabilities(t *testing.T) {
+	valid := validAccountForValidation()
+	valid.SignerKind = SignerKindWatchOnly
+	valid.SignerReference = "watch-only:v1:0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+	valid.SecretType = ""
+	valid.DerivationScheme = ""
+	valid.DerivationPath = ""
+	valid.BIP39Language = ""
+	valid.Capabilities = 0
+	valid.SecretEnvelope = nil
+	if err := valid.Validate(); err != nil {
+		t.Fatalf("valid watch-only account was rejected: %v", err)
+	}
+	mutations := []func(*Account){
+		func(account *Account) { account.SecretType = SecretTypePrivateKey },
+		func(account *Account) { account.SecretEnvelope = []byte("secret") },
+		func(account *Account) { account.DerivationScheme = "bip44" },
+		func(account *Account) { account.DerivationPath = "m/44'/60'/0'/0/0" },
+		func(account *Account) { account.AccountIndex = 1 },
+		func(account *Account) { account.ChangeIndex = 1 },
+		func(account *Account) { account.AddressIndex = 1 },
+		func(account *Account) { account.BIP39Language = string(BIP39English) },
+		func(account *Account) { account.HasBIP39Passphrase = true },
+		func(account *Account) { account.Capabilities = AccountCapability(1 << 63) },
+	}
+	for _, mutate := range mutations {
+		account := *valid
+		mutate(&account)
+		if err := account.Validate(); err == nil {
+			t.Fatal("watch-only account accepted custody material or capabilities")
 		}
 	}
 }

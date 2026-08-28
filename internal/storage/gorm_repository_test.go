@@ -37,6 +37,24 @@ func setupTestConfig(t *testing.T) *config.Config {
 	}
 }
 
+func TestRepositoryResolvesDSNCredentialReference(t *testing.T) {
+	t.Setenv("BLOCO_TEST_DATABASE_DSN", "file::memory:?cache=shared")
+	repository, err := NewVaultRepository(&config.Config{
+		DatabasePath: filepath.Join(t.TempDir(), "fallback.db"),
+		Database:     config.DatabaseConfig{Type: "sqlite", DSNRef: "env:BLOCO_TEST_DATABASE_DSN"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = repository.Close() }()
+	if _, err := NewVaultRepository(&config.Config{
+		DatabasePath: filepath.Join(t.TempDir(), "fallback.db"),
+		Database:     config.DatabaseConfig{Type: "sqlite", DSNRef: "env:BLOCO_MISSING_DATABASE_DSN"},
+	}); err == nil {
+		t.Fatal("missing DSN reference silently fell back to database path")
+	}
+}
+
 func TestNewWalletRepository(t *testing.T) {
 	cfg := setupTestConfig(t)
 

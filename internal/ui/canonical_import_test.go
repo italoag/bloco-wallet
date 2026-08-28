@@ -3,6 +3,7 @@ package ui
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"blocowallet/internal/wallet"
@@ -71,6 +72,16 @@ func TestReadCanonicalKeystoreBatchUsesRegularJSONFiles(t *testing.T) {
 	defer clearCanonicalBatchItems(emptyPasswordItems)
 	if len(emptyPasswordItems) != 3 || len(emptyPasswordItems[0].SourcePassword) != 0 {
 		t.Fatal("batch did not preserve empty common source password")
+	}
+}
+
+func TestCanonicalImportViewSanitizesUntrustedResults(t *testing.T) {
+	model := &CLIModel{canonicalImport: &canonicalImportState{
+		resultLines: []string{"evil\x1b]52;c;secret\x07\r\nnext"},
+	}}
+	view := model.viewCanonicalImport()
+	if strings.ContainsAny(view, "\x1b\a\r") || strings.Contains(view, "\u009b") {
+		t.Fatalf("canonical import view retained terminal controls: %q", view)
 	}
 }
 

@@ -1,10 +1,14 @@
 package config
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/spf13/viper"
 )
@@ -17,11 +21,16 @@ type ConfigurationManagerInterface interface {
 	GetAppDirectory() string
 }
 
+var ErrConfigConflict = errors.New("configuration changed since it was loaded")
+
 // ConfigurationManager manages configuration loading and saving using Viper
 type ConfigurationManager struct {
-	viper      *viper.Viper
-	configPath string
-	appDir     string
+	viper        *viper.Viper
+	configPath   string
+	appDir       string
+	loadedDigest [sha256.Size]byte
+	hasDigest    bool
+	mu           sync.Mutex
 }
 
 // NewConfigurationManager creates a new ConfigurationManager instance
@@ -31,8 +40,19 @@ func NewConfigurationManager() *ConfigurationManager {
 	}
 }
 
+func (cm *ConfigurationManager) configureViper() {
+	cm.viper.SetConfigName("config")
+	cm.viper.SetConfigType("toml")
+	cm.viper.AddConfigPath(cm.appDir)
+	cm.viper.SetEnvPrefix("BLOCO_WALLET")
+	cm.viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	cm.viper.AutomaticEnv()
+}
+
 // LoadConfiguration loads the configuration using Viper with proper directory resolution
 func (cm *ConfigurationManager) LoadConfiguration() (*Config, error) {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
 	// Determine the application directory
 	appDir, err := cm.resolveAppDirectory()
 	if err != nil {
@@ -42,47 +62,87 @@ func (cm *ConfigurationManager) LoadConfiguration() (*Config, error) {
 	cm.appDir = appDir
 	cm.configPath = filepath.Join(appDir, "config.toml")
 
-	// Configure Viper
-	cm.viper.SetConfigName("config")
-	cm.viper.SetConfigType("toml")
-	cm.viper.AddConfigPath(appDir)
-
-	// Set up environment variables support
-	cm.viper.SetEnvPrefix("BLOCO_WALLET")
-	cm.viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-	cm.viper.AutomaticEnv()
-
+	cm.viper = viper.New()
+	cm.configureViper()
+	if err := ensurePrivateConfigDirectory(cm.appDir); err != nil {
+		return nil, fmt.Errorf("failed to secure config directory: %w", err)
+	}
+	unlock, err := lockConfigFile(cm.configPath)
+	if err != nil {
+		return nil, fmt.Errorf("lock configuration: %w", err)
+	}
+	defer unlock()
 	// Check if config file exists, create default if not
 	if err := cm.ensureConfigFile(); err != nil {
 		return nil, fmt.Errorf("failed to ensure config file: %w", err)
 	}
-
-	// Read the config file
-	if err := cm.viper.ReadInConfig(); err != nil {
+	if err := validatePrivateConfigPath(cm.configPath, false); err != nil {
+		return nil, err
+	}
+	data, err := readPrivateConfigFile(cm.configPath)
+	if err != nil {
+		return nil, err
+	}
+	if err := cm.viper.ReadConfig(bytes.NewReader(data)); err != nil {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
+	cm.loadedDigest = sha256.Sum256(data)
+	cm.hasDigest = true
 
 	// Build and return the Config struct
-	return cm.buildConfigStruct()
+	cfg, err := cm.buildConfigStruct()
+	if err != nil {
+		return nil, err
+	}
+	if _, err := marshalPersistentConfig(cfg); err != nil {
+		return nil, fmt.Errorf("invalid configuration: %w", err)
+	}
+	return cfg, nil
 }
 
 // SaveConfiguration saves the configuration maintaining Viper compatibility
 func (cm *ConfigurationManager) SaveConfiguration(cfg *Config) error {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
 	if cm.configPath == "" {
 		return fmt.Errorf("configuration not loaded, cannot save")
 	}
-
-	// Update Viper with the new configuration values
-	cm.updateViperFromConfig(cfg)
-
-	// Write the configuration to file
-	if err := cm.viper.WriteConfigAs(cm.configPath); err != nil {
-		return fmt.Errorf("failed to write config file: %w", err)
+	unlock, err := lockConfigFile(cm.configPath)
+	if err != nil {
+		return fmt.Errorf("lock configuration: %w", err)
 	}
-	if err := os.Chmod(cm.configPath, 0600); err != nil {
-		return fmt.Errorf("failed to secure config file: %w", err)
+	defer unlock()
+	if err := validatePrivateConfigPath(cm.configPath, false); err != nil {
+		return err
 	}
-
+	current, err := readPrivateConfigFile(cm.configPath)
+	if err != nil {
+		return err
+	}
+	currentHash := sha256.Sum256(current)
+	if cfg == nil || !cfg.hasRevision || cfg.revision != currentHash {
+		return ErrConfigConflict
+	}
+	data, err := marshalPersistentConfig(cfg)
+	if err != nil {
+		return fmt.Errorf("encode configuration: %w", err)
+	}
+	writeErr := writeAtomicConfig(cm.configPath, data, true)
+	if writeErr != nil && !IsConfigCommitted(writeErr) {
+		return fmt.Errorf("write configuration: %w", writeErr)
+	}
+	cm.loadedDigest = sha256.Sum256(data)
+	cm.hasDigest = true
+	cfg.revision = cm.loadedDigest
+	cfg.hasRevision = true
+	cm.viper = viper.New()
+	cm.configureViper()
+	if err := cm.viper.ReadConfig(bytes.NewReader(data)); err != nil {
+		return fmt.Errorf("reload configuration: %w", err)
+	}
+	if writeErr != nil {
+		return fmt.Errorf("write configuration: %w", writeErr)
+	}
 	return nil
 }
 
@@ -128,27 +188,24 @@ func (cm *ConfigurationManager) resolveAppDirectory() (string, error) {
 // ensureConfigFile ensures the config file exists, creating it from default if needed
 func (cm *ConfigurationManager) ensureConfigFile() error {
 	// Create directory if it doesn't exist
-	if err := os.MkdirAll(cm.appDir, 0700); err != nil {
-		return fmt.Errorf("failed to create config directory: %w", err)
+	if err := ensurePrivateConfigDirectory(cm.appDir); err != nil {
+		return fmt.Errorf("failed to secure config directory: %w", err)
 	}
-
-	// Check if config file exists
-	if _, err := os.Stat(cm.configPath); os.IsNotExist(err) {
-		// Read default config
+	if err := validatePrivateConfigPath(cm.configPath, true); err != nil {
+		return err
+	}
+	if _, err := os.Lstat(cm.configPath); os.IsNotExist(err) {
 		defaultConfigData, err := defaultConfig.ReadFile("default_config.toml")
 		if err != nil {
 			return fmt.Errorf("failed to read default config: %w", err)
 		}
-
-		// Write default config to file
-		if err := os.WriteFile(cm.configPath, defaultConfigData, 0600); err != nil {
+		if err := writeAtomicConfig(cm.configPath, defaultConfigData, false); err != nil && !IsConfigCommitted(err) {
 			return fmt.Errorf("failed to write default config: %w", err)
 		}
+	} else if err != nil {
+		return err
 	}
-	if err := os.Chmod(cm.appDir, 0700); err != nil {
-		return fmt.Errorf("failed to secure config directory: %w", err)
-	}
-	if err := os.Chmod(cm.configPath, 0600); err != nil {
+	if err := secureConfigPermissions(cm.configPath, false); err != nil {
 		return fmt.Errorf("failed to secure config file: %w", err)
 	}
 
@@ -170,17 +227,20 @@ func (cm *ConfigurationManager) buildConfigStruct() (*Config, error) {
 		LocaleDir:    cm.viper.GetString("app.locale_dir"),
 		Fonts:        cm.viper.GetStringSlice("fonts.available"),
 		Database: DatabaseConfig{
-			Type: cm.viper.GetString("database.type"),
-			DSN:  cm.viper.GetString("database.dsn"),
+			Type:   cm.viper.GetString("database.type"),
+			DSN:    cm.viper.GetString("database.dsn"),
+			DSNRef: cm.viper.GetString("database.dsn_ref"),
 		},
 		Security: SecurityConfig{
-			Argon2Time:    cm.viper.GetUint32("security.argon2_time"),
-			Argon2Memory:  cm.viper.GetUint32("security.argon2_memory"),
-			Argon2Threads: uint8(cm.viper.GetUint("security.argon2_threads")),
-			Argon2KeyLen:  cm.viper.GetUint32("security.argon2_key_len"),
-			SaltLength:    cm.viper.GetUint32("security.salt_length"),
+			Argon2Time:                   cm.viper.GetUint32("security.argon2_time"),
+			Argon2Memory:                 cm.viper.GetUint32("security.argon2_memory"),
+			Argon2Threads:                uint8(cm.viper.GetUint("security.argon2_threads")),
+			Argon2KeyLen:                 cm.viper.GetUint32("security.argon2_key_len"),
+			SaltLength:                   cm.viper.GetUint32("security.salt_length"),
+			TransactionAuthorizationMode: cm.viper.GetString("security.transaction_authorization_mode"),
 		},
-		Networks: make(map[string]Network),
+		NetworkPolicy: NetworkPolicyConfig{AllowedLocalTargets: cm.viper.GetStringSlice("network_policy.allowed_local_targets")},
+		Networks:      make(map[string]Network),
 	}
 
 	// Load networks from config
@@ -188,12 +248,19 @@ func (cm *ConfigurationManager) buildConfigStruct() (*Config, error) {
 	for key := range networksMap {
 		networkKey := "networks." + key
 		network := Network{
-			Name:        cm.viper.GetString(networkKey + ".name"),
-			RPCEndpoint: cm.viper.GetString(networkKey + ".rpc_endpoint"),
-			ChainID:     cm.viper.GetInt64(networkKey + ".chain_id"),
-			Symbol:      cm.viper.GetString(networkKey + ".symbol"),
-			Explorer:    cm.viper.GetString(networkKey + ".explorer"),
-			IsActive:    cm.viper.GetBool(networkKey + ".is_active"),
+			Name:               cm.viper.GetString(networkKey + ".name"),
+			RPCEndpoint:        cm.viper.GetString(networkKey + ".rpc_endpoint"),
+			RPCEndpointRef:     cm.viper.GetString(networkKey + ".rpc_endpoint_ref"),
+			ChainID:            cm.viper.GetInt64(networkKey + ".chain_id"),
+			Symbol:             cm.viper.GetString(networkKey + ".symbol"),
+			NativeDecimals:     cm.viper.GetInt(networkKey + ".native_decimals"),
+			NativeDecimalsSet:  cm.viper.GetBool(networkKey + ".native_decimals_set"),
+			ConfirmationTarget: cm.viper.GetUint64(networkKey + ".confirmation_target"),
+			Explorer:           cm.viper.GetString(networkKey + ".explorer"),
+			IsActive:           cm.viper.GetBool(networkKey + ".is_active"),
+			RegistryListed:     cm.viper.GetBool(networkKey + ".registry_listed"),
+			IdentityValidated:  cm.viper.GetBool(networkKey + ".identity_validated"),
+			Tracking:           cm.viper.GetString(networkKey + ".tracking"),
 		}
 		cfg.Networks[key] = network
 	}
@@ -241,8 +308,9 @@ func (cm *ConfigurationManager) buildConfigStruct() (*Config, error) {
 	if legacy := os.Getenv("BLOCO_WALLET_DATABASE_TYPE"); legacy != "" {
 		cfg.Database.Type = legacy
 	}
-	if legacy := os.Getenv("BLOCO_WALLET_DATABASE_DSN"); legacy != "" {
-		cfg.Database.DSN = legacy
+	if _, exists := os.LookupEnv("BLOCO_WALLET_DATABASE_DSN"); exists {
+		cfg.Database.DSN = ""
+		cfg.Database.DSNRef = "env:BLOCO_WALLET_DATABASE_DSN"
 	}
 
 	// Handle legacy app dir override - this affects dependent paths
@@ -276,69 +344,48 @@ func (cm *ConfigurationManager) buildConfigStruct() (*Config, error) {
 	if cfg.Security.SaltLength == 0 {
 		cfg.Security.SaltLength = 16
 	}
+	if cfg.Security.TransactionAuthorizationMode == "" {
+		cfg.Security.TransactionAuthorizationMode = "password_per_transaction"
+	}
 
+	cfg.revision = cm.loadedDigest
+	cfg.hasRevision = cm.hasDigest
 	return cfg, nil
-}
-
-// updateViperFromConfig updates Viper configuration from a Config struct
-func (cm *ConfigurationManager) updateViperFromConfig(cfg *Config) {
-	// App settings
-	cm.viper.Set("app.app_dir", cfg.AppDir)
-	cm.viper.Set("app.language", cfg.Language)
-	cm.viper.Set("app.wallets_dir", cfg.WalletsDir)
-	cm.viper.Set("app.database_path", cfg.DatabasePath)
-	cm.viper.Set("app.locale_dir", cfg.LocaleDir)
-
-	// Fonts
-	cm.viper.Set("fonts.available", cfg.Fonts)
-
-	// Database
-	cm.viper.Set("database.type", cfg.Database.Type)
-	cm.viper.Set("database.dsn", cfg.Database.DSN)
-
-	// Security
-	cm.viper.Set("security.argon2_time", cfg.Security.Argon2Time)
-	cm.viper.Set("security.argon2_memory", cfg.Security.Argon2Memory)
-	cm.viper.Set("security.argon2_threads", cfg.Security.Argon2Threads)
-	cm.viper.Set("security.argon2_key_len", cfg.Security.Argon2KeyLen)
-	cm.viper.Set("security.salt_length", cfg.Security.SaltLength)
-
-	// Networks - completely replace the networks section
-	// First, clear all existing network keys
-	networksMap := cm.viper.GetStringMap("networks")
-	for key := range networksMap {
-		// Delete all sub-keys for this network
-		cm.viper.Set("networks."+key+".name", nil)
-		cm.viper.Set("networks."+key+".rpc_endpoint", nil)
-		cm.viper.Set("networks."+key+".chain_id", nil)
-		cm.viper.Set("networks."+key+".symbol", nil)
-		cm.viper.Set("networks."+key+".explorer", nil)
-		cm.viper.Set("networks."+key+".is_active", nil)
-	}
-
-	// Clear the entire networks section
-	cm.viper.Set("networks", map[string]interface{}{})
-
-	// Set new networks
-	for key, network := range cfg.Networks {
-		cm.viper.Set("networks."+key+".name", network.Name)
-		cm.viper.Set("networks."+key+".rpc_endpoint", network.RPCEndpoint)
-		cm.viper.Set("networks."+key+".chain_id", network.ChainID)
-		cm.viper.Set("networks."+key+".symbol", network.Symbol)
-		cm.viper.Set("networks."+key+".explorer", network.Explorer)
-		cm.viper.Set("networks."+key+".is_active", network.IsActive)
-	}
 }
 
 // ReloadConfiguration reloads the configuration from file
 func (cm *ConfigurationManager) ReloadConfiguration() (*Config, error) {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
 	if cm.configPath == "" {
 		return nil, fmt.Errorf("configuration not initialized")
 	}
 
-	if err := cm.viper.ReadInConfig(); err != nil {
+	unlock, err := lockConfigFile(cm.configPath)
+	if err != nil {
+		return nil, fmt.Errorf("lock configuration: %w", err)
+	}
+	defer unlock()
+	if err := validatePrivateConfigPath(cm.configPath, false); err != nil {
+		return nil, err
+	}
+	data, err := readPrivateConfigFile(cm.configPath)
+	if err != nil {
+		return nil, err
+	}
+	cm.viper = viper.New()
+	cm.configureViper()
+	if err := cm.viper.ReadConfig(bytes.NewReader(data)); err != nil {
 		return nil, fmt.Errorf("failed to reload config file: %w", err)
 	}
-
-	return cm.buildConfigStruct()
+	cm.loadedDigest = sha256.Sum256(data)
+	cm.hasDigest = true
+	cfg, err := cm.buildConfigStruct()
+	if err != nil {
+		return nil, err
+	}
+	if _, err := marshalPersistentConfig(cfg); err != nil {
+		return nil, fmt.Errorf("invalid configuration: %w", err)
+	}
+	return cfg, nil
 }

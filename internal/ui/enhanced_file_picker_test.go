@@ -3,6 +3,7 @@ package ui
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -20,6 +21,22 @@ func TestNewEnhancedFilePicker(t *testing.T) {
 	assert.Equal(t, []string{".json"}, picker.AllowedTypes)
 	assert.Empty(t, picker.SelectedFiles)
 	assert.NotNil(t, picker.selectedItems)
+}
+
+func TestEnhancedFilePickerViewSanitizesPathsAndNames(t *testing.T) {
+	if os.PathSeparator == '\\' {
+		t.Skip("control characters are not portable in Windows filenames")
+	}
+	root := t.TempDir()
+	unsafeName := "evil\x1b]52;c;secret\x07.json"
+	require.NoError(t, os.WriteFile(filepath.Join(root, unsafeName), []byte("{}"), 0600))
+	entries, err := os.ReadDir(root)
+	require.NoError(t, err)
+	picker := NewEnhancedFilePicker()
+	picker.CurrentDirectory = root + "\x1b[31m"
+	picker.files = entries
+	view := picker.View()
+	assert.False(t, strings.ContainsAny(view, "\x1b\a\r"), "view retained terminal controls: %q", view)
 }
 
 func TestEnhancedFilePickerSetHeight(t *testing.T) {

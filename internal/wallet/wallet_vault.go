@@ -486,10 +486,6 @@ func (vault *WalletVault) confirmBackup(ctx context.Context, challengeID string,
 		vault.mu.Unlock()
 		return AccountSummary{}, ErrBackupConfirmationFailed
 	}
-	if challenge.requiresMaterial && !materialProvided {
-		vault.mu.Unlock()
-		return AccountSummary{}, ErrBackupConfirmationFailed
-	}
 	confirmedAddress := ""
 	if materialProvided {
 		if !backupMaterialMatches(challengeID, challenge, confirmation) {
@@ -618,6 +614,9 @@ func (vault *WalletVault) Unlock(ctx context.Context, accountID string, password
 	if err != nil {
 		return CapabilityHandle{}, err
 	}
+	if account.SignerKind != SignerKindSoftware {
+		return CapabilityHandle{}, ErrCapabilityDenied
+	}
 	if account.State == AccountStatePendingBackup {
 		return CapabilityHandle{}, ErrAccountPendingBackup
 	}
@@ -692,6 +691,9 @@ func (vault *WalletVault) RotatePassword(ctx context.Context, accountID string, 
 		if err != nil {
 			return err
 		}
+		if account.SignerKind != SignerKindSoftware {
+			return ErrCapabilityDenied
+		}
 		if account.State == AccountStatePendingBackup || account.State == AccountStateTombstoned {
 			return fmt.Errorf("account cannot rotate password in state %s", account.State)
 		}
@@ -751,6 +753,9 @@ func (vault *WalletVault) LockAccount(ctx context.Context, accountID string) err
 		if err != nil {
 			return err
 		}
+		if account.SignerKind != SignerKindSoftware {
+			return ErrCapabilityDenied
+		}
 		if account.State != AccountStateActive && account.State != AccountStateLocked {
 			return fmt.Errorf("account cannot be locked in state %s", account.State)
 		}
@@ -763,6 +768,18 @@ func (vault *WalletVault) LockAccount(ctx context.Context, accountID string) err
 	}
 	vault.lockAccountSessions(accountID)
 	return nil
+}
+
+func (vault *WalletVault) AuthorizationEpoch(ctx context.Context, handle CapabilityHandle) (uint64, error) {
+	var epoch uint64
+	err := vault.withPrivateKey(ctx, handle, func(_ []byte, account *Account) error {
+		epoch = account.AuthorizationEpoch
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return epoch, nil
 }
 
 func (vault *WalletVault) Lock(handle CapabilityHandle) error {

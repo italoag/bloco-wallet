@@ -4,10 +4,17 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
+	"blocowallet/internal/blockchain"
 	"blocowallet/internal/constants"
 	"blocowallet/internal/storage"
 	"blocowallet/internal/wallet"
@@ -262,17 +269,11 @@ func TestVaultBackedCreateFlowPersistsOnlyEncryptedSecret(t *testing.T) {
 	}
 	model.backupConfirmationInput.SetValue(strings.Join(requestedWords, " "))
 	_, _ = model.updateCreateWalletBackup(tea.KeyMsg{Type: tea.KeyEnter})
-	assert.Equal(t, 1, model.backupMaterialStage)
-	model.backupPathInput.SetValue(customChallenge.DerivationPath)
-	_, _ = model.updateCreateWalletBackup(tea.KeyMsg{Type: tea.KeyEnter})
-	model.backupLanguageInput.SetValue(string(customChallenge.BIP39Language))
-	_, _ = model.updateCreateWalletBackup(tea.KeyMsg{Type: tea.KeyEnter})
-	model.backupPassphraseInput.SetValue("wrong")
-	_, _ = model.updateCreateWalletBackup(tea.KeyMsg{Type: tea.KeyEnter})
-	require.NotNil(t, model.backupChallenge)
-	model.backupPassphraseInput.SetValue("contraseña")
-	_, _ = model.updateCreateWalletBackup(tea.KeyMsg{Type: tea.KeyEnter})
 	assert.Equal(t, constants.WalletDetailsView, model.currentView)
+	assert.Nil(t, model.backupChallenge)
+	activatedCustom, err := repository.GetAccount(context.Background(), custom.AccountID)
+	require.NoError(t, err)
+	assert.Equal(t, wallet.AccountStateActive, activatedCustom.State)
 
 	model.initCanonicalImport(wallet.ImportMethodMnemonic)
 	for index := range model.canonicalImport.fields {
@@ -303,6 +304,25 @@ func TestVaultBackedCreateFlowPersistsOnlyEncryptedSecret(t *testing.T) {
 	require.NotNil(t, model.selectedAccount)
 	assert.Equal(t, wallet.AccountStateActive, model.selectedAccount.State)
 	assert.Equal(t, constants.WalletDetailsView, model.currentView)
+
+	model.initCanonicalImport(wallet.ImportMethodWatchOnly)
+	model.canonicalImport.fields[0].input.SetValue("Watch-only UI")
+	model.canonicalImport.fields[1].input.SetValue("0x0000000000000000000000000000000000000001")
+	for range model.canonicalImport.fields {
+		_, importCommand = model.updateCanonicalImport(tea.KeyMsg{Type: tea.KeyEnter})
+	}
+	require.NotNil(t, importCommand)
+	_, _ = model.Update(importCommand())
+	require.NotNil(t, model.canonicalImport.preview)
+	_, importCommand = model.updateCanonicalImport(tea.KeyMsg{Type: tea.KeyEnter})
+	require.NotNil(t, importCommand)
+	_, _ = model.Update(importCommand())
+	require.NotNil(t, model.selectedAccount)
+	assert.Equal(t, wallet.SignerKindWatchOnly, model.selectedAccount.SignerKind)
+	assert.Zero(t, model.selectedAccount.Capabilities)
+	storedWatchOnly, err := repository.GetAccount(context.Background(), model.selectedAccount.AccountID)
+	require.NoError(t, err)
+	assert.Empty(t, storedWatchOnly.SecretEnvelope)
 }
 
 func TestQIsAcceptedInSecretInput(t *testing.T) {
@@ -354,6 +374,36 @@ func TestKeystoreImportUsesCanonicalMenu(t *testing.T) {
 	require.NotNil(t, model.canonicalImport)
 	assert.Equal(t, wallet.ImportMethodKeystore, model.canonicalImport.method)
 	assert.Equal(t, constants.CanonicalImportView, model.currentView)
+}
+
+func TestWatchOnlyImportUsesCanonicalAddressOnlyFlow(t *testing.T) {
+	cfg := &config.Config{Language: "en", LocaleDir: "../../pkg/localization/locales"}
+	require.NoError(t, localization.InitLocalization(cfg))
+	found := false
+	for _, item := range NewImportMenu() {
+		if item.title == "Watch-only Address" {
+			found = true
+		}
+	}
+	assert.True(t, found)
+	model := &CLIModel{selectedMenu: 5, styles: createStyles()}
+	_, _ = model.updateImportMethodSelection(tea.KeyMsg{Type: tea.KeyEnter})
+	require.NotNil(t, model.canonicalImport)
+	assert.Equal(t, wallet.ImportMethodWatchOnly, model.canonicalImport.method)
+	require.Len(t, model.canonicalImport.fields, 2)
+	assert.Equal(t, "name", model.canonicalImport.fields[0].key)
+	assert.Equal(t, "address", model.canonicalImport.fields[1].key)
+	model.canonicalImport.fields[0].input.SetValue("Observer")
+	model.canonicalImport.fields[1].input.SetValue("f39fd6e51aad88f6f4ce6ab8827279cfffb92266")
+	require.NoError(t, prepareCanonicalImportPreview(context.Background(), nil, model.canonicalImport))
+	require.NotNil(t, model.canonicalImport.preview)
+	assert.Equal(t, wallet.SignerKindWatchOnly, model.canonicalImport.preview.SignerKind)
+	approvedAddress := model.canonicalImport.fields[1].input.Value()
+	_, _ = model.updateCanonicalImport(tea.KeyMsg{Type: tea.KeyBackspace})
+	assert.Equal(t, approvedAddress, model.canonicalImport.fields[1].input.Value())
+	assert.Equal(t, model.canonicalImport.preview.Address, "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266")
+	assert.Contains(t, model.viewCanonicalImport(), "watch_only")
+	assert.NotContains(t, model.viewCanonicalImport(), "storage password")
 }
 
 func TestSecretImportInputsAreMasked(t *testing.T) {
@@ -409,6 +459,58 @@ func TestMnemonicImportIgnoresStalePrivateKeyInput(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, preview.Address, model.walletDetails.Wallet.Address)
 	assert.Empty(t, model.privateKeyInput.Value())
+}
+
+func TestWalletDetailsFetchesBalancesOnlyAfterExplicitAction(t *testing.T) {
+	cfg := &config.Config{Language: "en", LocaleDir: "../../pkg/localization/locales", Networks: make(map[string]config.Network)}
+	require.NoError(t, localization.InitLocalization(cfg))
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		calls.Add(1)
+		var payload json.RawMessage
+		if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+			http.Error(writer, "bad request", http.StatusBadRequest)
+			return
+		}
+		if len(payload) > 0 && payload[0] == '[' {
+			_, _ = fmt.Fprint(writer, `[{"jsonrpc":"2.0","id":1,"result":"0x1"},{"jsonrpc":"2.0","id":2,"result":"0x2a"}]`)
+			return
+		}
+		_, _ = fmt.Fprint(writer, `{"jsonrpc":"2.0","id":1,"result":"0x1"}`)
+	}))
+	defer server.Close()
+	parsed, _ := url.Parse(server.URL)
+	gateway := blockchain.NewRPCGateway(blockchain.RPCGatewayOptions{AllowedLocalTargets: []string{parsed.Host}})
+	provider := blockchain.NewMultiProvider(gateway, config.EnvironmentCredentialProvider{})
+	defer provider.Close()
+	cfg.Networks["test"] = config.Network{Name: "Test", RPCEndpoint: server.URL, ChainID: 1, Symbol: "ETH", NativeDecimals: 18, NativeDecimalsSet: true, IsActive: true}
+	model := &CLIModel{
+		currentView:     constants.WalletDetailsView,
+		selectedAccount: &wallet.AccountSummary{Address: "0x0000000000000000000000000000000000000001", State: wallet.AccountStateActive},
+		balanceProvider: provider,
+		balanceConfig:   cfg,
+		styles:          createStyles(),
+	}
+	_ = model.viewWalletDetails()
+	assert.Equal(t, int32(0), calls.Load())
+	_, command := model.updateWalletDetails(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'f'}})
+	require.NotNil(t, command)
+	assert.Equal(t, int32(0), calls.Load())
+	_, _ = model.Update(command())
+	assert.Greater(t, calls.Load(), int32(0))
+	assert.Contains(t, model.viewWalletDetails(), "0.000000000000000042 ETH")
+	callsAfterFirstFetch := calls.Load()
+	_, cachedCommand := model.updateWalletDetails(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'f'}})
+	require.NotNil(t, cachedCommand)
+	_, _ = model.Update(cachedCommand())
+	assert.Equal(t, callsAfterFirstFetch, calls.Load())
+	_, staleCommand := model.updateWalletDetails(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'f'}})
+	require.NotNil(t, staleCommand)
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	assert.Nil(t, model.selectedAccount)
+	assert.Empty(t, model.networkBalances)
+	_, _ = model.Update(staleCommand())
+	assert.Empty(t, model.networkBalances)
 }
 
 func TestWalletDetailsViewHidesSecrets(t *testing.T) {

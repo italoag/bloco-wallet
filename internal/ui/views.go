@@ -2,20 +2,57 @@ package ui
 
 import (
 	"blocowallet/internal/constants"
+	"blocowallet/internal/terminal"
 	"blocowallet/internal/wallet"
 	"blocowallet/pkg/localization"
 	"bytes"
 	"fmt"
-	"log"
-	"os"
+	"math/big"
 	"strings"
 	"time"
 
 	"github.com/arsham/figurine/figurine"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/digitallyserviced/tdfgo/tdf"
-	"github.com/go-errors/errors"
 )
+
+func renderHeaderLogo() string {
+	var buffer bytes.Buffer
+	if err := figurine.Write(&buffer, "bloco", "Test1.flf"); err != nil {
+		return "bloco"
+	}
+	logo := terminal.SanitizeStyledBlock(strings.TrimSpace(buffer.String()), 12, 120)
+	if logo == "" {
+		return "bloco"
+	}
+	return logo
+}
+
+func formatDisplayTime(value time.Time) string {
+	if value.IsZero() {
+		return "--"
+	}
+	return value.Format("02-01-2006 15:04:05")
+}
+
+func formatNativeAmount(amount *big.Int, decimals int) string {
+	if amount == nil {
+		return "unavailable"
+	}
+	if decimals <= 0 {
+		return amount.String()
+	}
+	digits := amount.String()
+	for len(digits) <= decimals {
+		digits = "0" + digits
+	}
+	integer := digits[:len(digits)-decimals]
+	fraction := strings.TrimRight(digits[len(digits)-decimals:], "0")
+	if fraction == "" {
+		return integer
+	}
+	return integer + "." + fraction
+}
 
 // viewCreateWalletName renderiza a visualização de entrada do nome da wallet
 func (m *CLIModel) viewCreateWalletName() string {
@@ -34,21 +71,18 @@ func (m *CLIModel) viewCreateWalletName() string {
 }
 
 func (m *CLIModel) viewCreateWalletOptions() string {
-	label := "Word count"
-	input := m.createWordCountInput.View()
-	switch m.createOptionsStage {
-	case 1:
-		label = "BIP39 language"
-		input = m.createLanguageInput.View()
-	case 2:
-		label = "Optional BIP39 passphrase"
-		input = m.createPassphraseInput.View()
-	case 3:
-		label = "EVM derivation path"
-		input = m.createDerivationPathInput.View()
+	title := lipgloss.NewStyle().Bold(true).Render("Configure BIP39 account")
+	progress := fmt.Sprintf("Step %d/4", m.createOptionsStage+1)
+	var content string
+	switch {
+	case m.createOptionsStage == 2:
+		content = "Optional BIP39 passphrase\n\n" + m.createPassphraseInput.View() + "\n\nLeave blank for no passphrase. This value cannot be recovered from the mnemonic."
+	case m.createOptionsStage == 3 && m.createCustomPath:
+		content = "Custom EVM derivation path\n\n" + m.createDerivationPathInput.View() + "\n\nThe path must remain inside the EVM BIP44 namespace m/44'/60'."
+	default:
+		content = m.createOptionList.View()
 	}
-	view := lipgloss.NewStyle().Bold(true).Render("Configure BIP39 account") + "\n\n" +
-		fmt.Sprintf("Step %d/4\n%s:\n%s\n\nPress Enter to continue or Esc to cancel.", m.createOptionsStage+1, label, input)
+	view := title + "\n\n" + progress + "\n\n" + content + "\n\nPress Enter to continue or Esc to cancel."
 	if m.createPasswordError != "" {
 		view += "\n\n" + m.styles.ErrorStyle.Render(m.createPasswordError)
 	}
@@ -60,37 +94,28 @@ func (m *CLIModel) viewCreateWalletBackup() string {
 		return "Localization labels not initialized."
 	}
 
-	backupWords := m.mnemonic
+	backupWordValues := strings.Fields(m.mnemonic)
 	confirmationLabel := localization.Labels["confirm_mnemonic"]
 	confirmationInput := m.backupConfirmationInput.View()
 	materialNotice := ""
 	if m.Vault != nil && m.backupChallenge != nil {
-		backupWords = strings.Join(m.backupChallenge.Words, " ")
+		backupWordValues = append([]string(nil), m.backupChallenge.Words...)
 		indices := make([]string, 0, len(m.backupChallenge.RequiredWordIndices))
 		for _, index := range m.backupChallenge.RequiredWordIndices {
 			indices = append(indices, fmt.Sprintf("#%d", index+1))
 		}
-		confirmationLabel = fmt.Sprintf("Confirm the requested words in order (%s):", strings.Join(indices, ", "))
+		confirmationLabel = fmt.Sprintf("Confirm only the requested words in order (%s):", strings.Join(indices, ", "))
+		materialNotice = fmt.Sprintf("Backup metadata (no re-entry required):\nPath: %s\nLanguage: %s\n", m.backupChallenge.DerivationPath, m.backupChallenge.BIP39Language)
 		if m.backupChallenge.RequiresMaterialConfirmation {
-			materialNotice = fmt.Sprintf("Record this canonical path and language:\nPath: %s\nLanguage: %s\nThe BIP39 passphrase must also be backed up separately.\n\n", m.backupChallenge.DerivationPath, m.backupChallenge.BIP39Language)
-			switch m.backupMaterialStage {
-			case 1:
-				confirmationLabel = "Re-enter the canonical derivation path:"
-				confirmationInput = m.backupPathInput.View()
-			case 2:
-				confirmationLabel = "Re-enter the BIP39 language:"
-				confirmationInput = m.backupLanguageInput.View()
-			case 3:
-				confirmationLabel = "Re-enter the BIP39 passphrase exactly:"
-				confirmationInput = m.backupPassphraseInput.View()
-			}
+			materialNotice += "Back up any configured BIP39 passphrase separately; it cannot be recovered from these words.\n"
 		}
+		materialNotice += "\n"
 	}
 
 	var view strings.Builder
 	view.WriteString(
 		lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FF00")).Render(localization.Labels["mnemonic_phrase"]) + "\n\n" +
-			fmt.Sprintf("%s\n\n", backupWords) +
+			renderMnemonicCards(backupWordValues, m.width-8) + "\n\n" +
 			materialNotice + confirmationLabel + "\n\n" +
 			confirmationInput + "\n\n",
 	)
@@ -175,7 +200,6 @@ func (m *CLIModel) viewCreateWalletPassword() string {
 func (m *CLIModel) renderSplash() string {
 	// Verificar se a fonte selecionada está disponível
 	if m.selectedFont == nil {
-		log.Println("Fonte selecionada não está carregada.")
 		return m.styles.ErrorStyle.Render(constants.ErrorFontNotFoundMessage)
 	}
 
@@ -184,7 +208,7 @@ func (m *CLIModel) renderSplash() string {
 
 	// Renderizar o logo "bloco"
 	renderedLogo := fontString.RenderString("bloco")
-	renderedLogo = strings.TrimSpace(renderedLogo) // Remove any extra whitespace
+	renderedLogo = terminal.SanitizeStyledBlock(strings.TrimSpace(renderedLogo), 24, 160) // Remove any extra whitespace
 
 	projectInfo := fmt.Sprintf("%s v%s", "BLOCO Wallet", localization.Labels["version"])
 
@@ -220,7 +244,7 @@ func (m *CLIModel) renderStatusBar() string {
 		String()
 
 	// Right part: Current date and time
-	currentTime := time.Now().Format("02-01-2006 15:04:05")
+	currentTime := formatDisplayTime(m.displayTime)
 	rightStyle := m.styles.StatusBarRight // Used assignment for copying.
 	right := rightStyle.
 		SetString(fmt.Sprintf("Date: %s", currentTime)).
@@ -240,6 +264,9 @@ func (m *CLIModel) renderStatusBar() string {
 		constants.ListWalletsView:           localization.Labels["list_wallets"],
 		constants.WalletPasswordView:        localization.Labels["enter_wallet_password"],
 		constants.WalletDetailsView:         localization.Labels["wallet_details_title"],
+		constants.AccountHistoryView:        "Local History",
+		constants.PersonalSignView:          "Sign Message",
+		constants.EIP712SignView:            "Sign Typed Data",
 		constants.ConfigurationView:         localization.Labels["configuration"],
 		constants.LanguageSelectionView:     localization.Labels["language"],
 		constants.NetworkMenuView:           localization.Labels["networks"],
@@ -254,15 +281,12 @@ func (m *CLIModel) renderStatusBar() string {
 	}
 
 	// Center part: Current view and shortcut keys
-	var centerContent string
-	if m.currentView == constants.ListWalletsView {
-		// Special case for the wallet list view to include delete instruction
-		centerContent = fmt.Sprintf("View: %s | Press 'd' to delete | Press 'esc' to return | Press 'q' to quit", viewName)
-	} else {
-		centerContent = fmt.Sprintf("View: %s | Press 'esc' to return | Press 'q' to quit", viewName)
-	}
-
+	centerContent := fmt.Sprintf("View: %s | Press 'esc' to return | Press 'q' to quit", viewName)
 	centerWidth := m.width - lipgloss.Width(left) - lipgloss.Width(right)
+	if centerWidth < 12 {
+		width := max(1, m.width)
+		return lipgloss.NewStyle().Width(width).MaxWidth(width).Align(lipgloss.Center).Render(centerContent)
+	}
 	centerStyle := m.styles.StatusBarCenter // Used assignment for copying.
 	center := centerStyle.
 		SetString(centerContent).
@@ -281,17 +305,57 @@ func (m *CLIModel) renderStatusBar() string {
 	return statusBar
 }
 
-func (m *CLIModel) renderMainView() string {
-	var logoBuffer bytes.Buffer
-	err := figurine.Write(&logoBuffer, "bloco", "Test1.flf")
-	if err != nil {
-		log.Println(errors.Wrap(err, 0))
-		logoBuffer.WriteString("bloco")
+func (m *CLIModel) renderCompactTerminal() string {
+	width := max(1, m.width)
+	height := max(1, m.height)
+	message := lipgloss.NewStyle().Bold(true).Align(lipgloss.Center).MaxWidth(max(1, width-2)).MaxHeight(max(1, height-2)).Render("Terminal too small\nResize to at least 100 × 24")
+	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, message)
+}
+
+func (m *CLIModel) fitMainContent(contentHeight int) {
+	if contentHeight < 1 {
+		return
 	}
-	renderedLogo := logoBuffer.String()
+	switch m.currentView {
+	case constants.ListWalletsView:
+		if len(m.wallets) > 0 || len(m.accounts) > 0 {
+			m.walletTable.SetHeight(max(1, contentHeight-3))
+		}
+	case constants.WalletDetailsView:
+		if m.selectedAccount == nil {
+			return
+		}
+		if m.walletDetailsViewport.Width == 0 {
+			m.initWalletDetailsComponents()
+		}
+		width, _ := m.walletDetailsDimensions()
+		m.walletDetailsViewport.Width = width
+		m.walletDetailsHelp.Width = width
+		m.updateWalletDetailsKeyAvailability()
+		m.walletDetailsViewport.SetContent(m.walletDetailsContent())
+		helpHeight := lipgloss.Height(m.walletDetailsHelp.View(m.walletDetailsKeys))
+		m.walletDetailsViewport.Height = max(1, contentHeight-helpHeight-1)
+	case constants.AccountHistoryView:
+		if m.accountHistory == nil {
+			return
+		}
+		width := max(40, m.width-6)
+		m.accountHistory.viewport.Width = width
+		m.accountHistory.help.Width = width
+		m.refreshAccountHistoryContent()
+		helpHeight := lipgloss.Height(m.accountHistory.help.View(m.accountHistory.keys))
+		m.accountHistory.viewport.Height = max(1, contentHeight-helpHeight-1)
+	}
+}
+
+func (m *CLIModel) renderMainView() string {
+	if m.width < 100 || m.height < 24 {
+		return m.renderCompactTerminal()
+	}
+	renderedLogo := renderHeaderLogo()
 
 	walletCount := m.walletCount
-	currentTime := time.Now().Format("02-01-2006 15:04:05")
+	currentTime := formatDisplayTime(m.displayTime)
 
 	headerLeft := lipgloss.JoinVertical(
 		lipgloss.Left,
@@ -305,12 +369,11 @@ func (m *CLIModel) renderMainView() string {
 	menuGrid := lipgloss.JoinVertical(lipgloss.Left, menuItems...)
 
 	// Montar header
-	headerContent := lipgloss.JoinHorizontal(
-		lipgloss.Top,
-		headerLeft,
-		lipgloss.NewStyle().Width(m.width-lipgloss.Width(headerLeft)-lipgloss.Width(menuGrid)).Render(""),
-		menuGrid,
-	)
+	headerGap := m.width - lipgloss.Width(headerLeft) - lipgloss.Width(menuGrid) - m.styles.Header.GetHorizontalFrameSize()
+	headerContent := lipgloss.JoinVertical(lipgloss.Left, headerLeft, menuGrid)
+	if headerGap >= 2 {
+		headerContent = lipgloss.JoinHorizontal(lipgloss.Top, headerLeft, lipgloss.NewStyle().Width(headerGap).Render(""), menuGrid)
+	}
 
 	// Renderizar header com altura fixa
 	renderedHeader := m.styles.Header.Render(headerContent)
@@ -323,15 +386,16 @@ func (m *CLIModel) renderMainView() string {
 	// Calcular altura da área de conteúdo
 	contentHeight := m.height - headerHeight - footerHeight - 2 // Subtrai 2 para evitar overflow
 
-	if contentHeight < 0 {
-		contentHeight = 0
+	if contentHeight <= 0 {
+		return m.renderCompactTerminal()
 	}
 
 	// Obter a visualização do conteúdo
+	m.fitMainContent(contentHeight)
 	content := m.getContentView()
 
 	// Renderizar conteúdo com altura ajustada
-	renderedContent := m.styles.Content.Height(contentHeight).Render(content)
+	renderedContent := m.styles.Content.Height(contentHeight).MaxHeight(contentHeight).Render(content)
 
 	// Inserir espaço vazio para empurrar o footer para baixo
 	remainingHeight := m.height - headerHeight - lipgloss.Height(renderedContent) - footerHeight
@@ -483,36 +547,11 @@ func (m *CLIModel) viewImportKeystore() string {
 	// Instructions for the user
 	instructions := m.styles.MenuDesc.Render(localization.Labels["press_enter"] + " | Tab to show/cycle through suggestions")
 
-	// Add validation feedback for the current path
-	var validationMsg string
-	keystorePath := strings.TrimSpace(m.privateKeyInput.Value())
-
-	if keystorePath != "" {
-		// Check if file exists
-		if fileInfo, err := os.Stat(keystorePath); os.IsNotExist(err) {
-			// File doesn't exist
-			validationMsg = m.styles.ErrorStyle.Render(localization.Labels["keystore_file_not_found"])
-		} else if err != nil {
-			// Error accessing file
-			validationMsg = m.styles.ErrorStyle.Render(localization.Labels["keystore_access_error"])
-		} else if fileInfo.IsDir() {
-			// Path is a directory, not a file
-			validationMsg = m.styles.ErrorStyle.Render(localization.Labels["keystore_is_directory"])
-			// Removed file extension validation to allow any file extension
-			// The actual JSON content validation will be done by the wallet service
-		} else {
-			// File exists
-			validationMsg = m.styles.SuccessStyle.Render(localization.Labels["keystore_file_valid"])
-		}
-	}
-
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
 		title,
 		"",
 		input,
-		"",
-		validationMsg,
 		"",
 		instructions,
 	)
@@ -585,7 +624,7 @@ func (m *CLIModel) renderDeleteConfirmationDialog() string {
 
 	// Caixa de diálogo centralizada com botões estilizados e seleção
 	question := localization.Labels["confirm_delete_wallet"]
-	address := fmt.Sprintf("%s: %s", localization.Labels["ethereum_address"], m.deletingWallet.Address)
+	address := fmt.Sprintf("%s: %s", localization.Labels["ethereum_address"], safeShort(m.deletingWallet.Address))
 
 	// Botões com seleção (garante espaçamento entre os textos)
 	var confirmBtn, cancelBtn string
@@ -665,7 +704,7 @@ func (m *CLIModel) viewVaultAction(export bool) string {
 		}
 		return lipgloss.NewStyle().Bold(true).Render("Confirm secret export") + "\n\n" +
 			fmt.Sprintf("Account: %s\nAddress: %s\nFormat: %s\nDestination: %s\n\nThis operation writes an exportable secret artifact.\nPress Enter again to export or Esc to cancel.",
-				m.selectedAccount.Name, m.selectedAccount.Address, format, m.exportDestinationInput.Value())
+				safeShort(m.selectedAccount.Name), safeShort(m.selectedAccount.Address), safeShort(format), safeInline(m.exportDestinationInput.Value()))
 	}
 	var view strings.Builder
 	view.WriteString(lipgloss.NewStyle().Bold(true).Render(title) + "\n\n")
@@ -704,24 +743,7 @@ func (m *CLIModel) viewWalletDetails() string {
 		return "Localization labels not initialized."
 	}
 	if m.selectedAccount != nil {
-		account := m.selectedAccount
-		actions := "L: Lock | R: Rotate password | E: Export Keystore V3 | X: Export encrypted backup"
-		notice := ""
-		if m.lastOperationNotice != "" {
-			notice = "\n" + m.lastOperationNotice + "\n"
-		}
-		if account.State == wallet.AccountStatePendingBackup {
-			actions = "B: Resume backup confirmation"
-		}
-		return lipgloss.NewStyle().Bold(true).Render(localization.Labels["wallet_details_title"]+"\n\n") +
-			fmt.Sprintf("%-*s %s\n", 20, localization.Labels["ethereum_address"], account.Address) +
-			fmt.Sprintf("%-*s %s\n", 20, "Signer:", account.SignerKind) +
-			fmt.Sprintf("%-*s %s\n", 20, "State:", account.State) +
-			fmt.Sprintf("%-*s %s\n", 20, "Path:", account.DerivationPath) +
-			fmt.Sprintf("%-*s %s\n", 20, "BIP39 language:", account.BIP39Language) +
-			fmt.Sprintf("%-*s %t\n", 20, "Passphrase present:", account.HasBIP39Passphrase) +
-			fmt.Sprintf("%-*s %s\n", 20, "Related account:", account.RelatedAccountID) +
-			notice + "\n" + actions + "\n" + localization.Labels["press_esc"]
+		return m.walletDetailsViewport.View() + "\n" + m.walletDetailsHelp.View(m.walletDetailsKeys)
 	}
 
 	if m.walletDetails != nil {
@@ -743,7 +765,7 @@ func (m *CLIModel) viewWalletDetails() string {
 				methodName = "Keystore File" // Fallback
 			}
 		default:
-			methodName = string(m.walletDetails.ImportMethod)
+			methodName = safeShort(string(m.walletDetails.ImportMethod))
 		}
 
 		// Determine mnemonic text based on import method
@@ -764,7 +786,7 @@ func (m *CLIModel) viewWalletDetails() string {
 
 		view.WriteString(
 			lipgloss.NewStyle().Bold(true).Render(localization.Labels["wallet_details_title"]+"\n\n") +
-				fmt.Sprintf("%-*s %s\n", 20, localization.Labels["ethereum_address"], m.walletDetails.Wallet.Address) +
+				fmt.Sprintf("%-*s %s\n", 20, localization.Labels["ethereum_address"], safeShort(m.walletDetails.Wallet.Address)) +
 				fmt.Sprintf("%-*s %s\n", 20, localization.Labels["private_key"], localization.GetWalletImportMessage("sensitive_data_hidden")) +
 				fmt.Sprintf("%-*s %s\n", 20, methodLabel+":", methodName) +
 				fmt.Sprintf("%-*s %s\n\n", 20, localization.Labels["mnemonic_phrase_label"], mnemonicText),

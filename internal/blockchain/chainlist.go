@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net"
-	"net/http"
-	"strconv"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
+
+	"blocowallet/internal/terminal"
 )
 
 // ErrChainlistUnavailable is returned when ChainList API cannot be reached or responds with an error
@@ -24,6 +24,34 @@ type RPCEndpoint struct {
 	IsOpenSource bool   `json:"isOpenSource"`
 }
 
+type Explorer struct {
+	Name string `json:"name"`
+	URL  string `json:"url"`
+}
+
+func (explorer *Explorer) UnmarshalJSON(data []byte) error {
+	if explorer == nil || len(data) == 0 || len(data) > 8192 {
+		return fmt.Errorf("invalid ChainList explorer")
+	}
+	trimmed := strings.TrimSpace(string(data))
+	if strings.HasPrefix(trimmed, "\"") {
+		var endpoint string
+		if err := json.Unmarshal(data, &endpoint); err != nil {
+			return err
+		}
+		explorer.Name = ""
+		explorer.URL = endpoint
+		return nil
+	}
+	type explorerAlias Explorer
+	var decoded explorerAlias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*explorer = Explorer(decoded)
+	return nil
+}
+
 // ChainInfo represents chain information from ChainList API
 type ChainInfo struct {
 	ChainID        int    `json:"chainId"`
@@ -34,15 +62,61 @@ type ChainInfo struct {
 		Decimals int    `json:"decimals"`
 	} `json:"nativeCurrency"`
 	RPC       []RPCEndpoint `json:"rpc"`
-	Explorers []struct {
-		Name string `json:"name"`
-		URL  string `json:"url"`
-	} `json:"explorers"`
+	Explorers []Explorer    `json:"explorers"`
+}
+
+func validateChainCatalog(chains []ChainInfo) error {
+	if len(chains) > 4096 {
+		return fmt.Errorf("ChainList catalog exceeds chain budget")
+	}
+	chainIDs := make(map[int]struct{}, len(chains))
+	for _, chain := range chains {
+		if chain.ChainID <= 0 || chain.NativeCurrency.Decimals < 0 || chain.NativeCurrency.Decimals > 36 || len(chain.RPC) > 256 || len(chain.Explorers) > 16 {
+			return fmt.Errorf("ChainList entry exceeds shape policy")
+		}
+		if _, exists := chainIDs[chain.ChainID]; exists {
+			return fmt.Errorf("ChainList contains a duplicate chain ID")
+		}
+		chainIDs[chain.ChainID] = struct{}{}
+		endpoints := make(map[string]struct{}, len(chain.RPC))
+		for _, endpoint := range chain.RPC {
+			tracking := strings.ToLower(strings.TrimSpace(endpoint.Tracking))
+			if len(endpoint.URL) == 0 || len(endpoint.URL) > 4096 || (tracking != "" && tracking != "none" && tracking != "limited" && tracking != "yes" && tracking != "unspecified") {
+				return fmt.Errorf("ChainList RPC metadata exceeds policy")
+			}
+			if _, exists := endpoints[endpoint.URL]; exists {
+				return fmt.Errorf("ChainList contains a duplicate RPC endpoint")
+			}
+			endpoints[endpoint.URL] = struct{}{}
+		}
+		for _, explorer := range chain.Explorers {
+			parsedExplorer, err := url.ParseRequestURI(explorer.URL)
+			if len(explorer.URL) == 0 || len(explorer.URL) > 4096 || strings.ContainsAny(explorer.URL, "\x00\r\n\x1b") || err != nil || parsedExplorer.Scheme != "https" || parsedExplorer.Host == "" || parsedExplorer.User != nil || parsedExplorer.Fragment != "" {
+				return fmt.Errorf("ChainList explorer metadata exceeds policy")
+			}
+		}
+	}
+	return nil
+}
+
+func sanitizeChainInfo(chain *ChainInfo) {
+	chain.Name = terminal.SanitizeInline(chain.Name, 128)
+	chain.NativeCurrency.Name = terminal.SanitizeInline(chain.NativeCurrency.Name, 64)
+	chain.NativeCurrency.Symbol = terminal.SanitizeInline(chain.NativeCurrency.Symbol, 16)
+	for index := range chain.RPC {
+		chain.RPC[index].Tracking = strings.ToLower(strings.TrimSpace(chain.RPC[index].Tracking))
+		if chain.RPC[index].Tracking == "" || chain.RPC[index].Tracking == "unspecified" {
+			chain.RPC[index].Tracking = "unknown"
+		}
+	}
+	for index := range chain.Explorers {
+		chain.Explorers[index].Name = terminal.SanitizeInline(chain.Explorers[index].Name, 64)
+	}
 }
 
 // ChainListService handles interaction with ChainList API
 type ChainListService struct {
-	client      *http.Client
+	gateway     *RPCGateway
 	baseURL     string
 	chains      []ChainInfo
 	cacheMu     sync.RWMutex
@@ -65,125 +139,64 @@ type RPCConnectionResult struct {
 	Latency time.Duration
 }
 
-// NewChainListService creates a new ChainList service
-func NewChainListService() *ChainListService {
+func NewChainListServiceWithGateway(gateway *RPCGateway, baseURL string) *ChainListService {
 	return &ChainListService{
-		client: &http.Client{
-			Timeout: 10 * time.Second,
-		},
-		baseURL: "https://chainlist.org",
+		gateway: gateway,
+		baseURL: strings.TrimRight(baseURL, "/"),
 		chains:  make([]ChainInfo, 0),
 	}
 }
 
 // GetChainInfo fetches chain information by chain ID
 func (s *ChainListService) GetChainInfo(chainID int) (*ChainInfo, error) {
-	url := fmt.Sprintf("%s/rpcs.json", s.baseURL)
+	return s.GetChainInfoContext(context.Background(), chainID)
+}
 
-	resp, err := s.client.Get(url)
-	if err != nil {
-		return nil, fmt.Errorf("%w: failed to fetch chain list: %v", ErrChainlistUnavailable, err)
+func (s *ChainListService) GetChainInfoContext(ctx context.Context, chainID int) (*ChainInfo, error) {
+	if err := s.loadChains(ctx); err != nil {
+		return nil, err
 	}
-	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
-			fmt.Printf("Error closing response body: %v\n", err)
-		}
-	}(resp.Body)
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("%w: API request failed with status: %d", ErrChainlistUnavailable, resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("%w: failed to read response body: %v", ErrChainlistUnavailable, err)
-	}
-
-	var chains []ChainInfo
-	if err := json.Unmarshal(body, &chains); err != nil {
-		return nil, fmt.Errorf("%w: failed to parse JSON response: %v", ErrChainlistUnavailable, err)
-	}
-
-	// Find chain by ID
-	for _, chain := range chains {
-		if chain.ChainID == chainID {
+	s.cacheMu.RLock()
+	defer s.cacheMu.RUnlock()
+	for index := range s.chains {
+		if s.chains[index].ChainID == chainID {
+			chain := s.chains[index]
 			return &chain, nil
 		}
 	}
-
 	return nil, fmt.Errorf("chain with ID %d not found", chainID)
 }
 
 // ValidateRPCEndpoint checks if an RPC endpoint is accessible
 func (s *ChainListService) ValidateRPCEndpoint(rpcURL string) error {
+	return s.ValidateRPCEndpointContext(context.Background(), rpcURL)
+}
+
+func (s *ChainListService) ValidateRPCEndpointContext(ctx context.Context, rpcURL string) error {
 	if rpcURL == "" {
 		return NewNetworkOperationError("validate", "RPC URL cannot be empty", nil)
 	}
-
-	// Create a simple JSON-RPC request to check if the endpoint is alive
-	reqBody := `{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}`
-
-	resp, err := s.client.Post(rpcURL, "application/json",
-		strings.NewReader(reqBody))
-	if err != nil {
-		return NewNetworkOperationError("validate", "RPC endpoint is not accessible", err)
+	if _, err := s.gateway.ChainID(ctx, rpcURL); err != nil {
+		return NewNetworkOperationError("validate", "RPC endpoint validation failed", err)
 	}
-	defer func(Body io.ReadCloser) {
-		_ = Body.Close()
-	}(resp.Body)
-
-	if resp.StatusCode != http.StatusOK {
-		return NewNetworkOperationError("validate", fmt.Sprintf("RPC endpoint returned status: %d", resp.StatusCode), nil)
-	}
-
 	return nil
 }
 
 // GetChainIDFromRPC attempts to get chain ID from RPC endpoint
 func (s *ChainListService) GetChainIDFromRPC(rpcURL string) (int, error) {
-	reqBody := `{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}`
+	return s.GetChainIDFromRPCContext(context.Background(), rpcURL)
+}
 
-	resp, err := s.client.Post(rpcURL, "application/json",
-		strings.NewReader(reqBody))
+func (s *ChainListService) GetChainIDFromRPCContext(ctx context.Context, rpcURL string) (int, error) {
+	chainID, err := s.gateway.ChainID(ctx, rpcURL)
 	if err != nil {
-		return 0, NewNetworkOperationError("validate", "failed to call RPC", err)
+		return 0, NewNetworkOperationError("validate", "failed to validate RPC chain identity", err)
 	}
-	defer func(Body io.ReadCloser) {
-		_ = Body.Close()
-	}(resp.Body)
-
-	if resp.StatusCode != http.StatusOK {
-		return 0, NewNetworkOperationError("validate", fmt.Sprintf("RPC call failed with status: %d", resp.StatusCode), nil)
-	}
-
-	var result struct {
-		Result string `json:"result"`
-		Error  *struct {
-			Code    int    `json:"code"`
-			Message string `json:"message"`
-		} `json:"error"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return 0, NewNetworkOperationError("validate", "failed to decode RPC response", err)
-	}
-
-	if result.Error != nil {
-		return 0, NewNetworkOperationError("validate", fmt.Sprintf("RPC error: %s", result.Error.Message), nil)
-	}
-
-	// Convert hex chain ID to int
-	chainID, err := strconv.ParseInt(result.Result, 0, 64)
-	if err != nil {
-		return 0, NewNetworkOperationError("validate", "failed to parse chain ID", err)
-	}
-
 	return int(chainID), nil
 }
 
 // loadChains loads and caches chain data from ChainList API with simple retry/backoff
-func (s *ChainListService) loadChains() error {
+func (s *ChainListService) loadChains(ctx context.Context) error {
 	s.cacheMu.Lock()
 	defer s.cacheMu.Unlock()
 
@@ -192,45 +205,31 @@ func (s *ChainListService) loadChains() error {
 		return nil
 	}
 
-	url := fmt.Sprintf("%s/rpcs.json", s.baseURL)
+	registryURL := fmt.Sprintf("%s/rpcs.json", s.baseURL)
 
 	var lastErr error
 	for attempt := 0; attempt < 3; attempt++ {
-		resp, err := s.client.Get(url)
+		bodyBytes, err := s.gateway.Fetch(ctx, registryURL)
 		if err != nil {
 			lastErr = err
 			if attempt < 2 && isTransientNetworkError(err) {
-				time.Sleep(time.Duration(300*(1<<attempt)) * time.Millisecond)
+				if err := waitForRetry(ctx, time.Duration(300*(1<<attempt))*time.Millisecond); err != nil {
+					return err
+				}
 				continue
 			}
-			return NewNetworkOperationError("search", "failed to fetch chain list", fmt.Errorf("%w: %v", ErrChainlistUnavailable, err))
-		}
-
-		// Ensure body is closed each iteration
-		bodyBytes, readErr := io.ReadAll(resp.Body)
-		_ = resp.Body.Close()
-		if readErr != nil {
-			lastErr = readErr
-			if attempt < 2 && isTransientNetworkError(readErr) {
-				time.Sleep(time.Duration(300*(1<<attempt)) * time.Millisecond)
-				continue
-			}
-			return NewNetworkOperationError("search", "failed to read ChainList response", fmt.Errorf("%w: %v", ErrChainlistUnavailable, readErr))
-		}
-
-		if resp.StatusCode != http.StatusOK {
-			lastErr = fmt.Errorf("API request failed with status: %d", resp.StatusCode)
-			// Retry for 5xx errors
-			if attempt < 2 && resp.StatusCode >= 500 {
-				time.Sleep(time.Duration(300*(1<<attempt)) * time.Millisecond)
-				continue
-			}
-			return NewNetworkOperationError("search", "ChainList API error", fmt.Errorf("%w: %v", ErrChainlistUnavailable, lastErr))
+			return NewNetworkOperationError("search", "failed to fetch chain list", fmt.Errorf("%w: %w", ErrChainlistUnavailable, err))
 		}
 
 		var chains []ChainInfo
 		if err := json.Unmarshal(bodyBytes, &chains); err != nil {
-			return NewNetworkOperationError("search", "failed to parse ChainList response", fmt.Errorf("%w: %v", ErrChainlistUnavailable, err))
+			return NewNetworkOperationError("search", "failed to parse ChainList response", fmt.Errorf("%w: %w", ErrChainlistUnavailable, err))
+		}
+		if err := validateChainCatalog(chains); err != nil {
+			return NewNetworkOperationError("search", "invalid ChainList response", err)
+		}
+		for index := range chains {
+			sanitizeChainInfo(&chains[index])
 		}
 
 		// Success: cache and return
@@ -241,6 +240,17 @@ func (s *ChainListService) loadChains() error {
 
 	// Exhausted attempts
 	return NewNetworkOperationError("search", "unable to fetch network data from ChainList", lastErr)
+}
+
+func waitForRetry(ctx context.Context, duration time.Duration) error {
+	timer := time.NewTimer(duration)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // isTransientNetworkError determines whether an error is likely transient
@@ -272,7 +282,11 @@ func isTransientNetworkError(err error) bool {
 
 // SearchNetworksByName searches for networks by name with fuzzy matching
 func (s *ChainListService) SearchNetworksByName(query string) ([]NetworkSuggestion, error) {
-	if err := s.loadChains(); err != nil {
+	return s.SearchNetworksByNameContext(context.Background(), query)
+}
+
+func (s *ChainListService) SearchNetworksByNameContext(ctx context.Context, query string) ([]NetworkSuggestion, error) {
+	if err := s.loadChains(ctx); err != nil {
 		return nil, err
 	}
 
@@ -318,9 +332,13 @@ func (s *ChainListService) SearchNetworksByName(query string) ([]NetworkSuggesti
 
 // GetChainInfoWithRetry gets chain info and tests RPC endpoints with retry logic
 func (s *ChainListService) GetChainInfoWithRetry(chainID int) (*ChainInfo, string, error) {
+	return s.GetChainInfoWithRetryContext(context.Background(), chainID)
+}
+
+func (s *ChainListService) GetChainInfoWithRetryContext(ctx context.Context, chainID int) (*ChainInfo, string, error) {
 	// Debug log removed
 
-	if err := s.loadChains(); err != nil {
+	if err := s.loadChains(ctx); err != nil {
 		// Debug log removed
 		return nil, "", err
 	}
@@ -345,14 +363,8 @@ func (s *ChainListService) GetChainInfoWithRetry(chainID int) (*ChainInfo, strin
 	}
 
 	// Test RPC endpoints and find the best one
-	workingRPC, err := s.findBestRPCEndpoint(targetChain.RPC, chainID)
+	workingRPC, err := s.findBestRPCEndpoint(ctx, targetChain.RPC, chainID)
 	if err != nil {
-		// Fallback: If we couldn't find a working RPC endpoint, just use the first one in the list
-		if len(targetChain.RPC) > 0 {
-			fallbackRPC := targetChain.RPC[0].URL
-			return targetChain, fallbackRPC, nil
-		}
-
 		return nil, "", fmt.Errorf("no working RPC endpoint found: %w", err)
 	}
 
@@ -360,118 +372,79 @@ func (s *ChainListService) GetChainInfoWithRetry(chainID int) (*ChainInfo, strin
 }
 
 // findBestRPCEndpoint tests all RPC endpoints and returns the fastest working one
-func (s *ChainListService) findBestRPCEndpoint(endpoints []RPCEndpoint, expectedChainID int) (string, error) {
+func (s *ChainListService) findBestRPCEndpoint(ctx context.Context, endpoints []RPCEndpoint, expectedChainID int) (string, error) {
 	if len(endpoints) == 0 {
 		return "", fmt.Errorf("no RPC endpoints available")
 	}
-
-	// Channel to collect results
-	results := make(chan RPCConnectionResult, len(endpoints))
-
-	// Create a timeout context
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	// Test all endpoints concurrently
-	for i, endpoint := range endpoints {
-		go func(idx int, ep RPCEndpoint) {
-			result := RPCConnectionResult{URL: ep.URL}
-			start := time.Now()
-
-			chainID, err := s.testRPCEndpoint(ep.URL, expectedChainID)
-			result.Latency = time.Since(start)
-
-			if err != nil {
-				result.Success = false
-				result.Error = err
-			} else {
-				result.Success = true
-				result.ChainID = chainID
-			}
-
-			select {
-			case results <- result:
-				// Result sent successfully
-			case <-ctx.Done():
-				// Context timed out, no need to send result
-			}
-		}(i, endpoint)
+	if len(endpoints) > 256 {
+		return "", fmt.Errorf("RPC endpoint catalog exceeds policy")
 	}
-
-	// Collect results and find the best one
-	var bestResult *RPCConnectionResult
-
-	// Use a timeout to avoid waiting forever
-	timeout := time.After(10 * time.Second)
-
-	for i := 0; i < len(endpoints); i++ {
-		select {
-		case result := <-results:
-			if result.Success && result.ChainID == expectedChainID {
-				// Select the fastest endpoint
-				if bestResult == nil || result.Latency < bestResult.Latency {
-					bestResult = &result
-				}
+	ordered := make([]RPCEndpoint, 0, min(32, len(endpoints)))
+	for _, endpoint := range endpoints {
+		if strings.EqualFold(endpoint.Tracking, "none") {
+			ordered = append(ordered, endpoint)
+			if len(ordered) == 32 {
+				break
 			}
-		case <-timeout:
-			i = len(endpoints) // Exit the loop
 		}
 	}
-
+	if len(ordered) == 0 {
+		return "", fmt.Errorf("no privacy-preserving RPC endpoints are available")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	jobs := make(chan RPCEndpoint)
+	results := make(chan RPCConnectionResult, len(ordered))
+	workers := min(8, len(ordered))
+	var waitGroup sync.WaitGroup
+	waitGroup.Add(workers)
+	for range workers {
+		go func() {
+			defer waitGroup.Done()
+			for endpoint := range jobs {
+				start := time.Now()
+				chainID, err := s.testRPCEndpoint(ctx, endpoint.URL, expectedChainID)
+				result := RPCConnectionResult{URL: endpoint.URL, ChainID: chainID, Latency: time.Since(start), Success: err == nil, Error: err}
+				select {
+				case results <- result:
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
+	}
+	go func() {
+		defer close(jobs)
+		for _, endpoint := range ordered {
+			select {
+			case jobs <- endpoint:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	go func() {
+		waitGroup.Wait()
+		close(results)
+	}()
+	var bestResult *RPCConnectionResult
+	for result := range results {
+		if result.Success && (bestResult == nil || result.Latency < bestResult.Latency) {
+			candidate := result
+			bestResult = &candidate
+		}
+	}
 	if bestResult == nil {
 		return "", fmt.Errorf("no working RPC endpoints found for chain ID %d", expectedChainID)
 	}
-
 	return bestResult.URL, nil
 }
 
 // testRPCEndpoint tests a single RPC endpoint
-func (s *ChainListService) testRPCEndpoint(rpcURL string, expectedChainID int) (int, error) {
-	if rpcURL == "" || !strings.HasPrefix(rpcURL, "http") {
-		return 0, fmt.Errorf("invalid RPC URL")
-	}
-
-	// Create a client with shorter timeout for testing
-	client := &http.Client{Timeout: 5 * time.Second}
-
-	reqBody := `{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}`
-
-	resp, err := client.Post(rpcURL, "application/json", strings.NewReader(reqBody))
+func (s *ChainListService) testRPCEndpoint(ctx context.Context, rpcURL string, expectedChainID int) (int, error) {
+	session, err := s.gateway.ValidateChain(ctx, rpcURL, int64(expectedChainID))
 	if err != nil {
-		return 0, fmt.Errorf("RPC request failed: %w", err)
+		return 0, err
 	}
-	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
-			fmt.Printf("Error closing response body: %v\n", err)
-		}
-	}(resp.Body)
-
-	if resp.StatusCode != http.StatusOK {
-		return 0, fmt.Errorf("RPC returned status: %d", resp.StatusCode)
-	}
-
-	var result struct {
-		Result string `json:"result"`
-		Error  *struct {
-			Code    int    `json:"code"`
-			Message string `json:"message"`
-		} `json:"error"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return 0, fmt.Errorf("failed to decode response: %w", err)
-	}
-
-	if result.Error != nil {
-		return 0, fmt.Errorf("RPC error: %s", result.Error.Message)
-	}
-
-	// Convert hex chain ID to int
-	chainID, err := strconv.ParseInt(result.Result, 0, 64)
-	if err != nil {
-		return 0, fmt.Errorf("failed to parse chain ID: %w", err)
-	}
-
-	return int(chainID), nil
+	return int(session.ChainID()), nil
 }

@@ -527,7 +527,7 @@ func TestSoftwareSignerEnforcesCapabilitiesContextAndTTL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	signer, err := NewSoftwareSigner(vault)
+	signer, err := NewSoftwareSignerWithApprovalVerifier(vault, &approvalVerifierStub{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -548,6 +548,10 @@ func TestSoftwareSignerEnforcesCapabilitiesContextAndTTL(t *testing.T) {
 	invalidRequest.Purpose = SigningPurposeTransaction
 	if _, err := signer.Sign(context.Background(), handle, invalidRequest); err == nil {
 		t.Fatal("signer accepted transaction without chain identity")
+	}
+	invalidRequest.ChainID = 1
+	if _, err := signer.Sign(context.Background(), handle, invalidRequest); err == nil {
+		t.Fatal("signer accepted transaction without consumed approval verifier")
 	}
 	invalidRequest.Purpose = "unknown"
 	if _, err := signer.Sign(context.Background(), handle, invalidRequest); err == nil {
@@ -617,7 +621,7 @@ func TestWalletVaultProactivelyExpiresInactiveSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	signer, err := NewSoftwareSigner(vault)
+	signer, err := NewSoftwareSignerWithApprovalVerifier(vault, &approvalVerifierStub{})
 	if err != nil {
 		t.Fatal(err)
 	}

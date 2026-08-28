@@ -1,6 +1,7 @@
 package blockchain
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"regexp"
@@ -34,6 +35,41 @@ type ChainListServiceInterface interface {
 	GetChainIDFromRPC(rpcURL string) (int, error)
 }
 
+type contextualChainListService interface {
+	GetChainInfoContext(context.Context, int) (*ChainInfo, error)
+	GetChainInfoWithRetryContext(context.Context, int) (*ChainInfo, string, error)
+	ValidateRPCEndpointContext(context.Context, string) error
+	GetChainIDFromRPCContext(context.Context, string) (int, error)
+}
+
+func chainInfoContext(ctx context.Context, service ChainListServiceInterface, chainID int) (*ChainInfo, error) {
+	if contextual, ok := service.(contextualChainListService); ok {
+		return contextual.GetChainInfoContext(ctx, chainID)
+	}
+	return service.GetChainInfo(chainID)
+}
+
+func chainInfoWithRetryContext(ctx context.Context, service ChainListServiceInterface, chainID int) (*ChainInfo, string, error) {
+	if contextual, ok := service.(contextualChainListService); ok {
+		return contextual.GetChainInfoWithRetryContext(ctx, chainID)
+	}
+	return service.GetChainInfoWithRetry(chainID)
+}
+
+func validateRPCEndpointContext(ctx context.Context, service ChainListServiceInterface, endpoint string) error {
+	if contextual, ok := service.(contextualChainListService); ok {
+		return contextual.ValidateRPCEndpointContext(ctx, endpoint)
+	}
+	return service.ValidateRPCEndpoint(endpoint)
+}
+
+func chainIDFromRPCContext(ctx context.Context, service ChainListServiceInterface, endpoint string) (int, error) {
+	if contextual, ok := service.(contextualChainListService); ok {
+		return contextual.GetChainIDFromRPCContext(ctx, endpoint)
+	}
+	return service.GetChainIDFromRPC(endpoint)
+}
+
 // NetworkClassificationService handles network classification and validation
 type NetworkClassificationService struct {
 	chainListService ChainListServiceInterface
@@ -48,8 +84,12 @@ func NewNetworkClassificationService(chainListService ChainListServiceInterface)
 
 // ClassifyNetwork determines if a network is standard (from chainlist) or custom
 func (ncs *NetworkClassificationService) ClassifyNetwork(chainID int, name string, rpcEndpoint string) (*NetworkClassification, error) {
+	return ncs.ClassifyNetworkContext(context.Background(), chainID, name, rpcEndpoint)
+}
+
+func (ncs *NetworkClassificationService) ClassifyNetworkContext(ctx context.Context, chainID int, name string, rpcEndpoint string) (*NetworkClassification, error) {
 	// First, try to validate against ChainList
-	chainInfo, _, err := ncs.ValidateNetworkAgainstChainList(chainID, rpcEndpoint)
+	chainInfo, _, err := ncs.ValidateNetworkAgainstChainListContext(ctx, chainID, rpcEndpoint)
 	if err == nil && chainInfo != nil {
 		// Network found in ChainList - classify as standard
 		key := ncs.GenerateNetworkKey(NetworkTypeStandard, chainInfo.Name, chainID)
@@ -62,18 +102,27 @@ func (ncs *NetworkClassificationService) ClassifyNetwork(chainID int, name strin
 		}, nil
 	}
 
-	// Network not found in ChainList or validation failed - classify as custom
+	if rpcEndpoint == "" || ncs.chainListService == nil {
+		return nil, fmt.Errorf("network identity validation failed: %w", err)
+	}
+	if validateErr := validateRPCEndpointContext(ctx, ncs.chainListService, rpcEndpoint); validateErr != nil {
+		return nil, fmt.Errorf("network identity validation failed: %w", validateErr)
+	}
+	actualChainID, validateErr := chainIDFromRPCContext(ctx, ncs.chainListService, rpcEndpoint)
+	if validateErr != nil {
+		return nil, fmt.Errorf("network identity validation failed: %w", validateErr)
+	}
+	if actualChainID != chainID {
+		return nil, fmt.Errorf("RPC endpoint chain ID (%d) does not match expected chain ID (%d)", actualChainID, chainID)
+	}
 	source := "manual"
-	if err != nil {
-		// Distinguish offline/unavailable chainlist scenario
-		if errors.Is(err, ErrChainlistUnavailable) || strings.Contains(err.Error(), "chainlist service not available") {
-			source = "manual_offline"
-		}
+	if err != nil && (errors.Is(err, ErrChainlistUnavailable) || strings.Contains(err.Error(), "chainlist service not available")) {
+		source = "manual_offline"
 	}
 	key := ncs.GenerateNetworkKey(NetworkTypeCustom, name, chainID)
 	return &NetworkClassification{
 		Type:        NetworkTypeCustom,
-		IsValidated: false,
+		IsValidated: true,
 		ChainInfo:   nil,
 		Key:         key,
 		Source:      source,
@@ -82,6 +131,10 @@ func (ncs *NetworkClassificationService) ClassifyNetwork(chainID int, name strin
 
 // ValidateNetworkAgainstChainList validates a network against the ChainList API
 func (ncs *NetworkClassificationService) ValidateNetworkAgainstChainList(chainID int, rpcEndpoint string) (*ChainInfo, string, error) {
+	return ncs.ValidateNetworkAgainstChainListContext(context.Background(), chainID, rpcEndpoint)
+}
+
+func (ncs *NetworkClassificationService) ValidateNetworkAgainstChainListContext(ctx context.Context, chainID int, rpcEndpoint string) (*ChainInfo, string, error) {
 	if ncs.chainListService == nil {
 		return nil, "", fmt.Errorf("chainlist service not available")
 	}
@@ -94,44 +147,25 @@ func (ncs *NetworkClassificationService) ValidateNetworkAgainstChainList(chainID
 	)
 
 	if rpcEndpoint != "" {
-		// Fast path: we have a user-provided endpoint; just fetch chain metadata and validate the endpoint
-		chainInfo, err = ncs.chainListService.GetChainInfo(chainID)
+		chainInfo, err = chainInfoContext(ctx, ncs.chainListService, chainID)
 		if err != nil {
 			return nil, "", fmt.Errorf("failed to get chain info from chainlist: %w", err)
 		}
-
-		// Check if the provided RPC endpoint matches any of the known endpoints for this chain
-		isKnownEndpoint := false
-		for _, endpoint := range chainInfo.RPC {
-			if strings.EqualFold(endpoint.URL, rpcEndpoint) {
-				isKnownEndpoint = true
-				workingRPC = endpoint.URL
-				break
-			}
+		if err := validateRPCEndpointContext(ctx, ncs.chainListService, rpcEndpoint); err != nil {
+			return nil, "", fmt.Errorf("provided RPC endpoint is not valid: %w", err)
 		}
-
-		// If the provided endpoint is not in the known list, test it and ensure it matches the chain ID
-		if !isKnownEndpoint {
-			if err := ncs.chainListService.ValidateRPCEndpoint(rpcEndpoint); err != nil {
-				return nil, "", fmt.Errorf("provided RPC endpoint is not valid: %w", err)
-			}
-			actualChainID, err := ncs.chainListService.GetChainIDFromRPC(rpcEndpoint)
-			if err != nil {
-				return nil, "", fmt.Errorf("failed to verify chain ID from RPC: %w", err)
-			}
-			if actualChainID != chainID {
-				return nil, "", fmt.Errorf("RPC endpoint chain ID (%d) does not match expected chain ID (%d)", actualChainID, chainID)
-			}
-			workingRPC = rpcEndpoint
+		actualChainID, err := chainIDFromRPCContext(ctx, ncs.chainListService, rpcEndpoint)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to verify chain ID from RPC: %w", err)
 		}
+		if actualChainID != chainID {
+			return nil, "", fmt.Errorf("RPC endpoint chain ID (%d) does not match expected chain ID (%d)", actualChainID, chainID)
+		}
+		workingRPC = rpcEndpoint
 	} else {
-		// No RPC provided: fetch metadata without probing endpoints and pick the first available RPC if any
-		chainInfo, err = ncs.chainListService.GetChainInfo(chainID)
+		chainInfo, workingRPC, err = chainInfoWithRetryContext(ctx, ncs.chainListService, chainID)
 		if err != nil {
-			return nil, "", fmt.Errorf("failed to get chain info from chainlist: %w", err)
-		}
-		if len(chainInfo.RPC) > 0 {
-			workingRPC = chainInfo.RPC[0].URL
+			return nil, "", fmt.Errorf("failed to get validated chain info from chainlist: %w", err)
 		}
 	}
 

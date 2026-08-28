@@ -1,14 +1,23 @@
 package logger
 
 import (
+	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"time"
+
+	"blocowallet/internal/terminal"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	lumberjack "gopkg.in/natefinch/lumberjack.v2"
 )
+
+var urlPattern = regexp.MustCompile(`https?://[^\s"'<>]+`)
+var credentialPattern = regexp.MustCompile(`(?i)(password|passphrase|token|secret|api[_-]?key|authorization|cookie|dsn)=("[^"]*"|'[^']*'|[^\s,;]+)`)
 
 // Logger defines the interface for logging operations
 type Logger interface {
@@ -34,6 +43,46 @@ type zapLogger struct {
 	logger *zap.Logger
 }
 
+func ensurePrivateLogDirectory(path string) error {
+	info, err := os.Lstat(path)
+	if err == nil {
+		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+			return fmt.Errorf("log directory must be a regular directory")
+		}
+		return os.Chmod(path, 0700)
+	}
+	if !os.IsNotExist(err) {
+		return err
+	}
+	if err := os.MkdirAll(path, 0700); err != nil {
+		return err
+	}
+	info, err = os.Lstat(path)
+	if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return fmt.Errorf("log directory changed during creation")
+	}
+	return os.Chmod(path, 0700)
+}
+
+func ensurePrivateLogFile(path string) error {
+	info, err := os.Lstat(path)
+	if err == nil && (info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular()) {
+		return fmt.Errorf("log path must be a regular file")
+	}
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		return err
+	}
+	if err := file.Chmod(0600); err != nil {
+		_ = file.Close()
+		return err
+	}
+	return file.Close()
+}
+
 // NewFileLogger configures a zap logger to write to rotating log files only (no stderr)
 func NewFileLogger(c LoggingConfig) (Logger, error) {
 	if c.LogDir == "" {
@@ -41,11 +90,7 @@ func NewFileLogger(c LoggingConfig) (Logger, error) {
 	}
 
 	// Ensure log directory exists
-	if err := os.MkdirAll(c.LogDir, 0700); err != nil {
-		// Fall back to a no-op logger if we cannot create directory
-		return &zapLogger{logger: zap.NewNop()}, nil
-	}
-	if err := os.Chmod(c.LogDir, 0700); err != nil {
+	if err := ensurePrivateLogDirectory(c.LogDir); err != nil {
 		return nil, err
 	}
 
@@ -53,16 +98,10 @@ func NewFileLogger(c LoggingConfig) (Logger, error) {
 	errPath := filepath.Join(c.LogDir, "error.log")
 
 	// Ensure log files exist so tests and tools can rely on their presence even if empty
-	if f, err := os.OpenFile(appPath, os.O_CREATE|os.O_APPEND, 0600); err == nil {
-		_ = f.Close()
-	}
-	if f, err := os.OpenFile(errPath, os.O_CREATE|os.O_APPEND, 0600); err == nil {
-		_ = f.Close()
-	}
-	if err := os.Chmod(appPath, 0600); err != nil {
+	if err := ensurePrivateLogFile(appPath); err != nil {
 		return nil, err
 	}
-	if err := os.Chmod(errPath, 0600); err != nil {
+	if err := ensurePrivateLogFile(errPath); err != nil {
 		return nil, err
 	}
 
@@ -119,22 +158,22 @@ func (l levelRange) Enabled(level zapcore.Level) bool {
 
 // Info logs an informational message
 func (z *zapLogger) Info(msg string, fields ...zap.Field) {
-	z.logger.Info(msg, fields...)
+	z.logger.Info(sanitizeLogString(msg), sanitizeLogFields(fields)...)
 }
 
 // Error logs an error message
 func (z *zapLogger) Error(msg string, fields ...zap.Field) {
-	z.logger.Error(msg, fields...)
+	z.logger.Error(sanitizeLogString(msg), sanitizeLogFields(fields)...)
 }
 
 // Debug logs a debug message
 func (z *zapLogger) Debug(msg string, fields ...zap.Field) {
-	z.logger.Debug(msg, fields...)
+	z.logger.Debug(sanitizeLogString(msg), sanitizeLogFields(fields)...)
 }
 
 // Warn logs a warning message
 func (z *zapLogger) Warn(msg string, fields ...zap.Field) {
-	z.logger.Warn(msg, fields...)
+	z.logger.Warn(sanitizeLogString(msg), sanitizeLogFields(fields)...)
 }
 
 // Sync flushes any buffered log entries; swallow sync errors gracefully
@@ -142,12 +181,7 @@ func (z *zapLogger) Sync() error {
 	if z == nil || z.logger == nil {
 		return nil
 	}
-	if err := z.logger.Sync(); err != nil {
-		// Handle typical sync errors gracefully without surfacing to UI
-		_ = ignore(err)
-		return nil
-	}
-	return nil
+	return z.logger.Sync()
 }
 
 // Helper functions for creating fields
@@ -163,16 +197,60 @@ func Int(key string, val int) zap.Field {
 	return zap.Int(key, val)
 }
 
+func sanitizeLogFields(fields []zap.Field) []zap.Field {
+	sanitized := make([]zap.Field, 0, len(fields))
+	for _, field := range fields {
+		key := terminal.SanitizeInline(field.Key, 64)
+		lowerKey := strings.ToLower(key)
+		if strings.Contains(lowerKey, "password") || strings.Contains(lowerKey, "passphrase") || strings.Contains(lowerKey, "token") || strings.Contains(lowerKey, "secret") || strings.Contains(lowerKey, "mnemonic") || strings.Contains(lowerKey, "private") || strings.Contains(lowerKey, "seed") || strings.Contains(lowerKey, "dsn") || strings.Contains(lowerKey, "authorization") || strings.Contains(lowerKey, "credential") || strings.Contains(lowerKey, "cookie") || strings.Contains(lowerKey, "session") || strings.Contains(lowerKey, "signature") || strings.Contains(lowerKey, "api_key") {
+			sanitized = append(sanitized, zap.String(key, "[REDACTED]"))
+			continue
+		}
+		switch field.Type {
+		case zapcore.StringType:
+			sanitized = append(sanitized, zap.String(key, sanitizeLogString(field.String)))
+		case zapcore.ErrorType:
+			if err, ok := field.Interface.(error); ok {
+				sanitized = append(sanitized, zap.String(key, sanitizeLogString(err.Error())))
+			} else {
+				sanitized = append(sanitized, zap.String(key, "[invalid error]"))
+			}
+		case zapcore.StringerType:
+			sanitized = append(sanitized, zap.String(key, sanitizeLogString(fmt.Sprint(field.Interface))))
+		case zapcore.ByteStringType:
+			if value, ok := field.Interface.([]byte); ok {
+				sanitized = append(sanitized, zap.String(key, sanitizeLogString(string(value))))
+			}
+		case zapcore.BinaryType:
+			sanitized = append(sanitized, zap.String(key, "[binary value omitted]"))
+		case zapcore.ArrayMarshalerType, zapcore.ObjectMarshalerType, zapcore.InlineMarshalerType, zapcore.ReflectType:
+			sanitized = append(sanitized, zap.String(key, "[structured value omitted]"))
+		default:
+			field.Key = key
+			sanitized = append(sanitized, field)
+		}
+	}
+	return sanitized
+}
+
+func sanitizeLogString(value string) string {
+	sanitized := terminal.SanitizeInline(value, 2048)
+	redactedURLs := urlPattern.ReplaceAllStringFunc(sanitized, func(candidate string) string {
+		trimmed := strings.TrimRight(candidate, ").,;]")
+		suffix := candidate[len(trimmed):]
+		parsed, err := url.Parse(trimmed)
+		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+			return "[REDACTED URL]" + suffix
+		}
+		return strings.ToLower(parsed.Scheme) + "://" + strings.ToLower(parsed.Host) + suffix
+	})
+	return credentialPattern.ReplaceAllString(redactedURLs, "$1=[REDACTED]")
+}
+
 // internal helpers
 func maxInt(v, def int) int {
 	if v <= 0 {
 		return def
 	}
 	return v
-}
-
-func ignore(err error) error {
-	// We may choose to examine error strings and return nil for known benign errors
-	// Keep placeholder for future filtering.
-	return nil
 }

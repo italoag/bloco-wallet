@@ -1082,12 +1082,6 @@ func (s *EnhancedImportState) renderCompletionView() string {
 		summary.TotalFiles, summary.SuccessfulImports, summary.FailedImports, summary.SkippedImports)
 	sections = append(sections, stats)
 
-	// Elapsed time
-	if !s.startTime.IsZero() {
-		elapsed := time.Since(s.startTime)
-		sections = append(sections, fmt.Sprintf("Completed in: %v", elapsed.Round(time.Second)))
-	}
-
 	// Show errors if any
 	if len(summary.Errors) > 0 {
 		sections = append(sections, "")
@@ -1097,7 +1091,7 @@ func (s *EnhancedImportState) renderCompletionView() string {
 			if err.Skipped {
 				errorType = "Skipped"
 			}
-			sections = append(sections, fmt.Sprintf("• %s: %s", errorType, err.File))
+			sections = append(sections, fmt.Sprintf("• %s: %s", safeShort(errorType), safeShort(err.File)))
 		}
 	}
 

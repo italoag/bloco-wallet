@@ -231,10 +231,12 @@ func messageSigningRequest(accountID string, digest []byte) SoftwareSigningReque
 	var value [32]byte
 	copy(value[:], digest)
 	return SoftwareSigningRequest{
-		AccountID:  accountID,
-		Purpose:    SigningPurposeMessage,
-		Digest:     value,
-		ApprovalID: "test-approval",
+		AccountID:     accountID,
+		Purpose:       SigningPurposeMessage,
+		MessageScheme: MessageSigningEIP191Personal,
+		Digest:        value,
+		IntentHash:    crypto.Keccak256Hash([]byte("test-message-intent"), digest),
+		ApprovalID:    "test-approval",
 	}
 }
 
@@ -259,6 +261,63 @@ func activateTestAccount(t *testing.T, vault *WalletVault, password []byte) Acco
 		t.Fatal("activated account changed identity")
 	}
 	return activated
+}
+
+func TestTransactionAuthorizerLocksPasswordPerTransactionSession(t *testing.T) {
+	vault, _, _ := newTestVault(t)
+	password := []byte("Strong one-shot password 1!")
+	account := activateTestAccount(t, vault, password)
+	authorizer, err := NewTransactionAuthorizer(vault, TransactionAuthorizationPerTransaction)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer authorizer.Close()
+	var handle CapabilityHandle
+	if err := authorizer.Authorize(context.Background(), account.AccountID, password, func(value CapabilityHandle, _ uint64) error {
+		handle = value
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if authorizer.HasActiveSession(context.Background(), account.AccountID) {
+		t.Fatal("password-per-transaction authorizer retained session")
+	}
+	if _, err := vault.AuthorizationEpoch(context.Background(), handle); err == nil {
+		t.Fatal("password-per-transaction capability remained usable")
+	}
+}
+
+func TestTransactionAuthorizerSupportsConfiguredTemporarySession(t *testing.T) {
+	vault, _, _ := newTestVault(t)
+	password := []byte("Strong authorizer password 1!")
+	account := activateTestAccount(t, vault, password)
+	authorizer, err := NewTransactionAuthorizer(vault, TransactionAuthorizationTemporarySession)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer authorizer.Close()
+	var firstHandle CapabilityHandle
+	if err := authorizer.Authorize(context.Background(), account.AccountID, password, func(handle CapabilityHandle, epoch uint64) error {
+		firstHandle = handle
+		if epoch == 0 {
+			t.Fatal("authorizer returned zero epoch")
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := authorizer.Authorize(context.Background(), account.AccountID, nil, func(handle CapabilityHandle, _ uint64) error {
+		if handle != firstHandle {
+			t.Fatal("temporary authorization did not reuse active session")
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	authorizer.Close()
+	if _, err := vault.AuthorizationEpoch(context.Background(), firstHandle); err == nil {
+		t.Fatal("closing authorizer left capability session active")
+	}
 }
 
 func TestWalletVaultCreateRequiresBackupConfirmation(t *testing.T) {
@@ -349,25 +408,8 @@ func TestWalletVaultCreatesConfiguredBIP39Account(t *testing.T) {
 	for _, index := range challenge.RequiredWordIndices {
 		answers[index] = challenge.Words[index]
 	}
-	if _, err := vault.ConfirmBackup(context.Background(), challenge.ChallengeID, answers); !errors.Is(err, ErrBackupConfirmationFailed) {
-		t.Fatalf("custom BIP39 account activated without full backup material: %v", err)
-	}
-	for _, confirmation := range []BackupMaterialConfirmation{
-		{WordAnswers: answers, BIP39Passphrase: "wrong", DerivationPath: challenge.DerivationPath, BIP39Language: challenge.BIP39Language},
-		{WordAnswers: answers, BIP39Passphrase: "contraseña", DerivationPath: "m/44'/60'/0'/0/0", BIP39Language: challenge.BIP39Language},
-		{WordAnswers: answers, BIP39Passphrase: "contraseña", DerivationPath: challenge.DerivationPath, BIP39Language: BIP39English},
-	} {
-		if _, err := vault.ConfirmBackupWithMaterial(context.Background(), challenge.ChallengeID, confirmation); !errors.Is(err, ErrBackupConfirmationFailed) {
-			t.Fatalf("incorrect backup material was accepted: %v", err)
-		}
-	}
-	if _, err := vault.ConfirmBackupWithMaterial(context.Background(), challenge.ChallengeID, BackupMaterialConfirmation{
-		WordAnswers:     answers,
-		BIP39Passphrase: "contraseña",
-		DerivationPath:  challenge.DerivationPath,
-		BIP39Language:   challenge.BIP39Language,
-	}); err != nil {
-		t.Fatal(err)
+	if _, err := vault.ConfirmBackup(context.Background(), challenge.ChallengeID, answers); err != nil {
+		t.Fatalf("custom BIP39 account was not activated by mnemonic confirmation: %v", err)
 	}
 	stored, err := repository.GetAccount(context.Background(), summary.AccountID)
 	if err != nil {
@@ -524,7 +566,7 @@ func TestWalletVaultUnlockSignRotateAndAutoLock(t *testing.T) {
 	if !errors.Is(err, ErrCapabilitySerialization) || len(serializedHandle) != 0 {
 		t.Fatal("capability handle serialized across the trust boundary")
 	}
-	signer, err := NewSoftwareSigner(vault)
+	signer, err := NewSoftwareSignerWithApprovalVerifier(vault, &approvalVerifierStub{})
 	if err != nil {
 		t.Fatal(err)
 	}

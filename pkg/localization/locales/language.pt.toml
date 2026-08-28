@@ -103,7 +103,7 @@ other = "A senha deve ter pelo menos 8 caracteres"
 other = "Status"
 
 [wallet_list_status_bar]
-other = "Visualização: {{.View}} | Pressione 'd' para deletar | 'esc' para voltar | 'q' para sair"
+other = "Visualização: {{.View}} | Pressione 'esc' para voltar | 'q' para sair"
 
 [list_wallets]
 other = "Minhas Carteiras"
@@ -237,7 +237,7 @@ other = "A senha deve conter pelo menos uma letra maiúscula"
 other = "Dicas"
 
 [wallet_list_instructions]
-other = "Use as setas para navegar, Enter para ver detalhes, 'd' para deletar uma carteira, 'esc' para voltar ao menu."
+other = "Use as setas para navegar, Enter para ver detalhes e 'esc' para voltar ao menu."
 
 [import_private_key]
 other = "Chave Privada"
@@ -313,6 +313,12 @@ other = "Tipo"
 
 [import_keystore_desc]
 other = "Importar arquivo KeyStore V3"
+
+[import_watch_only]
+other = "Endereço somente leitura"
+
+[import_watch_only_desc]
+other = "Acompanhar um endereço EVM sem armazenar segredos de assinatura"
 
 [error_invalid_mnemonic_format]
 other = "Formato de frase mnemônica criptografada inválido: muito curta"
