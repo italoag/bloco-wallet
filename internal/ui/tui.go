@@ -659,14 +659,9 @@ func (m *CLIModel) renderListWalletsWithLayout() string {
 	// Renderizar o cabeçalho da mesma forma que renderMainView
 	renderedLogo := renderHeaderLogo()
 
-	walletCount := m.walletCount
-	currentTime := formatDisplayTime(m.displayTime)
-
 	headerLeft := lipgloss.JoinVertical(
 		lipgloss.Left,
 		renderedLogo,
-		fmt.Sprintf("Wallets: %d", walletCount),
-		fmt.Sprintf("Date: %s", currentTime),
 		fmt.Sprintf("Version: %s", localization.Labels["version"]),
 	)
 
