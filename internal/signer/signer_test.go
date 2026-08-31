@@ -168,6 +168,12 @@ func TestSafeMessageDigestAndSignatureComposition(t *testing.T) {
 	if digest == ([32]byte{}) {
 		t.Fatal("safe digest is empty")
 	}
+	// Golden pin: the digest must never change for this binding. The value
+	// is frozen from the Safe EIP-712 scheme; any change here is a breaking
+	// compatibility failure.
+	if common.BytesToHash(digest[:]).Hex() != "0x01623128dc2b1f035fd8af6d6aa9028c5a878dc03bff2ba3cc7d2fb903ddceb7" {
+		t.Fatalf("SafeMessage digest changed: %s", common.BytesToHash(digest[:]).Hex())
+	}
 	// The digest is deterministic and bound to the safe and chain.
 	otherChain, err := SafeMessageDigest(safe, 5, messageHash)
 	if err != nil {

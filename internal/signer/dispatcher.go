@@ -12,6 +12,7 @@ import (
 type SignerDispatcher struct {
 	software ApprovedDigestSigner
 	cloud    ApprovedDigestSigner
+	hardware ApprovedDigestSigner
 	accounts AccountLookup
 }
 
@@ -23,10 +24,16 @@ type ApprovedDigestSigner interface {
 // NewSignerDispatcher builds the dispatcher. At least the software signer
 // must be provided.
 func NewSignerDispatcher(software ApprovedDigestSigner, cloud ApprovedDigestSigner, accounts AccountLookup) (*SignerDispatcher, error) {
+	return NewSignerDispatcherWithHardware(software, cloud, nil, accounts)
+}
+
+// NewSignerDispatcherWithHardware additionally routes hardware accounts to
+// the provided adapter; without one, hardware accounts fail closed.
+func NewSignerDispatcherWithHardware(software, cloud, hardware ApprovedDigestSigner, accounts AccountLookup) (*SignerDispatcher, error) {
 	if software == nil || accounts == nil {
 		return nil, fmt.Errorf("signer dispatcher: software signer and accounts are required")
 	}
-	return &SignerDispatcher{software: software, cloud: cloud, accounts: accounts}, nil
+	return &SignerDispatcher{software: software, cloud: cloud, hardware: hardware, accounts: accounts}, nil
 }
 
 // Sign implements the signer contract by dispatching on the account kind.
@@ -46,6 +53,11 @@ func (dispatcher *SignerDispatcher) Sign(ctx context.Context, handle wallet.Capa
 			return wallet.SoftwareSigningResult{}, fmt.Errorf("signer dispatcher: cloud signer not configured")
 		}
 		return dispatcher.cloud.Sign(ctx, handle, request)
+	case wallet.SignerKindHardware:
+		if dispatcher.hardware == nil {
+			return wallet.SoftwareSigningResult{}, fmt.Errorf("signer dispatcher: hardware signer not configured")
+		}
+		return dispatcher.hardware.Sign(ctx, handle, request)
 	default:
 		return wallet.SoftwareSigningResult{}, fmt.Errorf("signer dispatcher: unsupported signer kind %q", account.SignerKind)
 	}
