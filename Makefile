@@ -304,6 +304,25 @@ version: ## Show version information
 	@echo "Build Date:  ${DATE}"
 	@echo "Go Version:  $$(go version)"
 
+##@ Release Gates
+
+.PHONY: release-smoke
+release-smoke: build ## Smoke-test the real artifact (no rebuild after promotion)
+	@echo "$(CYAN)Smoke-testing ${OUTPUT_BIN}...$(RESET)"
+	@${OUTPUT_BIN} --version | grep -q "bloco-wallet-manager version" || (echo "$(RED)✗ version banner missing$(RESET)"; exit 1)
+	@echo "$(GREEN)✓ Artifact runs and reports version$(RESET)"
+
+.PHONY: sbom
+sbom: ## Generate a CycloneDX-style SBOM from the module graph
+	@echo "$(CYAN)Generating SBOM...$(RESET)"
+	@mkdir -p ${DIST_DIR}
+	@go list -m all | python3 -c 'import sys,time,json; modules=[(p[0],p[1]) for l in sys.stdin if l.strip() for p in [l.split()] if len(p) >= 2 and p[1] != "=>"]; doc={"bomFormat":"CycloneDX","specVersion":"1.5","version":1,"metadata":{"timestamp":time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime()),"component":{"type":"application","name":"${NAME}","version":"${VERSION}"}},"components":[{"type":"library","name":m[0],"version":m[1]} for m in sorted(modules)]}; open("${DIST_DIR}/sbom.json","w").write(json.dumps(doc,indent=2))'
+	@echo "$(GREEN)✓ SBOM generated: ${DIST_DIR}/sbom.json$(RESET)"
+
+.PHONY: release-check
+release-check: test lint release-smoke sbom ## All release gates before promotion
+	@echo "$(GREEN)✓ Release gates passed$(RESET)"
+
 .PHONY: info
 info: ## Show build environment information
 	@echo "$(CYAN)Build Environment Information:$(RESET)"
