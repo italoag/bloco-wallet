@@ -307,10 +307,18 @@ version: ## Show version information
 ##@ Release Gates
 
 .PHONY: release-smoke
-release-smoke: build ## Smoke-test the real artifact (no rebuild after promotion)
+release-smoke: build ## Smoke-test the real artifact and validate the version banner
 	@echo "$(CYAN)Smoke-testing ${OUTPUT_BIN}...$(RESET)"
 	@${OUTPUT_BIN} --version | grep -q "bloco-wallet-manager version" || (echo "$(RED)✗ version banner missing$(RESET)"; exit 1)
-	@echo "$(GREEN)✓ Artifact runs and reports version$(RESET)"
+	@${OUTPUT_BIN} --version | grep -q "${VERSION}" || (echo "$(RED)✗ version banner does not match ${VERSION}$(RESET)"; exit 1)
+	@echo "$(GREEN)✓ Artifact runs and reports version $(VERSION)$(RESET)"
+	@if ls ${DIST_DIR}/*.tar.gz ${DIST_DIR}/*.zip >/dev/null 2>&1; then \
+		echo "$(CYAN)Smoke-testing promoted artifacts...$(RESET)"; \
+		for archive in ${DIST_DIR}/*.tar.gz ${DIST_DIR}/*.zip; do \
+			shasum -a 256 "$$archive" | grep -q "^" || exit 1; \
+		done; \
+		@echo "$(GREEN)✓ Promoted artifacts present and checksummed$(RESET)"; \
+	fi
 
 .PHONY: sbom
 sbom: ## Generate a CycloneDX-style SBOM from the module graph
@@ -320,7 +328,7 @@ sbom: ## Generate a CycloneDX-style SBOM from the module graph
 	@echo "$(GREEN)✓ SBOM generated: ${DIST_DIR}/sbom.json$(RESET)"
 
 .PHONY: release-check
-release-check: test lint release-smoke sbom ## All release gates before promotion
+release-check: test test-production lint release-smoke sbom ## All release gates before promotion
 	@echo "$(GREEN)✓ Release gates passed$(RESET)"
 
 .PHONY: info

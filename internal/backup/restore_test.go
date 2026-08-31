@@ -8,8 +8,9 @@ import (
 )
 
 type fakeEnvelopeVerifier struct {
-	acceptAll bool
-	rejectIDs map[string]struct{}
+	acceptAll     bool
+	rejectIDs     map[string]struct{}
+	rejectAddress bool
 }
 
 func (verifier fakeEnvelopeVerifier) VerifyEnvelope(entry AccountEntry) error {
@@ -22,6 +23,13 @@ func (verifier fakeEnvelopeVerifier) VerifyEnvelope(entry AccountEntry) error {
 	return nil
 }
 
+func (verifier fakeEnvelopeVerifier) VerifyDerivedAddress(entry AccountEntry) error {
+	if verifier.rejectAddress {
+		return fmt.Errorf("derived address mismatch")
+	}
+	return nil
+}
+
 func TestValidateRestoreAcceptsValidStaging(t *testing.T) {
 	manifest := &Manifest{Accounts: []AccountEntry{
 		{
@@ -29,7 +37,7 @@ func TestValidateRestoreAcceptsValidStaging(t *testing.T) {
 			Address:    "0x9d8A62f656a8d1615C1294fd71e9CFb3E4855A4F",
 			SignerKind: string(wallet.SignerKindSoftware), SignerReference: "11111111-1111-4111-8111-111111111111",
 			SecretType: string(wallet.SecretTypeMnemonic), SecretEnvelope: []byte("e"),
-			Derivation: "bip44:m/44'/60'/0'/0/0", State: string(wallet.AccountStateActive),
+			DerivationScheme: "bip44", DerivationPath: "m/44'/60'/0'/0/0", State: string(wallet.AccountStateActive),
 			Capabilities:   uint64(wallet.CapabilitySignTransaction),
 			SourceIdentity: "alpha-source", AuthorizationEpoch: 1, EnvelopeGeneration: 1, BackupGeneration: 1,
 			BIP39Language: "english",
@@ -55,8 +63,12 @@ func TestValidateRestoreRejectsCorruption(t *testing.T) {
 		AccountID: "11111111-1111-4111-8111-111111111111", Name: "Alpha",
 		Address:    "0x9d8A62f656a8d1615C1294fd71e9CFb3E4855A4F",
 		SignerKind: string(wallet.SignerKindSoftware), SignerReference: "11111111-1111-4111-8111-111111111111",
-		SecretType: string(wallet.SecretTypeMnemonic), SecretEnvelope: []byte("e"),
-		State: string(wallet.AccountStateActive),
+		SecretType: string(wallet.SecretTypeMnemonic), SecretEnvelope: []byte("0123456789abcdef"),
+		State:              string(wallet.AccountStateActive),
+		SourceIdentity:     "alpha-source",
+		AuthorizationEpoch: 1, EnvelopeGeneration: 1, BackupGeneration: 1,
+		BIP39Language:    "english",
+		DerivationScheme: "bip44", DerivationPath: "m/44'/60'/0'/0/0",
 	}
 	cases := []struct {
 		name   string
@@ -88,9 +100,20 @@ func TestValidateRestoreRejectsCorruption(t *testing.T) {
 		})
 	}
 	// A failed envelope verification blocks the whole restore.
-	manifest := &Manifest{Accounts: []AccountEntry{base}}
+	manifest := &Manifest{Schema: 14, Accounts: []AccountEntry{base}}
 	if _, err := ValidateRestore(manifest, fakeEnvelopeVerifier{rejectIDs: map[string]struct{}{base.AccountID: {}}}); err == nil {
 		t.Fatal("corrupt envelope did not block restore")
+	}
+	// A derived-address mismatch blocks the whole restore.
+	if _, err := ValidateRestore(manifest, fakeEnvelopeVerifier{acceptAll: true, rejectAddress: true}); err == nil {
+		t.Fatal("derived address mismatch did not block restore")
+	}
+	// Schema mismatch blocks restore when policy requires an exact schema.
+	if _, err := ValidateRestoreWithSchema(manifest, 99, fakeEnvelopeVerifier{acceptAll: true}); err == nil {
+		t.Fatal("schema mismatch did not block restore")
+	}
+	if _, err := ValidateRestoreWithSchema(manifest, 14, fakeEnvelopeVerifier{acceptAll: true}); err != nil {
+		t.Fatalf("matching schema was rejected: %v", err)
 	}
 	if _, err := ValidateRestore(nil, fakeEnvelopeVerifier{}); err == nil {
 		t.Fatal("nil manifest was accepted")

@@ -21,23 +21,38 @@ func NewArgon2idDeriver() *Argon2idDeriver {
 
 // DeriveKey implements KeyDeriver.
 func (deriver *Argon2idDeriver) DeriveKey(password []byte, salt []byte) ([]byte, error) {
+	return deriver.DeriveKeyWithParams(password, salt, 0, 0, 0)
+}
+
+// DeriveKeyWithParams derives with explicit parameters; zero values fall
+// back to the deriver defaults so older archives stay openable.
+func (deriver *Argon2idDeriver) DeriveKeyWithParams(password []byte, salt []byte, timeCost, memory uint32, threads uint8) ([]byte, error) {
 	if deriver == nil {
 		return nil, fmt.Errorf("backup: nil deriver")
 	}
 	if len(salt) != KDFSaltBytes {
 		return nil, fmt.Errorf("backup: invalid salt size")
 	}
-	timeCost := deriver.Time
+	if timeCost == 0 {
+		timeCost = deriver.Time
+	}
 	if timeCost == 0 {
 		timeCost = 3
 	}
-	memory := deriver.Memory
+	if memory == 0 {
+		memory = deriver.Memory
+	}
 	if memory == 0 {
 		memory = 64 * 1024
 	}
-	threads := deriver.Threads
+	if threads == 0 {
+		threads = deriver.Threads
+	}
 	if threads == 0 {
 		threads = 4
+	}
+	if timeCost > 16 || memory > 512*1024 || threads > 16 {
+		return nil, fmt.Errorf("backup: kdf parameters outside policy")
 	}
 	key := argon2.IDKey(password, salt, timeCost, memory, threads, 32)
 	if len(key) != 32 {

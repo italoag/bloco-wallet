@@ -6,6 +6,7 @@ package update
 
 import (
 	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/hex"
@@ -24,6 +25,8 @@ const (
 	MaxArtifactText = 512
 	// MaxSignatureBytes bounds the detached signature.
 	MaxSignatureBytes = 256
+	// MaxManifestAge bounds how old a signed manifest may be.
+	MaxManifestAge = 180 * 24 * time.Hour
 )
 
 // Artifact pins one release file.
@@ -65,6 +68,9 @@ func (manifest *Manifest) CanonicalPayload() ([]byte, error) {
 		if artifact.Name == "" || artifact.URL == "" || artifact.SHA256 == "" || len(artifact.Name) > MaxArtifactText || len(artifact.URL) > MaxArtifactText || len(artifact.SHA256) != 64 || artifact.Size <= 0 {
 			return nil, fmt.Errorf("update: invalid artifact pin")
 		}
+		if !strings.HasPrefix(artifact.URL, "https://") {
+			return nil, fmt.Errorf("update: artifact url must be https")
+		}
 		if _, err := hex.DecodeString(artifact.SHA256); err != nil {
 			return nil, fmt.Errorf("update: invalid artifact hash")
 		}
@@ -105,6 +111,9 @@ func Verify(manifest *Manifest, publicKey *ecdsa.PublicKey, currentVersion strin
 	}
 	if published.After(now.Add(time.Hour)) {
 		return fmt.Errorf("update: manifest timestamp in the future")
+	}
+	if now.Sub(published) > MaxManifestAge {
+		return fmt.Errorf("update: manifest is stale")
 	}
 	if manifest.Version == currentVersion {
 		return fmt.Errorf("update: manifest version matches the installed version")
@@ -166,6 +175,9 @@ func ParsePublicKey(pemBytes []byte) (*ecdsa.PublicKey, error) {
 	publicKey, ok := key.(*ecdsa.PublicKey)
 	if !ok {
 		return nil, fmt.Errorf("update: release key is not ecdsa")
+	}
+	if publicKey.Curve != elliptic.P256() {
+		return nil, fmt.Errorf("update: release key must use P-256")
 	}
 	return publicKey, nil
 }

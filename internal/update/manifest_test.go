@@ -84,6 +84,27 @@ func TestUpdateManifestVerifyAcceptsValidSignedRelease(t *testing.T) {
 	if err := update.Verify(&future, publicKey, "v1.1.0", now); err == nil {
 		t.Fatal("future-dated manifest was accepted")
 	}
+	// Stale manifests are rejected.
+	stale := *manifest
+	stale.PublishedAt = now.Add(-365 * 24 * time.Hour).Format(time.RFC3339)
+	signManifest(t, key, &stale)
+	if err := update.Verify(&stale, publicKey, "v1.1.0", now); err == nil {
+		t.Fatal("stale manifest was accepted")
+	}
+	// Non-P-256 release keys are rejected.
+	otherCurveKey, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := update.ParsePublicKey(pemPublicKey(t, &otherCurveKey.PublicKey)); err == nil {
+		t.Fatal("non-P-256 release key was accepted")
+	}
+	// Insecure artifact URLs are rejected before signature checks.
+	httpArtifact := *manifest
+	httpArtifact.Artifacts[0].URL = "http://releases.example/a"
+	if err := update.Verify(&httpArtifact, publicKey, "v1.1.0", now); err == nil {
+		t.Fatal("http artifact url was accepted")
+	}
 }
 
 func TestUpdateManifestRejectsTampering(t *testing.T) {

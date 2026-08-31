@@ -14,7 +14,7 @@ func testAccounts() []wallet.Account {
 			AccountID: "11111111-1111-4111-8111-111111111111", Name: "Alpha",
 			Address:    "0x9d8A62f656a8d1615C1294fd71e9CFb3E4855A4F",
 			SignerKind: wallet.SignerKindSoftware, SignerReference: "11111111-1111-4111-8111-111111111111",
-			SecretType: wallet.SecretTypeMnemonic, SecretEnvelope: []byte("envelope-a"),
+			SecretType: wallet.SecretTypeMnemonic, SecretEnvelope: []byte("0123456789abcdef-envelope-a"),
 			State: wallet.AccountStateActive, Capabilities: wallet.CapabilitySignTransaction | wallet.CapabilitySignMessage,
 			SourceIdentity: "alpha-source", AuthorizationEpoch: 1, EnvelopeGeneration: 1, BackupGeneration: 1,
 			DerivationScheme: "bip44", DerivationPath: "m/44'/60'/0'/0/0", BIP39Language: "english",
@@ -50,7 +50,7 @@ func TestBackupRoundTripWithAuthentication(t *testing.T) {
 	if manifest.Schema != 14 || manifest.CreatedAtMS != now || len(manifest.Accounts) != 2 {
 		t.Fatalf("unexpected manifest: %+v", manifest)
 	}
-	if manifest.Accounts[0].SecretEnvelope == nil || !bytes.Equal(manifest.Accounts[0].SecretEnvelope, []byte("envelope-a")) {
+	if manifest.Accounts[0].SecretEnvelope == nil || !bytes.Equal(manifest.Accounts[0].SecretEnvelope, []byte("0123456789abcdef-envelope-a")) {
 		t.Fatal("secret envelope did not survive the round trip")
 	}
 	if manifest.Accounts[1].SignerKind != string(wallet.SignerKindCloud) || len(manifest.Accounts[1].SecretEnvelope) != 0 {
@@ -64,30 +64,36 @@ func TestBackupRejectsCorruptionAndWrongPassword(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	archive, err := sealer.Create([]byte("password"), 14, testAccounts(), 1)
+	archive, err := sealer.Create([]byte("a sufficiently long password"), 14, testAccounts(), 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := sealer.Open([]byte("wrong password"), archive); err == nil {
+	if _, err := sealer.Open([]byte("wrong but long enough password"), archive); err == nil {
 		t.Fatal("wrong password opened the archive")
 	}
 	tampered := append([]byte(nil), archive...)
 	tampered[len(tampered)-1] ^= 0x01
-	if _, err := sealer.Open([]byte("password"), tampered); err == nil {
+	if _, err := sealer.Open([]byte("a sufficiently long password"), tampered); err == nil {
 		t.Fatal("tampered archive was accepted")
 	}
 	truncated := archive[:len(archive)/2]
-	if _, err := sealer.Open([]byte("password"), truncated); err == nil {
+	if _, err := sealer.Open([]byte("a sufficiently long password"), truncated); err == nil {
 		t.Fatal("truncated archive was accepted")
 	}
 	badHeader := append([]byte(nil), archive...)
 	copy(badHeader[:4], []byte("XXXX"))
-	if _, err := sealer.Open([]byte("password"), badHeader); err == nil {
+	if _, err := sealer.Open([]byte("a sufficiently long password"), badHeader); err == nil {
 		t.Fatal("foreign header was accepted")
 	}
 	empty := sealerEmptyOpen(sealer)
-	if _, err := sealer.Open([]byte("password"), empty); err == nil {
+	if _, err := sealer.Open([]byte("a sufficiently long password"), empty); err == nil {
 		t.Fatal("empty archive was accepted")
+	}
+	if _, err := sealer.Create([]byte("short"), 14, testAccounts(), 1); err == nil {
+		t.Fatal("short password was accepted")
+	}
+	if _, err := sealer.Create([]byte("not printable \x01"), 14, testAccounts(), 1); err == nil {
+		t.Fatal("non-printable password was accepted")
 	}
 }
 
