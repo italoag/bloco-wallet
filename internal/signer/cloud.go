@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	"net/http"
 	"strings"
 	"time"
@@ -130,6 +131,11 @@ func verifyECDSASignature(expected common.Address, digest [32]byte, signature []
 	}
 	if signature[64] != 0 && signature[64] != 1 {
 		return fmt.Errorf("cloud signer: signature recovery id")
+	}
+	r := new(big.Int).SetBytes(signature[:32])
+	s := new(big.Int).SetBytes(signature[32:64])
+	if !crypto.ValidateSignatureValues(signature[64], r, s, true) {
+		return fmt.Errorf("cloud signer: invalid or malleable signature values")
 	}
 	pubKey, err := crypto.SigToPub(digest[:], signature)
 	if err != nil {

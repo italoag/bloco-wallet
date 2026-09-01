@@ -6,76 +6,149 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/math"
-	"github.com/ethereum/go-ethereum/signer/core/apitypes"
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
-// SafeMessage types per the Safe EIP-712 scheme:
-//
-//	domain: {verifyingContract: safe, chainId}
-//	primary type: SafeMessage(bytes message)
-var safeMessageTypes = apitypes.Types{
-	"EIP712Domain": {
-		{Name: "verifyingContract", Type: "address"},
-		{Name: "chainId", Type: "uint256"},
-	},
-	"SafeMessage": {
-		{Name: "message", Type: "bytes"},
-	},
-}
+var (
+	// Safe-specific EIP-712 domain: Safe intentionally orders chainId before
+	// verifyingContract (Safe.sol DOMAIN_SEPARATOR_TYPEHASH).
+	safeDomainTypeHash = common.HexToHash("0x47e79534a245952e8b16893a336b85a3d9ea9fa8c573f3d803afb92a79469218")
+	// keccak256("SafeMessage(bytes message)").
+	safeMessageTypeHash = common.HexToHash("0x60b3cbf8b4a223d68d641b3b6ddf9a298e7f33710cf3d3a9d1146b5a6150fbca")
+	// keccak256("SafeTx(address to,uint256 value,bytes data,uint8 operation,uint256 safeTxGas,uint256 baseGas,uint256 gasPrice,address gasToken,address refundReceiver,uint256 nonce)").
+	safeTransactionTypeHash = crypto.Keccak256Hash([]byte("SafeTx(address to,uint256 value,bytes data,uint8 operation,uint256 safeTxGas,uint256 baseGas,uint256 gasPrice,address gasToken,address refundReceiver,uint256 nonce)"))
+)
 
-// SafeMessageDigest computes the EIP-712 digest a Safe owner signs to
-// approve a transaction hash (EIP-1271 over the SafeMessage scheme).
+// SafeMessageDigest computes the EIP-712 digest the Safe compatibility
+// fallback handler validates for EIP-1271:
+// keccak256(0x1901 || domainSeparator || SafeMessage(dataHash)).
 func SafeMessageDigest(safe common.Address, chainID uint64, messageHash [32]byte) ([32]byte, error) {
 	if safe == (common.Address{}) || chainID == 0 {
 		return [32]byte{}, fmt.Errorf("safe signer: invalid binding")
 	}
-	typedData := apitypes.TypedData{
-		Types:       safeMessageTypes,
-		PrimaryType: "SafeMessage",
-		Domain: apitypes.TypedDataDomain{
-			VerifyingContract: safe.Hex(),
-			ChainId:           math.NewHexOrDecimal256(int64(chainID)),
-		},
-		Message: apitypes.TypedDataMessage{
-			"message": messageHash[:],
-		},
+	domainSeparator := safeDomainSeparator(safe, chainID)
+	messageData := make([]byte, 0, 64)
+	messageData = append(messageData, safeMessageTypeHash[:]...)
+	messageData = append(messageData, crypto.Keccak256(messageHash[:])...)
+	return safeTypedDigest(domainSeparator, crypto.Keccak256(messageData)), nil
+}
+
+// SafeTransaction contains every field signed by Safe.execTransaction.
+type SafeTransaction struct {
+	To             common.Address
+	Value          *big.Int
+	Data           []byte
+	Operation      uint8
+	SafeTxGas      *big.Int
+	BaseGas        *big.Int
+	GasPrice       *big.Int
+	GasToken       common.Address
+	RefundReceiver common.Address
+	Nonce          *big.Int
+}
+
+// SafeTransactionDigest computes the exact digest returned by
+// Safe.getTransactionHash.
+func SafeTransactionDigest(safe common.Address, chainID uint64, transaction SafeTransaction) ([32]byte, error) {
+	if safe == (common.Address{}) || chainID == 0 {
+		return [32]byte{}, fmt.Errorf("safe signer: invalid transaction binding")
 	}
-	digest, _, err := apitypes.TypedDataAndHash(typedData)
-	if err != nil {
-		return [32]byte{}, fmt.Errorf("safe signer: typed data: %w", err)
+	if err := validateSafeTransaction(transaction); err != nil {
+		return [32]byte{}, err
 	}
+	structData := make([]byte, 0, 11*32)
+	structData = append(structData, safeTransactionTypeHash[:]...)
+	structData = append(structData, safeAddressWord(transaction.To)...)
+	structData = append(structData, safeUint256Word(transaction.Value)...)
+	structData = append(structData, crypto.Keccak256(transaction.Data)...)
+	structData = append(structData, safeUint256Word(new(big.Int).SetUint64(uint64(transaction.Operation)))...)
+	structData = append(structData, safeUint256Word(transaction.SafeTxGas)...)
+	structData = append(structData, safeUint256Word(transaction.BaseGas)...)
+	structData = append(structData, safeUint256Word(transaction.GasPrice)...)
+	structData = append(structData, safeAddressWord(transaction.GasToken)...)
+	structData = append(structData, safeAddressWord(transaction.RefundReceiver)...)
+	structData = append(structData, safeUint256Word(transaction.Nonce)...)
+	return safeTypedDigest(safeDomainSeparator(safe, chainID), crypto.Keccak256(structData)), nil
+}
+
+func validateSafeTransaction(transaction SafeTransaction) error {
+	if transaction.To == (common.Address{}) || transaction.Operation > 1 || len(transaction.Data) > 512<<10 {
+		return fmt.Errorf("safe signer: invalid transaction fields")
+	}
+	values := []*big.Int{transaction.Value, transaction.SafeTxGas, transaction.BaseGas, transaction.GasPrice, transaction.Nonce}
+	for _, value := range values {
+		if value == nil || value.Sign() < 0 || value.BitLen() > 256 {
+			return fmt.Errorf("safe signer: invalid uint256 transaction field")
+		}
+	}
+	return nil
+}
+
+func safeDomainSeparator(safe common.Address, chainID uint64) []byte {
+	domainData := make([]byte, 0, 96)
+	domainData = append(domainData, safeDomainTypeHash[:]...)
+	domainData = append(domainData, safeUint256Word(new(big.Int).SetUint64(chainID))...)
+	domainData = append(domainData, safeAddressWord(safe)...)
+	return crypto.Keccak256(domainData)
+}
+
+func safeTypedDigest(domainSeparator, structHash []byte) [32]byte {
+	encoded := make([]byte, 0, 66)
+	encoded = append(encoded, 0x19, 0x01)
+	encoded = append(encoded, domainSeparator...)
+	encoded = append(encoded, structHash...)
 	var result [32]byte
-	copy(result[:], digest)
-	return result, nil
+	copy(result[:], crypto.Keccak256(encoded))
+	return result
 }
 
-// ComposeSafeSignature builds the EIP-1271 signature payload: the 65-byte
-// owner signature (v normalized to 0/1), the contract signature type byte
-// 0x01, and the owner address.
-func ComposeSafeSignature(signature [65]byte, owner common.Address) []byte {
-	normalized := signature
-	switch normalized[64] {
-	case 27:
-		normalized[64] = 0
-	case 28:
-		normalized[64] = 1
+func safeAddressWord(address common.Address) []byte {
+	word := make([]byte, 32)
+	copy(word[12:], address.Bytes())
+	return word
+}
+
+func safeUint256Word(value *big.Int) []byte {
+	word := make([]byte, 32)
+	value.FillBytes(word)
+	return word
+}
+
+// ComposeSafeContractSignature builds the single-owner contract-signature
+// encoding consumed by Safe.checkNSignatures: r=owner, s=dynamic offset,
+// v=0, followed by uint256 length and padded EIP-1271 signature bytes.
+func ComposeSafeContractSignature(owner common.Address, signature []byte) ([]byte, error) {
+	if owner == (common.Address{}) || len(signature) == 0 || len(signature) > 4<<10 {
+		return nil, fmt.Errorf("safe signer: invalid contract signature")
 	}
-	composed := make([]byte, 0, 86)
-	composed = append(composed, normalized[:]...)
-	composed = append(composed, 0x01)
-	composed = append(composed, owner.Bytes()...)
-	return composed
+	staticPart := make([]byte, 65)
+	copy(staticPart[12:32], owner.Bytes())
+	copy(staticPart[32:64], safeUint256Word(big.NewInt(65)))
+	staticPart[64] = 0
+	dynamicLength := 32 + ((len(signature)+31)/32)*32
+	composed := make([]byte, 0, len(staticPart)+dynamicLength)
+	composed = append(composed, staticPart...)
+	composed = append(composed, safeUint256Word(new(big.Int).SetUint64(uint64(len(signature))))...)
+	composed = append(composed, signature...)
+	composed = append(composed, make([]byte, dynamicLength-32-len(signature))...)
+	return composed, nil
 }
 
-// EncodeExecTransaction builds the Safe execTransaction calldata for a
-// single owner signature payload.
+// EncodeExecTransaction builds zero-refund Safe calldata for compatibility.
 func EncodeExecTransaction(to common.Address, value *big.Int, data []byte, signatures []byte) ([]byte, error) {
-	if to == (common.Address{}) || value == nil || value.Sign() < 0 {
-		return nil, fmt.Errorf("safe signer: invalid transaction")
+	return EncodeSafeExecTransaction(SafeTransaction{
+		To: to, Value: value, Data: data,
+		SafeTxGas: big.NewInt(0), BaseGas: big.NewInt(0), GasPrice: big.NewInt(0), Nonce: big.NewInt(0),
+	}, signatures)
+}
+
+// EncodeSafeExecTransaction builds calldata for the complete Safe transaction.
+func EncodeSafeExecTransaction(transaction SafeTransaction, signatures []byte) ([]byte, error) {
+	if err := validateSafeTransaction(transaction); err != nil {
+		return nil, err
 	}
-	if len(data) > 512<<10 || len(signatures) > 4<<10 {
-		return nil, fmt.Errorf("safe signer: payload bounds")
+	if len(signatures) == 0 || len(signatures) > 4<<10 {
+		return nil, fmt.Errorf("safe signer: signature bounds")
 	}
 	method := abi.NewMethod(
 		"execTransaction",
@@ -95,7 +168,11 @@ func EncodeExecTransaction(to common.Address, value *big.Int, data []byte, signa
 		},
 		abi.Arguments{},
 	)
-	packed, err := method.Inputs.Pack(to, value, data, uint8(0), big.NewInt(0), big.NewInt(0), big.NewInt(0), common.Address{}, common.Address{}, signatures)
+	packed, err := method.Inputs.Pack(
+		transaction.To, transaction.Value, transaction.Data, transaction.Operation,
+		transaction.SafeTxGas, transaction.BaseGas, transaction.GasPrice,
+		transaction.GasToken, transaction.RefundReceiver, signatures,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("safe signer: encode: %w", err)
 	}

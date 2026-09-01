@@ -8,20 +8,19 @@ import (
 
 	"blocowallet/internal/wallet"
 
+	gethaccounts "github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 var (
-	// ErrTrezorLocked is returned when the device requires PIN/passphrase
-	// entry that has not completed.
-	ErrTrezorLocked = errors.New("trezor signer: device locked")
-	// ErrTrezorSignature is returned when the device signature does not
-	// recover the expected account address.
-	ErrTrezorSignature = errors.New("trezor signer: signature verification failed")
+	ErrTrezorLocked               = errors.New("trezor signer: device interaction required")
+	ErrTrezorSignature            = errors.New("trezor signer: signature verification failed")
+	ErrTrezorTypedHashUnsupported = errors.New("trezor signer: typed-hash signing is only available on Trezor One")
+	ErrHardwareIntentRequired     = errors.New("hardware signer: structured signing intent required")
+	ErrTrezorInteractionRequired  = errors.New("trezor signer: confirmation handler required")
 )
 
-// TrezorFeatures describes the device after initialization, mirroring the
-// Initialize message of the Trezor protocol.
 type TrezorFeatures struct {
 	Model                string
 	Version              string
@@ -30,107 +29,169 @@ type TrezorFeatures struct {
 	PassphraseProtection bool
 }
 
-// TrezorDevice is the transport contract derived from the Trezor protocol
-// messages (Initialize, EthereumGetPublicKey, EthereumSignTypedMessage).
-// The emulator and physical devices both speak these messages; test
-// transports model the firmware responses.
 type TrezorDevice interface {
 	Initialize(ctx context.Context) (TrezorFeatures, error)
 	EthereumGetPublicKey(ctx context.Context, derivationPath string) ([]byte, error)
-	EthereumSignTypedMessage(ctx context.Context, derivationPath string, messageHash [32]byte) ([]byte, error)
+	EthereumSignTypedHash(ctx context.Context, derivationPath string, domainSeparatorHash, messageHash [32]byte) ([]byte, error)
+	EthereumSignMessage(ctx context.Context, derivationPath string, message []byte) ([]byte, error)
 }
 
-// TrezorSigner signs approved digests through a Trezor device. The device
-// never reveals the private key; every signature is verified against the
-// account address before exposure.
+type TrezorTypedHashRequest struct {
+	AccountID           string
+	ChainID             uint64
+	DomainSeparatorHash [32]byte
+	MessageHash         [32]byte
+	IntentHash          [32]byte
+	ApprovalID          string
+}
+
+type TrezorPersonalMessageRequest struct {
+	AccountID  string
+	ChainID    uint64
+	Message    []byte
+	IntentHash [32]byte
+	ApprovalID string
+}
+
 type TrezorSigner struct {
-	device                      TrezorDevice
-	accounts                    AccountLookup
-	transactionApprovalVerifier wallet.TransactionApprovalVerifier
-	messageApprovalVerifier     wallet.MessageApprovalVerifier
+	device                  TrezorDevice
+	accounts                AccountLookup
+	messageApprovalVerifier wallet.MessageApprovalVerifier
 }
 
-// NewTrezorSigner creates the hardware signer.
-func NewTrezorSigner(device TrezorDevice, accounts AccountLookup, transactionVerifier wallet.TransactionApprovalVerifier, messageVerifier wallet.MessageApprovalVerifier) (*TrezorSigner, error) {
-	if device == nil || accounts == nil || transactionVerifier == nil || messageVerifier == nil {
-		return nil, fmt.Errorf("trezor signer: device, accounts, and verifiers are required")
+func NewTrezorSigner(device TrezorDevice, accounts AccountLookup, messageVerifier wallet.MessageApprovalVerifier) (*TrezorSigner, error) {
+	if device == nil || accounts == nil || messageVerifier == nil {
+		return nil, fmt.Errorf("trezor signer: device, accounts, and verifier are required")
 	}
 	return &TrezorSigner{
 		device: device, accounts: accounts,
-		transactionApprovalVerifier: transactionVerifier,
-		messageApprovalVerifier:     messageVerifier,
+		messageApprovalVerifier: messageVerifier,
 	}, nil
 }
 
-// Sign implements ApprovedDigestSigner.
-func (signer *TrezorSigner) Sign(ctx context.Context, handle wallet.CapabilityHandle, request wallet.SoftwareSigningRequest) (wallet.SoftwareSigningResult, error) {
-	if signer == nil {
-		return wallet.SoftwareSigningResult{}, fmt.Errorf("trezor signer: nil signer")
+func (signer *TrezorSigner) Sign(context.Context, wallet.CapabilityHandle, wallet.SoftwareSigningRequest) (wallet.SoftwareSigningResult, error) {
+	return wallet.SoftwareSigningResult{}, ErrHardwareIntentRequired
+}
+
+func (signer *TrezorSigner) SignTypedHash(ctx context.Context, request TrezorTypedHashRequest) (wallet.SoftwareSigningResult, error) {
+	if request.ChainID == 0 || request.ApprovalID == "" || request.IntentHash == ([32]byte{}) {
+		return wallet.SoftwareSigningResult{}, fmt.Errorf("trezor signer: incomplete typed-data binding")
 	}
-	account, err := signer.accounts.GetAccount(ctx, request.AccountID)
-	if err != nil {
-		return wallet.SoftwareSigningResult{}, fmt.Errorf("trezor signer: account: %w", err)
-	}
-	if account.SignerKind != wallet.SignerKindHardware {
-		return wallet.SoftwareSigningResult{}, fmt.Errorf("trezor signer: account is not a hardware account")
-	}
-	derivationPath, err := trezorDerivationPath(account.SignerReference)
+	account, derivationPath, expectedAddress, err := signer.resolveAccount(ctx, request.AccountID)
 	if err != nil {
 		return wallet.SoftwareSigningResult{}, err
 	}
-	expectedAddress := common.HexToAddress(account.Address)
-	if expectedAddress == (common.Address{}) {
-		return wallet.SoftwareSigningResult{}, fmt.Errorf("trezor signer: invalid account address")
+	digest := crypto.Keccak256Hash([]byte{0x19, 0x01}, request.DomainSeparatorHash[:], request.MessageHash[:])
+	var digestArray [32]byte
+	copy(digestArray[:], digest[:])
+	if err := signer.messageApprovalVerifier.VerifyMessageApproval(ctx, wallet.MessageApprovalBinding{
+		AccountID: account.AccountID, Scheme: wallet.MessageSigningEIP712, ChainID: request.ChainID,
+		Digest: digestArray, IntentHash: request.IntentHash, ApprovalID: request.ApprovalID,
+	}); err != nil {
+		return wallet.SoftwareSigningResult{}, err
 	}
-	switch request.Purpose {
-	case wallet.SigningPurposeTransaction:
-		if err := signer.transactionApprovalVerifier.VerifyTransactionApproval(ctx, wallet.TransactionApprovalBinding{
-			AccountID: request.AccountID, ChainID: request.ChainID, Digest: request.Digest, ApprovalID: request.ApprovalID,
-		}); err != nil {
-			return wallet.SoftwareSigningResult{}, err
-		}
-	case wallet.SigningPurposeMessage:
-		if err := signer.messageApprovalVerifier.VerifyMessageApproval(ctx, wallet.MessageApprovalBinding{
-			AccountID: request.AccountID, Scheme: request.MessageScheme, ChainID: request.ChainID,
-			Digest: request.Digest, IntentHash: request.IntentHash, ApprovalID: request.ApprovalID,
-		}); err != nil {
-			return wallet.SoftwareSigningResult{}, err
-		}
-	default:
-		return wallet.SoftwareSigningResult{}, fmt.Errorf("trezor signer: unsupported purpose")
-	}
-	features, err := signer.device.Initialize(ctx)
+	features, err := signer.ensureReady(ctx)
 	if err != nil {
-		return wallet.SoftwareSigningResult{}, fmt.Errorf("trezor signer: initialize: %w", err)
+		return wallet.SoftwareSigningResult{}, err
 	}
-	if !features.Initialized {
-		return wallet.SoftwareSigningResult{}, fmt.Errorf("trezor signer: device not initialized")
+	if features.Model != "1" {
+		return wallet.SoftwareSigningResult{}, ErrTrezorTypedHashUnsupported
 	}
-	if features.PinProtection || features.PassphraseProtection {
-		// The firmware marks PIN/passphrase entry on the device itself; the
-		// transport reports when entry is still pending.
-		return wallet.SoftwareSigningResult{}, ErrTrezorLocked
-	}
-	signature, err := signer.device.EthereumSignTypedMessage(ctx, derivationPath, request.Digest)
+	signature, err := signer.device.EthereumSignTypedHash(ctx, derivationPath, request.DomainSeparatorHash, request.MessageHash)
 	if err != nil {
-		return wallet.SoftwareSigningResult{}, fmt.Errorf("trezor signer: sign: %w", err)
+		return wallet.SoftwareSigningResult{}, fmt.Errorf("trezor signer: sign typed hash: %w", err)
 	}
 	signature, err = normalizeSignature(signature)
 	if err != nil {
 		return wallet.SoftwareSigningResult{}, err
 	}
-	if err := verifyECDSASignature(expectedAddress, request.Digest, signature); err != nil {
+	if err := verifyECDSASignature(expectedAddress, digestArray, signature); err != nil {
 		return wallet.SoftwareSigningResult{}, ErrTrezorSignature
 	}
 	return wallet.SoftwareSigningResult{
-		AccountID: request.AccountID, Purpose: request.Purpose, MessageScheme: request.MessageScheme,
-		ChainID: request.ChainID, Digest: request.Digest, IntentHash: request.IntentHash,
-		Signature: append([]byte(nil), signature...),
+		AccountID: account.AccountID, Purpose: wallet.SigningPurposeMessage,
+		MessageScheme: wallet.MessageSigningEIP712, ChainID: request.ChainID,
+		Digest: digestArray, IntentHash: request.IntentHash, Signature: signature,
 	}, nil
 }
 
-// normalizeSignature accepts the firmware v encoding (0/1 or 27/28) and
-// produces the canonical 0/1 form.
+func (signer *TrezorSigner) SignPersonalMessage(ctx context.Context, request TrezorPersonalMessageRequest) (wallet.SoftwareSigningResult, error) {
+	if len(request.Message) == 0 || len(request.Message) > 64<<10 {
+		return wallet.SoftwareSigningResult{}, fmt.Errorf("trezor signer: message size")
+	}
+	if request.ChainID != 0 || request.ApprovalID == "" || request.IntentHash == ([32]byte{}) {
+		return wallet.SoftwareSigningResult{}, fmt.Errorf("trezor signer: incomplete personal-sign binding")
+	}
+	account, derivationPath, expectedAddress, err := signer.resolveAccount(ctx, request.AccountID)
+	if err != nil {
+		return wallet.SoftwareSigningResult{}, err
+	}
+	digestBytes := gethaccounts.TextHash(request.Message)
+	var digest [32]byte
+	copy(digest[:], digestBytes)
+	if err := signer.messageApprovalVerifier.VerifyMessageApproval(ctx, wallet.MessageApprovalBinding{
+		AccountID: account.AccountID, Scheme: wallet.MessageSigningEIP191Personal, ChainID: request.ChainID,
+		Digest: digest, IntentHash: request.IntentHash, ApprovalID: request.ApprovalID,
+	}); err != nil {
+		return wallet.SoftwareSigningResult{}, err
+	}
+	if _, err := signer.ensureReady(ctx); err != nil {
+		return wallet.SoftwareSigningResult{}, err
+	}
+	signature, err := signer.device.EthereumSignMessage(ctx, derivationPath, request.Message)
+	if err != nil {
+		return wallet.SoftwareSigningResult{}, fmt.Errorf("trezor signer: sign personal message: %w", err)
+	}
+	signature, err = normalizeSignature(signature)
+	if err != nil {
+		return wallet.SoftwareSigningResult{}, err
+	}
+	if err := verifyECDSASignature(expectedAddress, digest, signature); err != nil {
+		return wallet.SoftwareSigningResult{}, ErrTrezorSignature
+	}
+	return wallet.SoftwareSigningResult{
+		AccountID: account.AccountID, Purpose: wallet.SigningPurposeMessage,
+		MessageScheme: wallet.MessageSigningEIP191Personal, ChainID: request.ChainID,
+		Digest: digest, IntentHash: request.IntentHash, Signature: signature,
+	}, nil
+}
+
+func (signer *TrezorSigner) resolveAccount(ctx context.Context, accountID string) (*wallet.Account, string, common.Address, error) {
+	if signer == nil {
+		return nil, "", common.Address{}, fmt.Errorf("trezor signer: nil signer")
+	}
+	account, err := signer.accounts.GetAccount(ctx, accountID)
+	if err != nil {
+		return nil, "", common.Address{}, fmt.Errorf("trezor signer: account: %w", err)
+	}
+	if account == nil || account.AccountID != accountID || account.State != wallet.AccountStateActive {
+		return nil, "", common.Address{}, fmt.Errorf("trezor signer: account binding mismatch or inactive state")
+	}
+	if account.SignerKind != wallet.SignerKindHardware {
+		return nil, "", common.Address{}, fmt.Errorf("trezor signer: account is not a hardware account")
+	}
+	derivationPath, err := trezorDerivationPath(account.SignerReference)
+	if err != nil {
+		return nil, "", common.Address{}, err
+	}
+	expectedAddress := common.HexToAddress(account.Address)
+	if expectedAddress == (common.Address{}) {
+		return nil, "", common.Address{}, fmt.Errorf("trezor signer: invalid account address")
+	}
+	return account, derivationPath, expectedAddress, nil
+}
+
+func (signer *TrezorSigner) ensureReady(ctx context.Context) (TrezorFeatures, error) {
+	features, err := signer.device.Initialize(ctx)
+	if err != nil {
+		return TrezorFeatures{}, fmt.Errorf("trezor signer: initialize: %w", err)
+	}
+	if !features.Initialized {
+		return TrezorFeatures{}, fmt.Errorf("trezor signer: device not initialized")
+	}
+	return features, nil
+}
+
 func normalizeSignature(signature []byte) ([]byte, error) {
 	if len(signature) != 65 {
 		return nil, fmt.Errorf("trezor signer: signature size")
@@ -148,8 +209,6 @@ func normalizeSignature(signature []byte) ([]byte, error) {
 	return normalized, nil
 }
 
-// trezorDerivationPath extracts the canonical path from a Trezor signer
-// reference ("trezor:v1:m/44'/60'/0'/0/0").
 func trezorDerivationPath(reference string) (string, error) {
 	const prefix = "trezor:v1:"
 	if !strings.HasPrefix(reference, prefix) {

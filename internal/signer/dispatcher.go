@@ -12,7 +12,6 @@ import (
 type SignerDispatcher struct {
 	software ApprovedDigestSigner
 	cloud    ApprovedDigestSigner
-	hardware ApprovedDigestSigner
 	accounts AccountLookup
 }
 
@@ -21,19 +20,13 @@ type ApprovedDigestSigner interface {
 	Sign(context.Context, wallet.CapabilityHandle, wallet.SoftwareSigningRequest) (wallet.SoftwareSigningResult, error)
 }
 
-// NewSignerDispatcher builds the dispatcher. At least the software signer
-// must be provided.
+// NewSignerDispatcher builds the digest-only dispatcher. Hardware accounts
+// deliberately remain unavailable because they require structured intents.
 func NewSignerDispatcher(software ApprovedDigestSigner, cloud ApprovedDigestSigner, accounts AccountLookup) (*SignerDispatcher, error) {
-	return NewSignerDispatcherWithHardware(software, cloud, nil, accounts)
-}
-
-// NewSignerDispatcherWithHardware additionally routes hardware accounts to
-// the provided adapter; without one, hardware accounts fail closed.
-func NewSignerDispatcherWithHardware(software, cloud, hardware ApprovedDigestSigner, accounts AccountLookup) (*SignerDispatcher, error) {
 	if software == nil || accounts == nil {
 		return nil, fmt.Errorf("signer dispatcher: software signer and accounts are required")
 	}
-	return &SignerDispatcher{software: software, cloud: cloud, hardware: hardware, accounts: accounts}, nil
+	return &SignerDispatcher{software: software, cloud: cloud, accounts: accounts}, nil
 }
 
 // Sign implements the signer contract by dispatching on the account kind.
@@ -54,10 +47,7 @@ func (dispatcher *SignerDispatcher) Sign(ctx context.Context, handle wallet.Capa
 		}
 		return dispatcher.cloud.Sign(ctx, handle, request)
 	case wallet.SignerKindHardware:
-		if dispatcher.hardware == nil {
-			return wallet.SoftwareSigningResult{}, fmt.Errorf("signer dispatcher: hardware signer not configured")
-		}
-		return dispatcher.hardware.Sign(ctx, handle, request)
+		return wallet.SoftwareSigningResult{}, ErrHardwareIntentRequired
 	default:
 		return wallet.SoftwareSigningResult{}, fmt.Errorf("signer dispatcher: unsupported signer kind %q", account.SignerKind)
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"crypto/rand"
+	"errors"
 	"testing"
 
 	"blocowallet/internal/signer"
@@ -96,9 +97,6 @@ func TestSignerDispatcherRoutesByAccountKind(t *testing.T) {
 	if _, err := dispatcherNoCloud.Sign(context.Background(), wallet.CapabilityHandle{}, request); err == nil {
 		t.Fatal("cloud account signed without a cloud adapter")
 	}
-	// Hardware accounts route to the hardware adapter when present and fail
-	// closed otherwise.
-	hardwareStub := &stubApprovedSigner{}
 	hardwareLookup := mapAccountLookup{accounts: map[string]*wallet.Account{
 		"44444444-4444-4444-8444-444444444444": {
 			AccountID:  "44444444-4444-4444-8444-444444444444",
@@ -106,22 +104,12 @@ func TestSignerDispatcherRoutesByAccountKind(t *testing.T) {
 			SignerKind: wallet.SignerKindHardware, State: wallet.AccountStateActive,
 		},
 	}}
-	dispatcherWithHardware, err := signer.NewSignerDispatcherWithHardware(software, cloud, hardwareStub, hardwareLookup)
+	digestDispatcher, err := signer.NewSignerDispatcher(software, cloud, hardwareLookup)
 	if err != nil {
 		t.Fatal(err)
 	}
 	request.AccountID = "44444444-4444-4444-8444-444444444444"
-	if _, err := dispatcherWithHardware.Sign(context.Background(), wallet.CapabilityHandle{}, request); err != nil {
-		t.Fatal(err)
-	}
-	if hardwareStub.calls != 1 {
-		t.Fatalf("hardware dispatch count: %d", hardwareStub.calls)
-	}
-	dispatcherWithoutHardware, err := signer.NewSignerDispatcher(software, cloud, hardwareLookup)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := dispatcherWithoutHardware.Sign(context.Background(), wallet.CapabilityHandle{}, request); err == nil {
-		t.Fatal("hardware account signed without a hardware adapter")
+	if _, err := digestDispatcher.Sign(context.Background(), wallet.CapabilityHandle{}, request); !errors.Is(err, signer.ErrHardwareIntentRequired) {
+		t.Fatalf("hardware digest was not rejected: %v", err)
 	}
 }

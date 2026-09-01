@@ -1,6 +1,7 @@
 package signer
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/rand"
@@ -157,6 +158,31 @@ func TestCloudSignerRejectsForeignSignatureAndDeniedApproval(t *testing.T) {
 	}
 }
 
+func TestSignatureVerificationRejectsMalleableValues(t *testing.T) {
+	key, err := ecdsa.GenerateKey(crypto.S256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := [32]byte{7}
+	signature := signForTest(key, digest)
+	expected := crypto.PubkeyToAddress(key.PublicKey)
+	if err := verifyECDSASignature(expected, digest, signature); err != nil {
+		t.Fatal(err)
+	}
+	highS := new(big.Int).Sub(crypto.S256().Params().N, new(big.Int).SetBytes(signature[32:64]))
+	highSignature := append([]byte(nil), signature...)
+	highS.FillBytes(highSignature[32:64])
+	highSignature[64] ^= 1
+	if err := verifyECDSASignature(expected, digest, highSignature); err == nil {
+		t.Fatal("high-S signature was accepted")
+	}
+	zeroR := append([]byte(nil), signature...)
+	clear(zeroR[:32])
+	if err := verifyECDSASignature(expected, digest, zeroR); err == nil {
+		t.Fatal("zero-r signature was accepted")
+	}
+}
+
 func TestSafeMessageDigestAndSignatureComposition(t *testing.T) {
 	safe := common.HexToAddress("0xCcCCccccCCCCcCCCCCCcCcCccCcCCCcCcccccccC")
 	owner := common.HexToAddress("0x1111111111111111111111111111111111111111")
@@ -171,7 +197,7 @@ func TestSafeMessageDigestAndSignatureComposition(t *testing.T) {
 	// Golden pin: the digest must never change for this binding. The value
 	// is frozen from the Safe EIP-712 scheme; any change here is a breaking
 	// compatibility failure.
-	if common.BytesToHash(digest[:]).Hex() != "0x01623128dc2b1f035fd8af6d6aa9028c5a878dc03bff2ba3cc7d2fb903ddceb7" {
+	if common.BytesToHash(digest[:]).Hex() != "0x2a6a2777af314d84e6e802a8489938329641e864c52c64e8fb7c8ba396357c0f" {
 		t.Fatalf("SafeMessage digest changed: %s", common.BytesToHash(digest[:]).Hex())
 	}
 	// The digest is deterministic and bound to the safe and chain.
@@ -189,20 +215,19 @@ func TestSafeMessageDigestAndSignatureComposition(t *testing.T) {
 	if otherSafe == digest {
 		t.Fatal("safe digest ignored the safe address")
 	}
-	// A signature with v=27 normalizes to the Safe contract format.
-	ownerKey, err := ecdsa.GenerateKey(crypto.S256(), rand.Reader)
+	contractSignature := bytes.Repeat([]byte{0xAB}, 65)
+	composed, err := ComposeSafeContractSignature(owner, contractSignature)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var signature [65]byte
-	copy(signature[:], signForTest(ownerKey, digest)[:64])
-	signature[64] = 27
-	composed := ComposeSafeSignature(signature, owner)
-	if len(composed) != 86 {
+	if len(composed) != 193 {
 		t.Fatalf("unexpected composed safe signature size: %d", len(composed))
 	}
-	if composed[64] != 0 || composed[65] != 0x01 || common.BytesToAddress(composed[66:]) != owner {
-		t.Fatalf("unexpected composed safe signature: %x", composed)
+	if common.BytesToAddress(composed[12:32]) != owner || new(big.Int).SetBytes(composed[32:64]).Uint64() != 65 || composed[64] != 0 {
+		t.Fatalf("unexpected static contract signature: %x", composed[:65])
+	}
+	if new(big.Int).SetBytes(composed[65:97]).Uint64() != 65 || !bytes.Equal(composed[97:162], contractSignature) {
+		t.Fatalf("unexpected dynamic contract signature: %x", composed[65:])
 	}
 	// execTransaction calldata binds the target, value, data, and signatures.
 	calldata, err := EncodeExecTransaction(safe, big.NewInt(1_000_000), messageHash[:], composed)
@@ -211,5 +236,16 @@ func TestSafeMessageDigestAndSignatureComposition(t *testing.T) {
 	}
 	if len(calldata) < 4 {
 		t.Fatalf("empty safe calldata")
+	}
+	huge := new(big.Int).Lsh(big.NewInt(1), 256)
+	invalidTransaction := SafeTransaction{
+		To: safe, Value: huge, SafeTxGas: big.NewInt(0), BaseGas: big.NewInt(0),
+		GasPrice: big.NewInt(0), Nonce: big.NewInt(0),
+	}
+	if _, err := SafeTransactionDigest(safe, 1, invalidTransaction); err == nil {
+		t.Fatal("257-bit Safe value was accepted by the digest")
+	}
+	if _, err := EncodeSafeExecTransaction(invalidTransaction, []byte{1}); err == nil {
+		t.Fatal("257-bit Safe value was accepted by the encoder")
 	}
 }
