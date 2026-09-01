@@ -15,7 +15,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-func TestEVMRepositoryRejectsNonceReservationForWatchOnlyAccount(t *testing.T) {
+func TestEVMRepositoryAllowsEOAHardwareButRejectsWatchOnly(t *testing.T) {
 	repository := newAccountTestRepository(t)
 	account := testAccount("11111111-1111-4111-8111-111111111111", "watch-only-test")
 	account.SignerKind = wallet.SignerKindWatchOnly
@@ -51,13 +51,16 @@ func TestEVMRepositoryRejectsNonceReservationForWatchOnlyAccount(t *testing.T) {
 	if err := repository.CreateAccount(context.Background(), external); err != nil {
 		t.Fatal(err)
 	}
-	_, err = repository.ReserveNonce(context.Background(), evm.ReserveNonceRequest{
+	reservation, err := repository.ReserveNonce(context.Background(), evm.ReserveNonceRequest{
 		ReservationID: "32222222-2222-4222-8222-222222222222", OperationID: "42222222-2222-4222-8222-222222222222",
 		AccountID: external.AccountID, Sender: common.HexToAddress(external.Address), ChainID: 1, PendingNonce: 7, PlanGeneration: 1,
 		ReservedAt: now, ExpiresAt: now.Add(time.Minute),
 	})
-	if !evm.IsErrorCode(err, evm.ErrorPolicyDenied) {
-		t.Fatalf("external signer nonce reservation returned %v", err)
+	if err != nil {
+		t.Fatalf("hardware EOA nonce reservation failed: %v", err)
+	}
+	if reservation.AccountID != external.AccountID || reservation.Nonce != 7 {
+		t.Fatalf("unexpected hardware reservation: %+v", reservation)
 	}
 }
 
@@ -279,6 +282,17 @@ func TestEVMRepositoryAuthorizesSigningExactlyOnce(t *testing.T) {
 		AccountID: account.AccountID, ChainID: 1, Digest: digest, ApprovalID: approval.ApprovalID,
 	}); err != nil {
 		t.Fatalf("consumed approval was not verifiable: %v", err)
+	}
+	if err := repository.db.Model(&wallet.Account{}).Where("account_id = ?", account.AccountID).Update("authorization_epoch", 2).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.VerifyTransactionApproval(ctx, wallet.TransactionApprovalBinding{
+		AccountID: account.AccountID, ChainID: 1, Digest: digest, ApprovalID: approval.ApprovalID,
+	}); err == nil {
+		t.Fatal("approval survived account epoch rotation")
+	}
+	if err := repository.db.Model(&wallet.Account{}).Where("account_id = ?", account.AccountID).Update("authorization_epoch", 1).Error; err != nil {
+		t.Fatal(err)
 	}
 	wrongDigest := digest
 	wrongDigest[0] ^= 0xff

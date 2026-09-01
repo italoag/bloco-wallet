@@ -13,18 +13,25 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/http/httptrace"
 	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 const (
 	defaultRPCResponseBytes      = 64 << 10
 	defaultRegistryResponseBytes = 8 << 20
 	defaultRequestTimeout        = 10 * time.Second
+	hardRPCResponseBytes         = 1 << 20
+	hardRegistryResponseBytes    = 16 << 20
+	hardRequestTimeout           = 5 * time.Minute
 )
 
 type netIPResolver interface {
@@ -43,6 +50,22 @@ type RPCGatewayOptions struct {
 	MaxConcurrentRequests    int
 	MaxRequestsPerSecond     int
 	TLSRootCAs               *x509.CertPool
+}
+
+// OutboundRequest describes a bounded HTTP request through the gateway.
+type OutboundRequest struct {
+	Method           string
+	URL              string
+	Headers          map[string]string
+	Body             []byte
+	MaxResponseBytes int64
+	Timeout          time.Duration
+}
+
+// OutboundResponse contains a bounded HTTP response.
+type OutboundResponse struct {
+	StatusCode int
+	Body       []byte
 }
 
 type RPCErrorKind string
@@ -102,6 +125,7 @@ type RPCGateway struct {
 	maxRPCResponseBytes      int64
 	maxRegistryResponseBytes int64
 	requestSemaphore         chan struct{}
+	webSocketSemaphore       chan struct{}
 	maxRequestsPerSecond     int
 	rateMu                   sync.Mutex
 	requestTimes             []time.Time
@@ -154,6 +178,9 @@ func NewRPCGateway(options RPCGatewayOptions) *RPCGateway {
 	if requestTimeout <= 0 {
 		requestTimeout = defaultRequestTimeout
 	}
+	if requestTimeout > hardRequestTimeout {
+		requestTimeout = hardRequestTimeout
+	}
 	maxRPCRequestBytes := options.MaxRPCRequestBytes
 	if maxRPCRequestBytes <= 0 {
 		maxRPCRequestBytes = 64 << 10
@@ -165,9 +192,18 @@ func NewRPCGateway(options RPCGatewayOptions) *RPCGateway {
 	if maxRPCResponseBytes <= 0 {
 		maxRPCResponseBytes = defaultRPCResponseBytes
 	}
+	if maxRPCResponseBytes > hardRPCResponseBytes {
+		maxRPCResponseBytes = hardRPCResponseBytes
+	}
 	maxRegistryResponseBytes := options.MaxRegistryResponseBytes
 	if maxRegistryResponseBytes <= 0 {
 		maxRegistryResponseBytes = defaultRegistryResponseBytes
+	}
+	if maxRegistryResponseBytes > hardRegistryResponseBytes {
+		maxRegistryResponseBytes = hardRegistryResponseBytes
+	}
+	if maxRegistryResponseBytes < maxRPCResponseBytes {
+		maxRegistryResponseBytes = maxRPCResponseBytes
 	}
 	maxConcurrentRequests := options.MaxConcurrentRequests
 	if maxConcurrentRequests <= 0 {
@@ -197,6 +233,7 @@ func NewRPCGateway(options RPCGatewayOptions) *RPCGateway {
 		maxRPCResponseBytes:      maxRPCResponseBytes,
 		maxRegistryResponseBytes: maxRegistryResponseBytes,
 		requestSemaphore:         make(chan struct{}, maxConcurrentRequests),
+		webSocketSemaphore:       make(chan struct{}, maxConcurrentRequests),
 		maxRequestsPerSecond:     maxRequestsPerSecond,
 		requestTimes:             make([]time.Time, 0, maxRequestsPerSecond),
 		tlsRootCAs:               options.TLSRootCAs,
@@ -371,7 +408,26 @@ func (gateway *RPCGateway) Call(ctx context.Context, session *ValidatedRPCSessio
 	return gateway.callValidatedDestination(ctx, session.destination, session.chainID, method, params, result)
 }
 
+func (gateway *RPCGateway) callSideEffect(ctx context.Context, session *ValidatedRPCSession, method string, params any, result any) (bool, error) {
+	if session == nil || session.gateway != gateway || method == "" || len(method) > 128 {
+		return false, fmt.Errorf("validated RPC side-effect session is required")
+	}
+	chainID, err := gateway.chainIDForDestination(ctx, session.destination)
+	if err != nil {
+		return false, err
+	}
+	if chainID != session.chainID {
+		return false, fmt.Errorf("RPC chain identity changed")
+	}
+	return gateway.callDestinationTracked(ctx, session.destination, method, params, result)
+}
+
 func (gateway *RPCGateway) callDestination(ctx context.Context, destination validatedDestination, method string, params any, result any) error {
+	_, err := gateway.callDestinationTracked(ctx, destination, method, params, result)
+	return err
+}
+
+func (gateway *RPCGateway) callDestinationTracked(ctx context.Context, destination validatedDestination, method string, params any, result any) (bool, error) {
 	requestPayload, err := json.Marshal(struct {
 		JSONRPC string `json:"jsonrpc"`
 		Method  string `json:"method"`
@@ -379,42 +435,43 @@ func (gateway *RPCGateway) callDestination(ctx context.Context, destination vali
 		ID      int    `json:"id"`
 	}{JSONRPC: "2.0", Method: method, Params: params, ID: 1})
 	if err != nil {
-		return fmt.Errorf("encode RPC request")
+		return false, fmt.Errorf("encode RPC request")
 	}
 	if len(requestPayload) > gateway.maxRPCRequestBytes {
-		return fmt.Errorf("RPC request exceeds size policy")
+		return false, fmt.Errorf("RPC request exceeds size policy")
 	}
-	responseBody, err := gateway.do(ctx, destination, http.MethodPost, requestPayload, gateway.maxRPCResponseBytes)
+	response, sent, err := gateway.doResponseTracked(ctx, destination, http.MethodPost, requestPayload, nil, gateway.maxRPCResponseBytes, gateway.requestTimeout)
 	if err != nil {
-		return err
+		return sent, err
 	}
+	responseBody := response.Body
 	if err := rejectDuplicateRPCJSONKeys(responseBody); err != nil {
-		return fmt.Errorf("RPC response contains duplicate or invalid JSON keys")
+		return true, fmt.Errorf("RPC response contains duplicate or invalid JSON keys")
 	}
-	var response rpcResponseEnvelope
+	var envelope rpcResponseEnvelope
 	decoder := json.NewDecoder(bytes.NewReader(responseBody))
-	if err := decoder.Decode(&response); err != nil {
-		return fmt.Errorf("decode RPC response: %w", err)
+	if err := decoder.Decode(&envelope); err != nil {
+		return true, fmt.Errorf("decode RPC response: %w", err)
 	}
 	if err := ensureJSONEOF(decoder); err != nil {
-		return err
+		return true, err
 	}
-	if response.JSONRPC != "2.0" || string(response.ID) != "1" || (response.Error == nil) == (len(response.Result) == 0 || string(response.Result) == "null") {
-		return fmt.Errorf("RPC response shape is invalid")
+	if envelope.JSONRPC != "2.0" || string(envelope.ID) != "1" || (envelope.Error == nil) == (len(envelope.Result) == 0 || string(envelope.Result) == "null") {
+		return true, fmt.Errorf("RPC response shape is invalid")
 	}
-	if response.Error != nil {
-		if response.Error.Code == 0 || response.Error.Message == "" || len(response.Error.Message) > 4096 {
-			return fmt.Errorf("RPC error object is invalid")
+	if envelope.Error != nil {
+		if envelope.Error.Code == 0 || envelope.Error.Message == "" || len(envelope.Error.Message) > 4096 {
+			return true, fmt.Errorf("RPC error object is invalid")
 		}
-		return newRPCRemoteError(response.Error.Code, response.Error.Message, response.Error.Data)
+		return true, newRPCRemoteError(envelope.Error.Code, envelope.Error.Message, envelope.Error.Data)
 	}
 	if result == nil {
-		return nil
+		return true, nil
 	}
-	if err := json.Unmarshal(response.Result, result); err != nil {
-		return fmt.Errorf("decode RPC result: %w", err)
+	if err := json.Unmarshal(envelope.Result, result); err != nil {
+		return true, fmt.Errorf("decode RPC result: %w", err)
 	}
-	return nil
+	return true, nil
 }
 
 func (gateway *RPCGateway) callValidatedDestination(ctx context.Context, destination validatedDestination, expectedChainID int64, method string, params any, result any) error {
@@ -541,6 +598,175 @@ func newRPCRemoteError(code int, message string, rawData json.RawMessage) error 
 	return &RPCRemoteError{Code: code, Kind: kind, Data: data}
 }
 
+// Request performs a bounded HTTP request through the validated gateway.
+func (gateway *RPCGateway) Request(ctx context.Context, request OutboundRequest) (OutboundResponse, error) {
+	if gateway == nil {
+		return OutboundResponse{}, fmt.Errorf("RPC gateway is required")
+	}
+	if request.Method != http.MethodGet && request.Method != http.MethodPost {
+		return OutboundResponse{}, fmt.Errorf("unsupported outbound method")
+	}
+	if len(request.Body) > gateway.maxRPCRequestBytes {
+		return OutboundResponse{}, fmt.Errorf("outbound request exceeds size policy")
+	}
+	if err := validateOutboundHeaders(request.Headers); err != nil {
+		return OutboundResponse{}, err
+	}
+	maxBytes := request.MaxResponseBytes
+	if maxBytes <= 0 {
+		maxBytes = gateway.maxRPCResponseBytes
+	}
+	if maxBytes > gateway.maxRegistryResponseBytes {
+		return OutboundResponse{}, fmt.Errorf("outbound response limit exceeds policy")
+	}
+	requestTimeout := gateway.requestTimeout
+	if request.Timeout < 0 || request.Timeout > hardRequestTimeout {
+		return OutboundResponse{}, fmt.Errorf("outbound request timeout exceeds policy")
+	}
+	if request.Timeout > 0 {
+		requestTimeout = request.Timeout
+	}
+	destination, err := gateway.ValidateEndpoint(ctx, request.URL)
+	if err != nil {
+		return OutboundResponse{}, err
+	}
+	return gateway.doResponse(ctx, destination, request.Method, request.Body, request.Headers, maxBytes, requestTimeout)
+}
+
+type managedWebSocket struct {
+	*websocket.Conn
+	release func()
+	once    sync.Once
+}
+
+func (connection *managedWebSocket) Close() error {
+	if connection == nil {
+		return nil
+	}
+	err := connection.Conn.Close()
+	connection.once.Do(connection.release)
+	return err
+}
+
+type handshakeLimitConn struct {
+	net.Conn
+	mu        sync.Mutex
+	remaining int
+	enabled   bool
+}
+
+func (connection *handshakeLimitConn) Read(buffer []byte) (int, error) {
+	connection.mu.Lock()
+	defer connection.mu.Unlock()
+	if !connection.enabled {
+		return connection.Conn.Read(buffer)
+	}
+	if connection.remaining <= 0 {
+		return 0, fmt.Errorf("WebSocket handshake headers exceed policy")
+	}
+	if len(buffer) > connection.remaining {
+		buffer = buffer[:connection.remaining]
+	}
+	count, err := connection.Conn.Read(buffer)
+	connection.remaining -= count
+	return count, err
+}
+
+func (connection *handshakeLimitConn) disable() {
+	connection.mu.Lock()
+	connection.enabled = false
+	connection.mu.Unlock()
+}
+
+// DialWebSocket opens a validated, DNS-pinned WebSocket connection.
+func (gateway *RPCGateway) DialWebSocket(ctx context.Context, rawURL string) (*managedWebSocket, error) {
+	if gateway == nil {
+		return nil, fmt.Errorf("RPC gateway is required")
+	}
+	parsed, err := url.ParseRequestURI(rawURL)
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "ws" && parsed.Scheme != "wss") {
+		return nil, fmt.Errorf("invalid WebSocket URL")
+	}
+	validationURL := *parsed
+	if parsed.Scheme == "wss" {
+		validationURL.Scheme = "https"
+	} else {
+		validationURL.Scheme = "http"
+	}
+	destination, err := gateway.ValidateEndpoint(ctx, validationURL.String())
+	if err != nil {
+		return nil, err
+	}
+	requestContext, cancel := context.WithTimeout(ctx, gateway.requestTimeout)
+	defer cancel()
+	if err := gateway.acquire(requestContext); err != nil {
+		return nil, err
+	}
+	defer gateway.release()
+	select {
+	case gateway.webSocketSemaphore <- struct{}{}:
+	case <-requestContext.Done():
+		return nil, requestContext.Err()
+	}
+	releaseSocket := func() { <-gateway.webSocketSemaphore }
+	releaseOnFailure := true
+	defer func() {
+		if releaseOnFailure {
+			releaseSocket()
+		}
+	}()
+	dialer := websocket.Dialer{
+		Proxy:            nil,
+		HandshakeTimeout: gateway.requestTimeout,
+		TLSClientConfig: &tls.Config{
+			MinVersion: tls.VersionTLS12,
+			ServerName: parsed.Hostname(),
+			RootCAs:    gateway.tlsRootCAs,
+		},
+	}
+	var handshakeConnection *handshakeLimitConn
+	dialer.NetDialContext = func(dialContext context.Context, network, address string) (net.Conn, error) {
+		requestedHost, requestedPort, err := net.SplitHostPort(address)
+		if err != nil || net.JoinHostPort(strings.ToLower(requestedHost), requestedPort) != destination.hostPort {
+			return nil, fmt.Errorf("network destination changed after validation")
+		}
+		connection, err := gateway.dialContext(dialContext, network, net.JoinHostPort(destination.pinnedIP.String(), requestedPort))
+		if err != nil {
+			return nil, err
+		}
+		handshakeConnection = &handshakeLimitConn{Conn: connection, remaining: 64 << 10, enabled: true}
+		return handshakeConnection, nil
+	}
+	connection, response, err := dialer.DialContext(requestContext, rawURL, nil)
+	if response != nil && response.Body != nil {
+		_ = response.Body.Close()
+	}
+	if err != nil {
+		return nil, &networkTransportError{message: fmt.Sprintf("WebSocket connection to %s failed", RedactNetworkURL(validationURL.String())), cause: safeTransportCause(err)}
+	}
+	if handshakeConnection != nil {
+		handshakeConnection.disable()
+	}
+	connection.SetReadLimit(hardRPCResponseBytes)
+	releaseOnFailure = false
+	return &managedWebSocket{Conn: connection, release: releaseSocket}, nil
+}
+
+func validateOutboundHeaders(headers map[string]string) error {
+	for name, value := range headers {
+		canonical := http.CanonicalHeaderKey(name)
+		switch canonical {
+		case "Accept", "Authorization", "Content-Type", "Origin":
+		default:
+			return fmt.Errorf("outbound header is not allowed")
+		}
+		if value == "" || len(value) > 4096 || strings.ContainsAny(value, "\x00\r\n") {
+			return fmt.Errorf("outbound header value is invalid")
+		}
+	}
+	return nil
+}
+
 func (gateway *RPCGateway) Fetch(ctx context.Context, rawURL string) ([]byte, error) {
 	destination, err := gateway.ValidateEndpoint(ctx, rawURL)
 	if err != nil {
@@ -623,20 +849,43 @@ func safeTransportCause(err error) error {
 }
 
 func (gateway *RPCGateway) do(ctx context.Context, destination validatedDestination, method string, body []byte, maxBytes int64) ([]byte, error) {
-	requestContext, cancel := context.WithTimeout(ctx, gateway.requestTimeout)
+	response, err := gateway.doResponse(ctx, destination, method, body, nil, maxBytes, gateway.requestTimeout)
+	if err != nil {
+		return nil, err
+	}
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("network request to %s returned status %d", RedactNetworkURL(destination.rawURL), response.StatusCode)
+	}
+	return response.Body, nil
+}
+
+func (gateway *RPCGateway) doResponse(ctx context.Context, destination validatedDestination, method string, body []byte, headers map[string]string, maxBytes int64, timeout time.Duration) (OutboundResponse, error) {
+	response, _, err := gateway.doResponseTracked(ctx, destination, method, body, headers, maxBytes, timeout)
+	return response, err
+}
+
+func (gateway *RPCGateway) doResponseTracked(ctx context.Context, destination validatedDestination, method string, body []byte, headers map[string]string, maxBytes int64, timeout time.Duration) (OutboundResponse, bool, error) {
+	requestContext, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	if err := gateway.acquire(requestContext); err != nil {
-		return nil, err
+		return OutboundResponse{}, false, err
 	}
 	defer gateway.release()
 	request, err := http.NewRequestWithContext(requestContext, method, destination.rawURL, bytes.NewReader(body))
 	if err != nil {
-		return nil, fmt.Errorf("build network request")
+		return OutboundResponse{}, false, fmt.Errorf("build network request")
 	}
+	var wroteRequest atomic.Bool
+	request = request.WithContext(httptrace.WithClientTrace(request.Context(), &httptrace.ClientTrace{
+		WroteRequest: func(httptrace.WroteRequestInfo) { wroteRequest.Store(true) },
+	}))
 	request.Header.Set("Accept", "application/json")
 	request.Header.Set("Accept-Encoding", "identity")
 	if method == http.MethodPost {
 		request.Header.Set("Content-Type", "application/json")
+	}
+	for name, value := range headers {
+		request.Header.Set(name, value)
 	}
 	transport := &http.Transport{
 		Proxy:                  nil,
@@ -661,7 +910,6 @@ func (gateway *RPCGateway) do(ctx context.Context, destination validatedDestinat
 	}
 	client := &http.Client{
 		Transport: transport,
-		Timeout:   gateway.requestTimeout,
 		CheckRedirect: func(*http.Request, []*http.Request) error {
 			return errors.New("network redirects are not allowed")
 		},
@@ -669,27 +917,24 @@ func (gateway *RPCGateway) do(ctx context.Context, destination validatedDestinat
 	defer transport.CloseIdleConnections()
 	response, err := client.Do(request)
 	if err != nil {
-		return nil, &networkTransportError{message: fmt.Sprintf("network request to %s failed", RedactNetworkURL(destination.rawURL)), cause: safeTransportCause(err)}
+		return OutboundResponse{}, wroteRequest.Load(), &networkTransportError{message: fmt.Sprintf("network request to %s failed", RedactNetworkURL(destination.rawURL)), cause: safeTransportCause(err)}
 	}
 	defer func() { _ = response.Body.Close() }()
-	if response.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("network request to %s returned status %d", RedactNetworkURL(destination.rawURL), response.StatusCode)
-	}
 	if encoding := strings.TrimSpace(response.Header.Get("Content-Encoding")); encoding != "" && !strings.EqualFold(encoding, "identity") {
-		return nil, fmt.Errorf("compressed network responses are not accepted")
+		return OutboundResponse{}, true, fmt.Errorf("compressed network responses are not accepted")
 	}
 	if response.ContentLength > maxBytes {
-		return nil, fmt.Errorf("network response exceeds size policy")
+		return OutboundResponse{}, true, fmt.Errorf("network response exceeds size policy")
 	}
 	limited := io.LimitReader(response.Body, maxBytes+1)
 	data, err := io.ReadAll(limited)
 	if err != nil {
-		return nil, fmt.Errorf("read network response: %w", err)
+		return OutboundResponse{}, true, fmt.Errorf("read network response: %w", err)
 	}
 	if int64(len(data)) > maxBytes {
-		return nil, fmt.Errorf("network response exceeds size policy")
+		return OutboundResponse{}, true, fmt.Errorf("network response exceeds size policy")
 	}
-	return data, nil
+	return OutboundResponse{StatusCode: response.StatusCode, Body: data}, true, nil
 }
 
 func rejectDuplicateRPCJSONKeys(data []byte) error {
@@ -828,7 +1073,9 @@ func isUnsafeNetworkAddress(address netip.Addr) bool {
 		netip.MustParsePrefix("198.51.100.0/24"),
 		netip.MustParsePrefix("203.0.113.0/24"),
 		netip.MustParsePrefix("240.0.0.0/4"),
+		netip.MustParsePrefix("::/96"),
 		netip.MustParsePrefix("64:ff9b::/96"),
+		netip.MustParsePrefix("64:ff9b:1::/48"),
 		netip.MustParsePrefix("2001::/32"),
 		netip.MustParsePrefix("2001:db8::/32"),
 		netip.MustParsePrefix("2002::/16"),

@@ -11,9 +11,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	"net/http"
 	"os"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -21,6 +24,7 @@ import (
 
 	gethaccounts "github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
@@ -28,13 +32,14 @@ import (
 // the key from the path (single path supported) and returns canonical
 // response payloads.
 type ledgerMockTransport struct {
-	key           *ecdsa.PrivateKey
-	deny          bool
-	malformed     bool
-	wrongAddress  bool
-	extraResponse bool
-	received      []byte
-	exchangeCalls int
+	key              *ecdsa.PrivateKey
+	deny             bool
+	malformed        bool
+	wrongAddress     bool
+	extraResponse    bool
+	appConfiguration []byte
+	received         []byte
+	exchangeCalls    int
 }
 
 func (transport *ledgerMockTransport) Exchange(_ context.Context, cla, ins, p1, p2 byte, data []byte) ([]byte, uint16, error) {
@@ -47,6 +52,11 @@ func (transport *ledgerMockTransport) Exchange(_ context.Context, cla, ins, p1, 
 		return nil, ledgerSWDeny, nil
 	}
 	switch ins {
+	case ledgerINSGetAppConfiguration:
+		if transport.appConfiguration != nil {
+			return append([]byte(nil), transport.appConfiguration...), ledgerSWOK, nil
+		}
+		return []byte{0x00, 0x01, 0x16, 0x03}, ledgerSWOK, nil
 	case ledgerINSGetPublicKey:
 		if transport.malformed {
 			return []byte{0x01}, ledgerSWOK, nil
@@ -95,6 +105,25 @@ func (transport *ledgerMockTransport) Exchange(_ context.Context, cla, ins, p1, 
 	default:
 		return nil, 0x6d00, nil
 	}
+}
+
+type concurrentLedgerTransport struct {
+	delegate APDUTransport
+	active   atomic.Int32
+	maximum  atomic.Int32
+}
+
+func (transport *concurrentLedgerTransport) Exchange(ctx context.Context, cla, ins, p1, p2 byte, data []byte) ([]byte, uint16, error) {
+	active := transport.active.Add(1)
+	defer transport.active.Add(-1)
+	for {
+		maximum := transport.maximum.Load()
+		if active <= maximum || transport.maximum.CompareAndSwap(maximum, active) {
+			break
+		}
+	}
+	time.Sleep(5 * time.Millisecond)
+	return transport.delegate.Exchange(ctx, cla, ins, p1, p2, data)
 }
 
 type chunkedLedgerTransport struct {
@@ -324,56 +353,88 @@ func TestLedgerDeviceFailClosed(t *testing.T) {
 	}
 }
 
-// speculosHTTPTransport talks to the Speculos HTTP API (/apdu endpoint).
-type speculosHTTPTransport struct {
-	baseURL string
-	client  *http.Client
+func TestLedgerSecureAppBaseline(t *testing.T) {
+	key, err := ecdsa.GenerateKey(crypto.S256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secureTransport := &ledgerMockTransport{key: key}
+	secureDevice, err := NewLedgerDevice(secureTransport)
+	if err != nil {
+		t.Fatal(err)
+	}
+	configuration, err := secureDevice.GetAppConfiguration(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !configuration.Secure() || configuration.Major != 1 || configuration.Minor != 22 || configuration.Patch != 3 {
+		t.Fatalf("unexpected secure configuration: %+v", configuration)
+	}
+	account := &wallet.Account{
+		AccountID: "11111111-1111-4111-8111-111111111111",
+		Address:   crypto.PubkeyToAddress(key.PublicKey).Hex(), SignerKind: wallet.SignerKindHardware,
+		SignerReference: "ledger:v1:m/44'/60'/0'/0/0", State: wallet.AccountStateActive,
+	}
+	insecureTransport := &ledgerMockTransport{key: key, appConfiguration: []byte{0, 1, 22, 1}}
+	insecureDevice, err := NewLedgerDevice(insecureTransport)
+	if err != nil {
+		t.Fatal(err)
+	}
+	insecureSigner, err := NewLedgerSigner(insecureDevice, fakeAccountLookup{account: account}, fakeApprovalVerifier{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := insecureSigner.SignPersonalMessage(context.Background(), LedgerPersonalMessageRequest{
+		AccountID: account.AccountID, Message: []byte("message"), IntentHash: [32]byte{1},
+		ApprovalID: "21111111-1111-4111-8111-111111111111",
+	}); !errors.Is(err, ErrLedgerInsecureApp) {
+		t.Fatalf("insecure Ledger app was accepted: %v", err)
+	}
+	if insecureTransport.exchangeCalls != 1 {
+		t.Fatalf("insecure app reached signing APDU: %d calls", insecureTransport.exchangeCalls)
+	}
+	if !errors.Is(mapLedgerStatus(ledgerSWCanceled), ErrLedgerDenied) {
+		t.Fatal("Ledger cancellation status was not mapped to denial")
+	}
 }
 
-func newSpeculosHTTPTransport(baseURL string) *speculosHTTPTransport {
-	return &speculosHTTPTransport{
-		baseURL: strings.TrimSuffix(baseURL, "/"),
-		client:  &http.Client{Timeout: 2 * time.Minute},
-	}
-}
-
-func (transport *speculosHTTPTransport) Exchange(ctx context.Context, cla, ins, p1, p2 byte, data []byte) ([]byte, uint16, error) {
-	payload := []byte{cla, ins, p1, p2, byte(len(data))}
-	payload = append(payload, data...)
-	requestBody, err := json.Marshal(map[string]string{"data": hex.EncodeToString(payload)})
+func TestLedgerDeviceSerializesConcurrentAPDUs(t *testing.T) {
+	key, err := ecdsa.GenerateKey(crypto.S256(), rand.Reader)
 	if err != nil {
-		return nil, 0, err
+		t.Fatal(err)
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, transport.baseURL+"/apdu",
-		bytes.NewReader(requestBody))
+	transport := &concurrentLedgerTransport{delegate: &ledgerMockTransport{key: key}}
+	device, err := NewLedgerDevice(transport)
 	if err != nil {
-		return nil, 0, err
+		t.Fatal(err)
 	}
-	request.Header.Set("Content-Type", "application/json")
-	response, err := transport.client.Do(request)
-	if err != nil {
-		return nil, 0, err
+	start := make(chan struct{})
+	errorsChannel := make(chan error, 2)
+	var wait sync.WaitGroup
+	wait.Add(2)
+	go func() {
+		defer wait.Done()
+		<-start
+		_, err := device.GetAppConfiguration(context.Background())
+		errorsChannel <- err
+	}()
+	go func() {
+		defer wait.Done()
+		<-start
+		_, err := device.GetPublicKey(context.Background(), "m/44'/60'/0'/0/0")
+		errorsChannel <- err
+	}()
+	close(start)
+	wait.Wait()
+	close(errorsChannel)
+	for err := range errorsChannel {
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
-	defer func() { _ = response.Body.Close() }()
-	body, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
-	if err != nil {
-		return nil, 0, err
+	if transport.maximum.Load() != 1 {
+		t.Fatalf("Ledger APDUs overlapped: maximum=%d", transport.maximum.Load())
 	}
-	if response.StatusCode != http.StatusOK {
-		return nil, 0, fmt.Errorf("%w: speculos status %d", ErrLedgerTransport, response.StatusCode)
-	}
-	var decodedResponse struct {
-		Data string `json:"data"`
-	}
-	if err := json.Unmarshal(body, &decodedResponse); err != nil {
-		return nil, 0, ErrLedgerTransport
-	}
-	decoded, err := hex.DecodeString(decodedResponse.Data)
-	if err != nil || len(decoded) < 2 {
-		return nil, 0, ErrLedgerTransport
-	}
-	status := uint16(decoded[len(decoded)-2])<<8 | uint16(decoded[len(decoded)-1])
-	return decoded[:len(decoded)-2], status, nil
 }
 
 func TestLedgerSignerRequiresStructuredApprovedIntent(t *testing.T) {
@@ -603,7 +664,7 @@ func runSpeculosSigning(ctx context.Context, baseURL string, sign func(context.C
 				if err := speculosPress(ctx, baseURL, "both"); err != nil {
 					return nil, err
 				}
-			case strings.Contains(screen, "Sign message"):
+			case strings.Contains(screen, "Sign message"), strings.Contains(screen, "Sign transaction"), strings.Contains(screen, "Accept transaction"), strings.Contains(screen, "Accept and send"):
 				if err := speculosPress(ctx, baseURL, "both"); err != nil {
 					return nil, err
 				}
@@ -637,9 +698,20 @@ func TestLedgerSpeculosIntegration(t *testing.T) {
 	if err := ensureSpeculosBlindSigning(ctx, speculosURL); err != nil {
 		t.Fatal(err)
 	}
-	device, err := NewLedgerDevice(newSpeculosHTTPTransport(speculosURL))
+	transport, err := NewSpeculosTransport(speculosURL, testGatewayForServer(t, speculosURL))
 	if err != nil {
 		t.Fatal(err)
+	}
+	device, err := NewLedgerDevice(transport)
+	if err != nil {
+		t.Fatal(err)
+	}
+	configuration, err := device.GetAppConfiguration(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !configuration.Secure() {
+		t.Fatalf("Speculos Ethereum app is below 1.22.3: %+v", configuration)
 	}
 	result, err := device.GetPublicKey(ctx, "m/44'/60'/0'/0/0")
 	if err != nil {
@@ -658,6 +730,35 @@ func TestLedgerSpeculosIntegration(t *testing.T) {
 	}
 	if crypto.PubkeyToAddress(*publicKey) != result.Address {
 		t.Fatal("speculos address does not match its public key")
+	}
+	to := common.HexToAddress("0x1111111111111111111111111111111111111111")
+	transactionTests := []struct {
+		transaction *types.Transaction
+		signer      types.Signer
+	}{
+		{
+			transaction: types.NewTx(&types.LegacyTx{Nonce: 1, GasPrice: big.NewInt(2_000_000_000), Gas: 21_000, To: &to, Value: big.NewInt(1)}),
+			signer:      types.NewEIP155Signer(big.NewInt(1)),
+		},
+		{
+			transaction: types.NewTx(&types.DynamicFeeTx{ChainID: big.NewInt(1), Nonce: 2, GasTipCap: big.NewInt(1_000_000_000), GasFeeCap: big.NewInt(2_000_000_000), Gas: 21_000, To: &to, Value: big.NewInt(1)}),
+			signer:      types.NewLondonSigner(big.NewInt(1)),
+		},
+	}
+	for _, transactionTest := range transactionTests {
+		digest := transactionTest.signer.Hash(transactionTest.transaction)
+		signature, err := runSpeculosSigning(ctx, speculosURL, func(signContext context.Context) ([]byte, error) {
+			return device.SignTransaction(signContext, LedgerTransactionIntent{
+				UnsignedTransaction: transactionTest.transaction, ChainID: big.NewInt(1),
+				DerivationPath: "m/44'/60'/0'/0/0", Digest: digest, ExpectedAddress: result.Address,
+			})
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := verifyECDSASignature(result.Address, digest, signature); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	var domain, message [32]byte

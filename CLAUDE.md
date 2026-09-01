@@ -80,13 +80,13 @@ The project uses **dual-parameter testing**:
 Always use `make test-fast` or `make t` during development, and `make test-production` before releases.
 
 ### Build Tags and CGO
-- **CGO**: Required for SQLite support (`CGO_ENABLED=1`)
-- **Build tags**: `netgo` for networking, `production` for secure crypto parameters
+- **CGO**: Optional; native builds use `CGO_ENABLED=1`, while release/static builds use the pure-Go SQLite path with `CGO_ENABLED=0`
+- **Build tags**: `netgo` for networking, `nocgo` for pure-Go SQLite, `production` for secure crypto parameters
 - **macOS**: Automatically handles linker warnings with `CGO_LDFLAGS="-Wl,-ld_classic"`
 - **Static builds**: Available with pure Go SQLite driver (`make build-static`)
 
 ### Configuration Files
-- **go.mod**: Go 1.24.3+ required
+- **go.mod**: Go 1.26.7+ required
 - **Makefile**: Comprehensive build automation with cross-platform support
 - **.golangci.yml**: Linting configuration (install with `make deps`)
 

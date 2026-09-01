@@ -26,7 +26,6 @@ func TestReadCanonicalKeystoreBatchUsesRegularJSONFiles(t *testing.T) {
 			Address:    crypto.PubkeyToAddress(key.PublicKey),
 			PrivateKey: key,
 		}, string(password), keystore.LightScryptN, keystore.LightScryptP)
-		key.D.SetInt64(0)
 		if err != nil {
 			t.Fatal(err)
 		}

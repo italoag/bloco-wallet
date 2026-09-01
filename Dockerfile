@@ -1,59 +1,38 @@
-# Multi-stage build for optimal image size
-FROM --platform=$BUILDPLATFORM golang:1.24.6-alpine AS builder
+FROM public.ecr.aws/docker/library/golang:1.26.7-alpine@sha256:28d89ee9cc0ff9fec75c82ca201e6bf7fdf9a679d4b7b24dfa04f2bb766bb468 AS builder
 
-# Build arguments
 ARG TARGETOS
 ARG TARGETARCH
 ARG VERSION=dev
 ARG GIT_REV=unknown
 ARG BUILD_DATE=unknown
+ARG GOPROXY=https://proxy.golang.org,direct
+ARG GOSUMDB=sum.golang.org
 
-# Install build dependencies
-RUN apk add --no-cache git ca-certificates tzdata
-
-# Set working directory
 WORKDIR /src
-
-# Copy go mod files first for better caching
 COPY go.mod go.sum ./
 RUN go mod download
-
-# Copy source code
 COPY . .
-
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
-    go build \
+    go build -trimpath \
+    -tags=netgo,osusergo,nocgo,timetzdata \
     -ldflags="-w -s -X main.version=${VERSION} -X main.commit=${GIT_REV} -X main.date=${BUILD_DATE}" \
-    -a -tags=netgo,sqlite_omit_load_extension \
-    -o bloco-wallet-manager \
+    -o /out/bloco-wallet-manager \
     ./cmd/blocowallet
-RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
-    go build \
-    -ldflags="-w -s -X main.version=${VERSION} -X main.commit=${GIT_REV} -X main.date=${BUILD_DATE}" \
-    -a -tags=netgo \
-    -o bloco-wallet-manager \
-    ./cmd/blocowallet
+RUN /out/bloco-wallet-manager release-smoke \
+    && mkdir -p /runtime/home/bloco /runtime/data/tmp \
+    && chown -R 65534:65534 /runtime
 
-# Final stage - minimal runtime image
 FROM scratch
 
-# Copy CA certificates for HTTPS requests
-COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=builder --chown=65534:65534 /runtime/home/bloco /home/bloco
+COPY --from=builder --chown=65534:65534 /runtime/data /data
+COPY --from=builder /out/bloco-wallet-manager /usr/local/bin/bloco-wallet-manager
 
-# Copy timezone data
-COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
-
-# Copy the binary
-COPY --from=builder /src/bloco-wallet-manager /bloco-wallet-manager
-
-# Set environment
-ENV TZ=UTC
-
-# Create a non-root user (note: this is just for metadata since we're using scratch)
+ENV HOME=/home/bloco \
+    TMPDIR=/data/tmp \
+    TZ=UTC \
+    BLOCO_WALLET_APP_APP_DIR=/data
+VOLUME ["/data"]
 USER 65534:65534
-
-# Expose port (if needed for future features)
-EXPOSE 8080
-
-# Entry point
-ENTRYPOINT ["/bloco-wallet-manager"]
+ENTRYPOINT ["/usr/local/bin/bloco-wallet-manager"]

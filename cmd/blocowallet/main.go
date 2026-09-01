@@ -37,6 +37,14 @@ func main() {
 		fmt.Printf("Build date: %s\n", date)
 		return
 	}
+	if len(os.Args) > 1 && os.Args[1] == "release-smoke" {
+		if err := runReleaseSmoke(); err != nil {
+			log.Printf("Release smoke failed: %v", err)
+			os.Exit(1)
+		}
+		fmt.Println("release smoke ok")
+		return
+	}
 
 	// Disable standard logger output to avoid terminal logs
 	log.SetOutput(io.Discard)
@@ -118,7 +126,9 @@ func main() {
 	}
 	defer vault.Close()
 	lgr.Info("Wallet vault initialized")
-	rpcGateway := blockchain.NewRPCGateway(blockchain.RPCGatewayOptions{AllowedLocalTargets: cfg.NetworkPolicy.AllowedLocalTargets})
+	allowedLocalTargets := append([]string(nil), cfg.NetworkPolicy.AllowedLocalTargets...)
+	allowedLocalTargets = append(allowedLocalTargets, hardwareEmulatorLocalTargets()...)
+	rpcGateway := blockchain.NewRPCGateway(blockchain.RPCGatewayOptions{AllowedLocalTargets: allowedLocalTargets})
 	ui.ConfigureRPCGateway(rpcGateway)
 	balanceProvider := blockchain.NewMultiProvider(rpcGateway, config.EnvironmentCredentialProvider{})
 	defer balanceProvider.Close()
@@ -127,10 +137,21 @@ func main() {
 		log.Printf("Failed to initialize transaction signer: %v", err)
 		os.Exit(1)
 	}
-	transactionSigner := configureExternalSigners(softwareSigner, repo)
-	transactionAuthorizer, err := wallet.NewTransactionAuthorizer(vault, wallet.TransactionAuthorizationMode(cfg.Security.TransactionAuthorizationMode))
+	signingBackends, err := configureExternalSigners(softwareSigner, repo, rpcGateway)
+	if err != nil {
+		log.Printf("Failed to configure signing backends: %v", err)
+		os.Exit(1)
+	}
+	defer signingBackends.close()
+	softwareAuthorizer, err := wallet.NewTransactionAuthorizer(vault, wallet.TransactionAuthorizationMode(cfg.Security.TransactionAuthorizationMode))
 	if err != nil {
 		log.Printf("Failed to initialize transaction authorizer: %v", err)
+		os.Exit(1)
+	}
+	transactionAuthorizer, err := wallet.NewSigningAuthorizer(softwareAuthorizer, repo)
+	if err != nil {
+		softwareAuthorizer.Close()
+		log.Printf("Failed to initialize signer-aware authorizer: %v", err)
 		os.Exit(1)
 	}
 	defer transactionAuthorizer.Close()
@@ -145,9 +166,10 @@ func main() {
 	app.ConfigureHistoryReader(repo)
 	app.ConfigureTransactionAuthorizer(transactionAuthorizer)
 	app.ConfigureMessageSigningFactory(func(context.Context) (ui.MessageSigningService, error) {
-		return evm.NewMessageSigningService(repo, transactionSigner, evm.MessageSigningOptions{ApprovalTTL: 2 * time.Minute})
+		return evm.NewMessageSigningServiceWithStructuredSigner(repo, signingBackends.structured, evm.MessageSigningOptions{ApprovalTTL: 2 * time.Minute})
 	})
-	configureWalletConnect(app, repo)
+	walletConnectCleanup := configureWalletConnect(app, repo, rpcGateway)
+	defer walletConnectCleanup()
 	createEngine := func(ctx context.Context, network config.Network) (*evm.Engine, error) {
 		endpoint, err := network.ResolveRPCEndpoint(config.EnvironmentCredentialProvider{})
 		if err != nil {
@@ -161,7 +183,7 @@ func main() {
 		if err != nil {
 			return nil, err
 		}
-		return evm.NewEngine(repo, rpc, transactionSigner, evm.EngineOptions{
+		return evm.NewEngineWithStructuredSigner(repo, rpc, signingBackends.structured, evm.EngineOptions{
 			ReservationTTL: 5 * time.Minute,
 			ApprovalTTL:    2 * time.Minute,
 		})

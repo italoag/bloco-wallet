@@ -106,12 +106,16 @@ func NewService(relay Relay, store SessionStore, options Options) (*Service, err
 
 // OnProposal registers the proposal approval hook.
 func (service *Service) OnProposal(handler ProposalHandler) {
+	service.mu.Lock()
 	service.onProposal = handler
+	service.mu.Unlock()
 }
 
 // OnRequest registers the session request approval hook.
 func (service *Service) OnRequest(handler RequestHandler) {
+	service.mu.Lock()
 	service.onRequest = handler
+	service.mu.Unlock()
 }
 
 // SetKey binds an AES-256 key to a topic for inbound envelope decryption.
@@ -128,22 +132,38 @@ func (service *Service) SetKey(topic string, key []byte) error {
 	return nil
 }
 
+// Topics returns the encrypted topics that must be restored after reconnect.
+func (service *Service) Topics() []string {
+	service.mu.Lock()
+	defer service.mu.Unlock()
+	topics := make([]string, 0, len(service.keys))
+	for topic := range service.keys {
+		topics = append(topics, topic)
+	}
+	return topics
+}
+
 // AttachRelay binds a live relay transport after construction, enabling the
 // push loop and outbound publish/subscribe.
 func (service *Service) AttachRelay(relay Relay) {
+	service.mu.Lock()
 	service.relay = relay
+	service.mu.Unlock()
 }
 
 // Run consumes relay subscriptions and delivers them until the context ends.
 func (service *Service) Run(ctx context.Context) {
-	if service.relay == nil {
+	service.mu.Lock()
+	relay := service.relay
+	service.mu.Unlock()
+	if relay == nil {
 		return
 	}
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case subscription, ok := <-service.relay.Messages():
+		case subscription, ok := <-relay.Messages():
 			if !ok {
 				return
 			}
@@ -208,17 +228,18 @@ func (service *Service) handleProposal(ctx context.Context, topic string, propos
 		return fmt.Errorf("walletconnect: proposal already expired")
 	}
 	service.mu.Lock()
-	service.proposals[proposal.ID] = &pendingProposal{
-		proposal: proposal,
-		expires:  service.now().Add(service.proposalTTL),
-	}
-	service.mu.Unlock()
-	if service.onProposal != nil {
-		if err := service.onProposal(ctx, proposal); err != nil {
-			return err
+	handler := service.onProposal
+	if handler != nil {
+		service.proposals[proposal.ID] = &pendingProposal{
+			proposal: proposal,
+			expires:  service.now().Add(service.proposalTTL),
 		}
 	}
-	return nil
+	service.mu.Unlock()
+	if handler == nil {
+		return fmt.Errorf("walletconnect: proposal handler is unavailable")
+	}
+	return handler(ctx, proposal)
 }
 
 func (service *Service) handleSessionRequest(ctx context.Context, topic string, params *SessionRequestParams) error {
@@ -235,13 +256,16 @@ func (service *Service) handleSessionRequest(ctx context.Context, topic string, 
 	if !sessionAllowsRequest(session, params) {
 		return fmt.Errorf("walletconnect: request outside approved session scope")
 	}
-	if service.onRequest != nil {
-		if err := service.onRequest(ctx, session, params); err != nil {
-			return err
-		}
+	service.mu.Lock()
+	handler := service.onRequest
+	service.mu.Unlock()
+	if handler == nil {
+		return fmt.Errorf("walletconnect: request handler is unavailable")
 	}
-	_ = service.store.TouchSession(ctx, topic, service.now().UnixMilli())
-	return nil
+	if err := handler(ctx, session, params); err != nil {
+		return err
+	}
+	return service.store.TouchSession(ctx, topic, service.now().UnixMilli())
 }
 
 // sessionAllowsRequest enforces the approved namespaces: the request method

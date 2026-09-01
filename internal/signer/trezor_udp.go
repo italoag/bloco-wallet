@@ -8,6 +8,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -49,9 +50,10 @@ type udpPacketTransport struct {
 }
 
 type UDPDevice struct {
-	address       string
-	transport     trezorPacketTransport
-	buttonHandler func(context.Context) error
+	address        string
+	transport      trezorPacketTransport
+	buttonHandler  func(context.Context) error
+	conversationMu sync.Mutex
 }
 
 func NewUDPDevice(ctx context.Context, address string) (*UDPDevice, error) {
@@ -80,10 +82,20 @@ func NewUDPDevice(ctx context.Context, address string) (*UDPDevice, error) {
 }
 
 func (device *UDPDevice) SetButtonHandler(handler func(context.Context) error) {
+	if device == nil {
+		return
+	}
+	device.conversationMu.Lock()
 	device.buttonHandler = handler
+	device.conversationMu.Unlock()
 }
 
 func (device *UDPDevice) Initialize(ctx context.Context) (TrezorFeatures, error) {
+	if device == nil {
+		return TrezorFeatures{}, fmt.Errorf("trezor signer: transport closed")
+	}
+	device.conversationMu.Lock()
+	defer device.conversationMu.Unlock()
 	features, err := device.call(ctx, trezorMessageInitialize, trezorMessageFeatures, nil)
 	if err != nil {
 		return TrezorFeatures{}, err
@@ -92,6 +104,11 @@ func (device *UDPDevice) Initialize(ctx context.Context) (TrezorFeatures, error)
 }
 
 func (device *UDPDevice) EthereumGetPublicKey(ctx context.Context, derivationPath string) ([]byte, error) {
+	if device == nil {
+		return nil, fmt.Errorf("trezor signer: transport closed")
+	}
+	device.conversationMu.Lock()
+	defer device.conversationMu.Unlock()
 	path, err := derivationPathToNumbers(derivationPath)
 	if err != nil {
 		return nil, err
@@ -105,6 +122,11 @@ func (device *UDPDevice) EthereumGetPublicKey(ctx context.Context, derivationPat
 }
 
 func (device *UDPDevice) EthereumSignTypedHash(ctx context.Context, derivationPath string, domainSeparatorHash, messageHash [32]byte) ([]byte, error) {
+	if device == nil {
+		return nil, fmt.Errorf("trezor signer: transport closed")
+	}
+	device.conversationMu.Lock()
+	defer device.conversationMu.Unlock()
 	path, err := derivationPathToNumbers(derivationPath)
 	if err != nil {
 		return nil, err
@@ -120,6 +142,11 @@ func (device *UDPDevice) EthereumSignTypedHash(ctx context.Context, derivationPa
 }
 
 func (device *UDPDevice) EthereumSignMessage(ctx context.Context, derivationPath string, message []byte) ([]byte, error) {
+	if device == nil {
+		return nil, fmt.Errorf("trezor signer: transport closed")
+	}
+	device.conversationMu.Lock()
+	defer device.conversationMu.Unlock()
 	if len(message) == 0 || len(message) > 64<<10 {
 		return nil, fmt.Errorf("trezor signer: message size")
 	}
@@ -140,6 +167,8 @@ func (device *UDPDevice) Close() error {
 	if device == nil || device.transport == nil {
 		return nil
 	}
+	device.conversationMu.Lock()
+	defer device.conversationMu.Unlock()
 	return device.transport.Close()
 }
 
@@ -171,14 +200,14 @@ func (device *UDPDevice) call(ctx context.Context, messageType, expectedResponse
 	}
 	for responseType == trezorMessageButtonRequest {
 		if device.buttonHandler == nil {
-			_ = device.writeMessage(ctx, trezorMessageCancel, nil)
+			_ = device.cancelAndDrain(ctx)
 			return nil, ErrTrezorInteractionRequired
 		}
 		if err := device.writeMessage(ctx, trezorMessageButtonAck, nil); err != nil {
 			return nil, err
 		}
 		if err := device.buttonHandler(ctx); err != nil {
-			_ = device.writeMessage(ctx, trezorMessageCancel, nil)
+			_ = device.cancelAndDrain(ctx)
 			return nil, fmt.Errorf("trezor signer: device confirmation: %w", err)
 		}
 		responseType, responsePayload, err = device.readMessage(ctx)
@@ -190,13 +219,35 @@ func (device *UDPDevice) call(ctx context.Context, messageType, expectedResponse
 	case trezorMessageFailure:
 		return nil, ErrTrezorDeviceFailure
 	case trezorMessagePinMatrixRequest, trezorMessagePassphraseRequest:
-		_ = device.writeMessage(ctx, trezorMessageCancel, nil)
+		_ = device.cancelAndDrain(ctx)
 		return nil, ErrTrezorLocked
 	}
 	if responseType != expectedResponseType {
 		return nil, fmt.Errorf("trezor signer: unexpected response type %d", responseType)
 	}
 	return responsePayload, nil
+}
+
+func (device *UDPDevice) cancelAndDrain(parent context.Context) error {
+	base := context.Background()
+	if parent != nil {
+		base = context.WithoutCancel(parent)
+	}
+	ctx, cancel := context.WithTimeout(base, 2*time.Second)
+	defer cancel()
+	if err := device.writeMessage(ctx, trezorMessageCancel, nil); err != nil {
+		_ = device.transport.Close()
+		return err
+	}
+	messageType, _, err := device.readMessage(ctx)
+	if err != nil || messageType != trezorMessageFailure {
+		_ = device.transport.Close()
+		if err != nil {
+			return err
+		}
+		return fmt.Errorf("trezor signer: cancel returned response type %d", messageType)
+	}
+	return nil
 }
 
 func (device *UDPDevice) exchange(ctx context.Context, messageType int, payload []byte) (int, []byte, error) {

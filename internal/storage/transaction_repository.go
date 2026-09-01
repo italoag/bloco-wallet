@@ -106,8 +106,10 @@ func (repository *GORMRepository) VerifyTransactionApproval(ctx context.Context,
 	var count int64
 	err := repository.db.WithContext(ctx).Table("evm_approvals AS approval").
 		Joins("JOIN evm_transactions AS transaction_record ON transaction_record.approval_id = approval.approval_id").
-		Where("approval.approval_id = ? AND approval.account_id = ? AND approval.chain_id = ? AND approval.transaction_digest = ? AND approval.state = ?", binding.ApprovalID, binding.AccountID, int64(binding.ChainID), binding.Digest[:], string(evm.ApprovalConsumed)).
-		Where("transaction_record.account_id = ? AND transaction_record.chain_id = ? AND transaction_record.transaction_digest = ? AND transaction_record.state = ?", binding.AccountID, int64(binding.ChainID), binding.Digest[:], string(evm.TransactionSigning)).
+		Joins("JOIN accounts AS account ON account.account_id = approval.account_id").
+		Where("approval.approval_id = ? AND approval.account_id = ? AND approval.chain_id = ? AND approval.transaction_digest = ? AND approval.state = ? AND approval.consumed_at_ms IS NOT NULL AND approval.consumed_at_ms >= approval.created_at_ms AND approval.consumed_at_ms < approval.expires_at_ms", binding.ApprovalID, binding.AccountID, int64(binding.ChainID), binding.Digest[:], string(evm.ApprovalConsumed)).
+		Where("transaction_record.account_id = ? AND transaction_record.chain_id = ? AND transaction_record.transaction_digest = ? AND transaction_record.plan_hash = approval.plan_hash AND transaction_record.sender_address = approval.sender_address AND transaction_record.state = ?", binding.AccountID, int64(binding.ChainID), binding.Digest[:], string(evm.TransactionSigning)).
+		Where("account.authorization_epoch = approval.authorization_epoch AND account.state IN ? AND account.signer_kind IN ? AND (account.capabilities & ?) != 0", []string{string(wallet.AccountStateActive), string(wallet.AccountStateLocked)}, []string{string(wallet.SignerKindSoftware), string(wallet.SignerKindCloud), string(wallet.SignerKindHardware)}, int64(wallet.CapabilitySignTransaction)).
 		Count(&count).Error
 	if err != nil {
 		return fmt.Errorf("verify transaction approval")
@@ -264,6 +266,9 @@ func (repository *GORMRepository) BeginFirstBroadcast(ctx context.Context, reque
 	result := repository.db.WithContext(ctx).Model(&evmTransactionRow{}).Where(
 		"transaction_id = ? AND state = ? AND signed_payload IS NULL AND broadcast_attempts = 0",
 		request.TransactionID, string(evm.TransactionSigning),
+	).Where(
+		"EXISTS (SELECT 1 FROM evm_approvals approval JOIN accounts account ON account.account_id = approval.account_id WHERE approval.approval_id = evm_transactions.approval_id AND account.authorization_epoch = approval.authorization_epoch AND account.state IN ? AND (account.capabilities & ?) != 0)",
+		[]string{string(wallet.AccountStateActive), string(wallet.AccountStateLocked)}, int64(wallet.CapabilitySignTransaction),
 	).Updates(map[string]any{
 		"state":                 string(evm.TransactionBroadcasting),
 		"signed_payload":        append([]byte(nil), request.SignedPayload...),
@@ -739,7 +744,7 @@ func validateTransactionAccount(transaction *gorm.DB, accountID string, sender c
 	if err := transaction.Select("account_id", "address", "signer_kind", "state", "capabilities", "authorization_epoch").Where("account_id = ?", accountID).First(&account).Error; err != nil {
 		return fmt.Errorf("load transaction account: %w", err)
 	}
-	if common.HexToAddress(account.Address) != sender || account.SignerKind != wallet.SignerKindSoftware || (account.State != wallet.AccountStateActive && account.State != wallet.AccountStateLocked) || account.Capabilities&wallet.CapabilitySignTransaction == 0 {
+	if common.HexToAddress(account.Address) != sender || !account.SignerKind.SupportsEOASigning() || (account.State != wallet.AccountStateActive && account.State != wallet.AccountStateLocked) || account.Capabilities&wallet.CapabilitySignTransaction == 0 {
 		return &evm.EngineError{Code: evm.ErrorPolicyDenied, Field: "transaction account"}
 	}
 	if authorizationEpoch != 0 && account.AuthorizationEpoch != authorizationEpoch {

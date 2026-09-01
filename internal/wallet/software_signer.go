@@ -160,7 +160,6 @@ func (signer *SoftwareSigner) Sign(ctx context.Context, handle CapabilityHandle,
 		if err != nil {
 			return fmt.Errorf("load software signing key: %w", err)
 		}
-		defer privateKey.D.SetInt64(0)
 		signed, err := crypto.Sign(request.Digest[:], privateKey)
 		if err != nil {
 			return fmt.Errorf("sign approved request: %w", err)

@@ -53,7 +53,6 @@ func TestEIP712SignFlowSelectsChainPreviewsFieldsAndSigns(t *testing.T) {
 		t.Fatal(err)
 	}
 	signerAddress := crypto.PubkeyToAddress(key.PublicKey)
-	key.D.SetInt64(0)
 	cfg := &config.Config{Networks: map[string]config.Network{"mainnet": {Name: "Mainnet", ChainID: 1, IsActive: true}}}
 	model := &CLIModel{
 		width: 120, height: 30, styles: createStyles(), currentConfig: cfg,

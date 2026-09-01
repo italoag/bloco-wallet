@@ -2,269 +2,189 @@ name: Release
 
 on:
   push:
-    tags:
-      - 'v*.*.*'
+    tags: ['v*.*.*']
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag to release'
+        description: Existing tag to release
         required: true
         type: string
+
 env:
-  GO_VERSION: '1.24.x'
+  GO_VERSION: '1.26.7'
 
 permissions:
-  contents: write
-  issues: write
-  pull-requests: write
-  packages: write
-  security-events: write
+  contents: read
 
 jobs:
-  create-release:
-    name: Create Release
+  prepare:
+    name: Resolve immutable release commit
     runs-on: ubuntu-latest
     outputs:
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
-      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.resolve.outputs.tag }}
+      sha: ${{ steps.resolve.outputs.sha }}
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-
-      - name: Get version
-        id: version
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "version=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
-          else
-            echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Generate changelog
-        id: changelog
-        run: |
-          # Generate changelog from git commits since last tag
-          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-          if [ -n "$PREVIOUS_TAG" ]; then
-            CHANGELOG=$(git log --pretty=format:"- %s (%h)" $PREVIOUS_TAG..HEAD)
-          else
-            CHANGELOG=$(git log --pretty=format:"- %s (%h)" HEAD)
-          fi
-          
-          # Save changelog to file and output
-          echo "$CHANGELOG" > changelog.txt
-          echo "changelog<<EOF" >> $GITHUB_OUTPUT
-          echo "$CHANGELOG" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
+          persist-credentials: false
+      - id: resolve
+        name: Validate tag and resolve commit
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_PAT_TOKEN }}
-        with:
-          tag_name: ${{ steps.version.outputs.version }}
-          release_name: Release ${{ steps.version.outputs.version }}
-          body: |
-            ## Changes in ${{ steps.version.outputs.version }}
-            
-            ${{ steps.changelog.outputs.changelog }}
-            
-            ## Installation
-            
-            ### Binary Downloads
-            Download the appropriate binary for your platform from the assets below.
-            
-            ### Using Go
-            ```bash
-            go install github.com/italoag/bloco-wallet/cmd/blocowallet@${{ steps.version.outputs.version }}
-            ```
-            
-            ### Docker
-            ```bash
-            docker pull ghcr.io/italoag/bloco-wallet:${{ steps.version.outputs.version }}
-            ```
-            
-            ## Verification
-            All binaries are signed and checksums are provided for verification.
-          draft: false
-          prerelease: ${{ contains(steps.version.outputs.version, '-') }}
+          DISPATCH_TAG: ${{ inputs.tag }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [ "$EVENT_NAME" = workflow_dispatch ]; then
+            TAG=$DISPATCH_TAG
+          else
+            TAG=$REF_NAME
+          fi
+          if ! printf '%s' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$'; then
+            echo 'Invalid release tag' >&2
+            exit 1
+          fi
+          git rev-parse --verify "refs/tags/$TAG^{commit}" >/dev/null
+          SHA=$(git rev-list -n 1 "$TAG")
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$SHA" origin/main; then
+            echo 'Release tag is not reachable from main' >&2
+            exit 1
+          fi
+          printf 'tag=%s\nsha=%s\n' "$TAG" "$SHA" >> "$GITHUB_OUTPUT"
 
-  build-and-upload:
-    name: Build and Upload
+  verify:
+    name: Verify release commit
+    needs: prepare
     runs-on: ubuntu-latest
-    needs: create-release
-    strategy:
-      matrix:
-        include:
-          - goos: linux
-            goarch: amd64
-          - goos: linux
-            goarch: arm64
-          - goos: darwin
-            goarch: amd64
-          - goos: darwin
-            goarch: arm64
-          - goos: windows
-            goarch: amd64
-
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
+          ref: ${{ needs.prepare.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
+      - name: Verify modules and tests
+        run: |
+          go mod verify
+          go test ./... -race -count=1 -tags=production -timeout=25m
+          go install golang.org/x/vuln/cmd/govulncheck@v1.6.0
+          govulncheck ./...
 
-      - name: Build binary
+  build:
+    name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
+    needs: [prepare, verify]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            extension: ''
+          - runner: ubuntu-24.04-arm
+            goos: linux
+            goarch: arm64
+            extension: ''
+          - runner: macos-15-intel
+            goos: darwin
+            goarch: amd64
+            extension: ''
+          - runner: macos-14
+            goos: darwin
+            goarch: arm64
+            extension: ''
+          - runner: windows-latest
+            goos: windows
+            goarch: amd64
+            extension: '.exe'
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: Build native artifact
+        shell: bash
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
-          CGO_ENABLED: 0
+          CGO_ENABLED: '0'
+          VERSION: ${{ needs.prepare.outputs.tag }}
+          COMMIT: ${{ needs.prepare.outputs.sha }}
         run: |
-          export BINARY_NAME=blocowallet
-          if [ "$GOOS" = "windows" ]; then
-            export BINARY_NAME="${BINARY_NAME}.exe"
-          fi
-          
           mkdir -p dist
-          
-          go build \
-            -ldflags="-w -s -X main.version=${{ needs.create-release.outputs.version }} -X main.commit=${{ github.sha }} -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            -o dist/${BINARY_NAME} \
-            ./cmd/blocowallet
+          OUTPUT="dist/blocowallet-${VERSION}-${GOOS}-${GOARCH}${{ matrix.extension }}"
+          go build -trimpath -tags=netgo,nocgo \
+            -ldflags="-w -s -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            -o "$OUTPUT" ./cmd/blocowallet
+          "$OUTPUT" --version
+          "$OUTPUT" release-smoke
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: binary-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
 
-      - name: Create archive
+  publish:
+    name: Attest and draft release
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: binary-*
+          path: dist
+          merge-multiple: true
+      - name: Generate checksums and SBOM
+        env:
+          VERSION: ${{ needs.prepare.outputs.tag }}
         run: |
           cd dist
-          BINARY_NAME=blocowallet
-          if [ "${{ matrix.goos }}" = "windows" ]; then
-            BINARY_NAME="${BINARY_NAME}.exe"
-            ARCHIVE_NAME="blocowallet-${{ needs.create-release.outputs.version }}-${{ matrix.goos }}-${{ matrix.goarch }}.zip"
-            zip "${ARCHIVE_NAME}" "${BINARY_NAME}"
-          else
-            ARCHIVE_NAME="blocowallet-${{ needs.create-release.outputs.version }}-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz"
-            tar -czf "${ARCHIVE_NAME}" "${BINARY_NAME}"
+          sha256sum blocowallet-* > checksums.txt
+          cd ..
+          make sbom VERSION="$VERSION"
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            dist/blocowallet-*
+            dist/checksums.txt
+            dist/sbom.json
+      - name: Create immutable draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          EXPECTED_SHA: ${{ needs.prepare.outputs.sha }}
+        run: |
+          git fetch --force origin "refs/tags/$TAG:refs/tags/$TAG"
+          ACTUAL_SHA=$(git rev-list -n 1 "$TAG")
+          if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
+            echo 'Release tag moved after verification' >&2
+            exit 1
           fi
-          echo "ARCHIVE_NAME=${ARCHIVE_NAME}" >> $GITHUB_ENV
-          echo "ARCHIVE_PATH=dist/${ARCHIVE_NAME}" >> $GITHUB_ENV
-
-      - name: Upload Release Asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ${{ env.ARCHIVE_PATH }}
-          asset_name: ${{ env.ARCHIVE_NAME }}
-          asset_content_type: application/octet-stream
-
-  generate-checksums:
-    name: Generate Checksums
-    runs-on: ubuntu-latest
-    needs: [create-release, build-and-upload]
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      - name: Get release assets
-        id: assets
-        run: |
-          # Download release assets to generate checksums
-          mkdir -p checksums
-          cd checksums
-          
-          # Get all release assets
-          curl -H "Authorization: token ${{ secrets.GH_PAT_TOKEN }}" \
-               -H "Accept: application/vnd.github.v3+json" \
-               https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ needs.create-release.outputs.version }} | \
-               jq -r '.assets[] | select(.name | test("\\.(tar\\.gz|zip)$")) | .browser_download_url' | \
-               xargs -I {} wget {}
-
-      - name: Generate checksums
-        run: |
-          cd checksums
-          sha256sum * > checksums.txt
-          cat checksums.txt
-
-      - name: Upload checksums
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GH_PAT_TOKEN }}
-        with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: checksums/checksums.txt
-          asset_name: checksums.txt
-          asset_content_type: text/plain
-
-  docker-build:
-    name: Build and Push Docker Image
-    runs-on: ubuntu-latest
-    needs: create-release
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GH_PAT_TOKEN }}
-
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/${{ github.repository_owner }}/bloco-wallet
-          tags: |
-            type=ref,event=tag
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=raw,value=latest,enable={{is_default_branch}}
-
-      - name: Set build variables
-        id: vars
-        run: echo "build_date=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
-
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            VERSION=${{ needs.create-release.outputs.version }}
-            GIT_REV=${{ github.sha }}
-            BUILD_DATE=${{ steps.vars.outputs.build_date }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  notify:
-    name: Notify Release
-    runs-on: ubuntu-latest
-    needs: [create-release, build-and-upload, generate-checksums, docker-build]
-    if: always()
-    steps:
-      - name: Release Summary
-        run: |
-          echo "🚀 Release ${{ needs.create-release.outputs.version }} completed!"
-          echo "📦 Binaries built for multiple platforms"
-          echo "🐳 Docker images pushed to ghcr.io"
-          echo "🔍 Checksums generated for verification"
-          echo ""
-          echo "Download: https://github.com/${{ github.repository }}/releases/tag/${{ needs.create-release.outputs.version }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists" >&2
+            exit 1
+          fi
+          gh release create "$TAG" dist/* \
+            --verify-tag --draft --generate-notes \
+            --title "Release $TAG"

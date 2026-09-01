@@ -48,3 +48,9 @@ func TestEnsurePrivateDirectorySecuresAppOwnedDirectory(t *testing.T) {
 		}
 	}
 }
+
+func TestReleaseSmokeOpensAndReopensSQLite(t *testing.T) {
+	if err := runReleaseSmoke(); err != nil {
+		t.Fatal(err)
+	}
+}

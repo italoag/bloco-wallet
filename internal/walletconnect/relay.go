@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gorilla/websocket"
+	"blocowallet/internal/blockchain"
 )
 
 const (
@@ -25,11 +25,21 @@ type Subscription struct {
 	Data  []byte
 }
 
+type relayWebSocket interface {
+	ReadMessage() (int, []byte, error)
+	WriteJSON(any) error
+	SetReadLimit(int64)
+	SetWriteDeadline(time.Time) error
+	Close() error
+}
+
 // RelayClient is a WalletConnect relay JSON-RPC client over WebSocket.
 type RelayClient struct {
 	url       string
-	conn      *websocket.Conn
+	conn      relayWebSocket
 	mu        sync.Mutex
+	writeMu   sync.Mutex
+	wg        sync.WaitGroup
 	nextID    int64
 	pending   map[int64]chan *jsonrpcResponse
 	messages  chan Subscription
@@ -54,16 +64,15 @@ type jsonrpcResponse struct {
 }
 
 // NewRelayClient connects to the relay URL.
-func NewRelayClient(ctx context.Context, relayURL string) (*RelayClient, error) {
-	if relayURL == "" {
-		return nil, fmt.Errorf("walletconnect: relay url required")
+func NewRelayClient(ctx context.Context, relayURL string, gateway *blockchain.RPCGateway) (*RelayClient, error) {
+	if relayURL == "" || gateway == nil {
+		return nil, fmt.Errorf("walletconnect: relay url and RPC gateway required")
 	}
 	parsed, err := url.Parse(relayURL)
 	if err != nil || (parsed.Scheme != "ws" && parsed.Scheme != "wss") {
 		return nil, fmt.Errorf("walletconnect: invalid relay url")
 	}
-	dialer := websocket.Dialer{HandshakeTimeout: 15 * time.Second}
-	conn, _, err := dialer.DialContext(ctx, relayURL, nil)
+	conn, err := gateway.DialWebSocket(ctx, relayURL)
 	if err != nil {
 		return nil, fmt.Errorf("walletconnect: relay dial: %w", err)
 	}
@@ -74,8 +83,15 @@ func NewRelayClient(ctx context.Context, relayURL string) (*RelayClient, error) 
 		messages: make(chan Subscription, 64),
 		closed:   make(chan struct{}),
 	}
-	go client.readLoop()
-	go client.pingLoop()
+	client.wg.Add(2)
+	go func() {
+		defer client.wg.Done()
+		client.readLoop()
+	}()
+	go func() {
+		defer client.wg.Done()
+		client.pingLoop()
+	}()
 	return client, nil
 }
 
@@ -86,8 +102,14 @@ func (client *RelayClient) Messages() <-chan Subscription {
 
 func (client *RelayClient) readLoop() {
 	defer close(client.messages)
+	client.mu.Lock()
+	connection := client.conn
+	client.mu.Unlock()
+	if connection == nil {
+		return
+	}
 	for {
-		_, raw, err := client.conn.ReadMessage()
+		_, raw, err := connection.ReadMessage()
 		if err != nil {
 			client.close()
 			return
@@ -162,40 +184,71 @@ func (client *RelayClient) pingLoop() {
 			return
 		case <-ticker.C:
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			_, _ = client.call(ctx, "irn_ping", nil)
+			_, err := client.call(ctx, "irn_ping", nil)
 			cancel()
+			if err != nil {
+				client.close()
+				return
+			}
 		}
 	}
 }
 
 func (client *RelayClient) call(ctx context.Context, method string, params any) (*jsonrpcResponse, error) {
+	if client == nil || ctx == nil {
+		return nil, fmt.Errorf("walletconnect: relay call is invalid")
+	}
+	select {
+	case <-client.closed:
+		return nil, fmt.Errorf("walletconnect: relay closed")
+	default:
+	}
 	client.mu.Lock()
 	if client.conn == nil {
 		client.mu.Unlock()
 		return nil, fmt.Errorf("walletconnect: relay closed")
 	}
+	connection := client.conn
 	id := client.nextID
 	client.nextID++
 	channel := make(chan *jsonrpcResponse, 1)
 	client.pending[id] = channel
 	client.mu.Unlock()
-	request := jsonrpcRequest{ID: id, JSONRPC: "2.0", Method: method, Params: params}
-	if err := client.conn.WriteJSON(request); err != nil {
+	defer func() {
 		client.mu.Lock()
 		delete(client.pending, id)
 		client.mu.Unlock()
-		return nil, fmt.Errorf("walletconnect: relay write: %w", err)
+	}()
+	request := jsonrpcRequest{ID: id, JSONRPC: "2.0", Method: method, Params: params}
+	client.writeMu.Lock()
+	deadline := time.Now().Add(10 * time.Second)
+	if contextDeadline, ok := ctx.Deadline(); ok && contextDeadline.Before(deadline) {
+		deadline = contextDeadline
+	}
+	if err := connection.SetWriteDeadline(deadline); err != nil {
+		client.writeMu.Unlock()
+		return nil, fmt.Errorf("walletconnect: relay write deadline: %w", err)
+	}
+	writeErr := connection.WriteJSON(request)
+	clearDeadlineErr := connection.SetWriteDeadline(time.Time{})
+	client.writeMu.Unlock()
+	if writeErr == nil {
+		writeErr = clearDeadlineErr
+	}
+	if writeErr != nil {
+		client.close()
+		return nil, fmt.Errorf("walletconnect: relay write: %w", writeErr)
 	}
 	select {
 	case response := <-channel:
+		if response == nil {
+			return nil, fmt.Errorf("walletconnect: relay closed")
+		}
 		if response.Error != nil {
 			return nil, fmt.Errorf("walletconnect: relay error %d: %s", response.Error.Code, response.Error.Message)
 		}
 		return response, nil
 	case <-ctx.Done():
-		client.mu.Lock()
-		delete(client.pending, id)
-		client.mu.Unlock()
 		return nil, ctx.Err()
 	case <-client.closed:
 		return nil, fmt.Errorf("walletconnect: relay closed")
@@ -256,20 +309,27 @@ func (client *RelayClient) GetMessage(ctx context.Context, topic string) ([]byte
 
 // Close terminates the relay connection.
 func (client *RelayClient) Close() error {
+	if client == nil {
+		return nil
+	}
 	client.close()
+	client.wg.Wait()
 	return nil
 }
 
 func (client *RelayClient) close() {
 	client.closeOnce.Do(func() {
 		close(client.closed)
-		_ = client.conn.Close()
 		client.mu.Lock()
-		for id, channel := range client.pending {
-			delete(client.pending, id)
-			close(channel)
-		}
+		connection := client.conn
+		client.conn = nil
+		client.pending = make(map[int64]chan *jsonrpcResponse)
 		client.mu.Unlock()
+		client.writeMu.Lock()
+		if connection != nil {
+			_ = connection.Close()
+		}
+		client.writeMu.Unlock()
 	})
 }
 

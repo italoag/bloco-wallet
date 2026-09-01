@@ -518,7 +518,6 @@ func TestWalletDetailsViewHidesSecrets(t *testing.T) {
 	require.NoError(t, localization.InitLocalization(cfg))
 	privateKey, err := crypto.GenerateKey()
 	require.NoError(t, err)
-	defer privateKey.D.SetInt64(0)
 	mnemonic := "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
 	model := &CLIModel{walletDetails: &wallet.WalletDetails{
 		Wallet: &wallet.Wallet{

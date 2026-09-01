@@ -156,7 +156,9 @@ func TestPrepareEIP712RejectsStrictJSONAndPolicyViolations(t *testing.T) {
 	trailing := append(append([]byte(nil), eip712MailFixture...), []byte(" {}\n")...)
 	badChecksum := bytes.Replace([]byte(eip712MailFixture), []byte(`"verifyingContract": "0xCcCCccccCCCCcCCCCCCcCcCccCcCCCcCcccccccC"`), []byte(`"verifyingContract": "0xcccccccccccccccccccccccccccccccccccccccc"`), 1)
 	mismatchedChain := bytes.Replace([]byte(eip712MailFixture), []byte(`"chainId": 1`), []byte(`"chainId": 5`), 1)
-	for _, value := range [][]byte{duplicateKeys, trailing, badChecksum, mismatchedChain} {
+	unsafeFieldName := bytes.ReplaceAll([]byte(eip712MailFixture), []byte(`"contents"`), []byte(`"con\u001btents"`))
+	wrongDomainType := bytes.Replace([]byte(eip712MailFixture), []byte(`{"name": "chainId", "type": "uint256"}`), []byte(`{"name": "chainId", "type": "bytes32"}`), 1)
+	for _, value := range [][]byte{duplicateKeys, trailing, badChecksum, mismatchedChain, unsafeFieldName, wrongDomainType} {
 		request := base
 		request.TypedData = value
 		if _, err := evm.PrepareEIP712Sign(request); err == nil {

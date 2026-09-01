@@ -564,13 +564,17 @@ func (model *CLIModel) viewContractCall() string {
 			_, _ = fmt.Fprintf(&builder, "Risk [%s]: %s (%s)\n", safeShort(string(finding.Severity)), safeShort(string(finding.ID)), safeShort(finding.Subject.Hex()))
 		}
 		_, _ = fmt.Fprintf(&builder, "\nPlan: 0x%x\nDigest: 0x%x\n", plan.PlanHash(), plan.TransactionDigest())
-		builder.WriteString("\nEnter: approve exact digest • Esc: cancel")
+		builder.WriteString("\nEnter: approve exact structured intent • Esc: cancel")
 	case contractCallReinforced:
 		builder.WriteString("Critical: this call moves native value or grants broad control. Verify the contract independently.\n\nType APPROVE to perform the second confirmation:\n" + state.inputs["confirm"].View() + "\n\nEnter: continue • Esc: cancel")
 	case contractCallPassword:
-		builder.WriteString("Enter storage password to sign this approved digest:\n" + state.inputs["password"].View() + "\n\nEnter: sign and broadcast • Esc: cancel")
+		if state.account.SignerKind == wallet.SignerKindSoftware {
+			builder.WriteString("Enter storage password to sign this approved transaction:\n" + state.inputs["password"].View() + "\n\nEnter: sign and broadcast • Esc: cancel")
+		} else {
+			builder.WriteString("Press Enter, then review and confirm the exact transaction on the external signer.\n\nEnter: continue • Esc: cancel")
+		}
 	case contractCallSubmitting:
-		builder.WriteString("Signing approved digest and broadcasting exact bytes...")
+		builder.WriteString("Signing approved structured intent and broadcasting exact bytes...")
 	case contractCallTracking:
 		_, _ = fmt.Fprintf(&builder, "Transaction: %s\nTracking receipt and confirmations", safeShort(state.result.Hash.Hex()))
 		if state.tracking != nil {

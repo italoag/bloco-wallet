@@ -128,7 +128,7 @@ The build system includes:
 
 ### Container Images
 - **Registry**: GitHub Container Registry (ghcr.io)
-- **Base**: Multi-stage build from golang:1.24.3-alpine to scratch
+- **Base**: Multi-stage build from public.ecr.aws/docker/library/golang:1.26.7-alpine to scratch
 - **Platforms**: linux/amd64, linux/arm64
 - **Tags**: latest, develop, version tags, branch names
 
@@ -212,9 +212,9 @@ git push origin v1.2.3
 ## Configuration
 
 ### Environment Variables
-- `GO_VERSION`: Go version for builds (default: 1.24.3)
+- `GO_VERSION`: Go version for builds (default: 1.26.7)
 - `GOLANGCI_LINT_VERSION`: Linting tool version
-- `CGO_ENABLED`: CGO setting (default: 0)
+- `CGO_ENABLED`: CGO setting (default: 1 for native builds; cross-builds use the pure-Go SQLite path)
 - `BUILD_PLATFORMS`: Container platforms
 
 ### Build Flags

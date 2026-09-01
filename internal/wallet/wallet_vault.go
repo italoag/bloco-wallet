@@ -648,6 +648,7 @@ func (vault *WalletVault) Unlock(ctx context.Context, accountID string, password
 	now := vault.options.Now().UTC()
 	if latest.State == AccountStateLocked {
 		latest.State = AccountStateActive
+		latest.AuthorizationEpoch++
 		latest.UpdatedAt = now
 		if err := vault.repository.UpdateAccount(ctx, latest); err != nil {
 			clear(privateKey)
@@ -1021,7 +1022,6 @@ func deriveSecretIdentity(secretType SecretType, plaintext []byte) ([]byte, stri
 		return nil, "", err
 	}
 	address := crypto.PubkeyToAddress(key.PublicKey).Hex()
-	key.D.SetInt64(0)
 	return privateKey, address, nil
 }
 

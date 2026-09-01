@@ -784,13 +784,17 @@ func (model *CLIModel) viewNativeTransfer() string {
 		for _, finding := range state.prepared.Findings() {
 			_, _ = fmt.Fprintf(&builder, "Risk [%s]: %s (%s)\n", safeShort(string(finding.Severity)), safeShort(string(finding.ID)), safeShort(finding.Subject.Hex()))
 		}
-		builder.WriteString("\nEnter: approve exact digest • Esc: cancel")
+		builder.WriteString("\nEnter: approve exact structured intent • Esc: cancel")
 	case nativeTransferReinforced:
 		builder.WriteString("Critical warning: this grants a contract permission to spend token units. Verify the spender independently.\n\nType APPROVE to perform the second confirmation:\n" + state.confirmationInput.View() + "\n\nEnter: continue • Esc: cancel")
 	case nativeTransferPassword:
-		builder.WriteString("Enter storage password to sign this approved digest:\n" + state.passwordInput.View() + "\n\nEnter: sign and broadcast • Esc: cancel")
+		if state.account.SignerKind == wallet.SignerKindSoftware {
+			builder.WriteString("Enter storage password to sign this approved transaction:\n" + state.passwordInput.View() + "\n\nEnter: sign and broadcast • Esc: cancel")
+		} else {
+			builder.WriteString("Press Enter, then review and confirm the exact transaction on the external signer.\n\nEnter: continue • Esc: cancel")
+		}
 	case nativeTransferSubmitting:
-		builder.WriteString("Signing approved digest and broadcasting exact bytes...")
+		builder.WriteString("Signing approved structured intent and broadcasting exact bytes...")
 	case nativeTransferTracking:
 		_, _ = fmt.Fprintf(&builder, "Transaction: %s\nTracking receipt and confirmations", safeShort(state.result.Hash.Hex()))
 		if state.tracking != nil {

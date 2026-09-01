@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -55,7 +56,7 @@ func TestTrezorModernBridgeRoundTrip(t *testing.T) {
 	}))
 	defer server.Close()
 
-	device, err := NewBridgeDevice(context.Background(), server.URL)
+	device, err := NewBridgeDevice(context.Background(), server.URL, testGatewayForServer(t, server.URL))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,6 +74,56 @@ func TestTrezorModernBridgeRoundTrip(t *testing.T) {
 		if calls[path] != 1 {
 			t.Fatalf("bridge path %s called %d times", path, calls[path])
 		}
+	}
+}
+
+func TestTrezorStableBridgeRoundTrip(t *testing.T) {
+	features := []byte{0x10, 0x01, 0x18, 0x0e, 0x20, 0x01, 0x60, 0x01, 0xaa, 0x01, 0x01, '1'}
+	responseFrame := make([]byte, 6+len(features))
+	binary.BigEndian.PutUint16(responseFrame[:2], trezorMessageFeatures)
+	binary.BigEndian.PutUint32(responseFrame[2:6], uint32(len(features)))
+	copy(responseFrame[6:], features)
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/configure":
+			writer.Header().Set("Content-Type", "application/json")
+			writeBridgeJSON(t, writer, map[string]any{"version": "2.0.33"})
+		case "/enumerate":
+			writer.Header().Set("Content-Type", "application/json")
+			writeBridgeJSON(t, writer, []map[string]any{{"path": "usb:001"}})
+		case "/acquire/usb:001/null":
+			writer.Header().Set("Content-Type", "application/json")
+			writeBridgeJSON(t, writer, map[string]string{"session": "stable-session"})
+		case "/post/stable-session":
+			body, err := io.ReadAll(request.Body)
+			if err != nil {
+				t.Errorf("read stable post: %v", err)
+			}
+			if request.Header.Get("Content-Type") != "text/plain" || string(body) != "000000000000" {
+				t.Errorf("unexpected stable post: content-type=%q body=%q", request.Header.Get("Content-Type"), body)
+			}
+		case "/read/stable-session":
+			writer.Header().Set("Content-Type", "text/plain")
+			_, _ = writer.Write([]byte(hex.EncodeToString(responseFrame)))
+		case "/release/stable-session":
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer server.Close()
+	device, err := NewBridgeDevice(context.Background(), server.URL, testGatewayForServer(t, server.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsed, err := device.Initialize(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Model != "1" || parsed.Version != "1.14.1" || !parsed.Initialized {
+		t.Fatalf("unexpected stable bridge features: %+v", parsed)
+	}
+	if err := device.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 

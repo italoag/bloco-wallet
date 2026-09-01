@@ -481,10 +481,13 @@ func verifySignature(credential *Credential, message, signature []byte) error {
 		if keyType != coseKeyTypeEC2 || !hasCurve || curve != coseCurveP256 || !hasX || len(xBytes) != 32 || !hasY || len(yBytes) != 32 {
 			return fmt.Errorf("fido2: unsupported ec2 key parameters")
 		}
-		pub := &ecdsa.PublicKey{
-			Curve: elliptic.P256(),
-			X:     new(big.Int).SetBytes(xBytes),
-			Y:     new(big.Int).SetBytes(yBytes),
+		encodedPublicKey := make([]byte, 1+len(xBytes)+len(yBytes))
+		encodedPublicKey[0] = 4
+		copy(encodedPublicKey[1:], xBytes)
+		copy(encodedPublicKey[1+len(xBytes):], yBytes)
+		pub, err := ecdsa.ParseUncompressedPublicKey(elliptic.P256(), encodedPublicKey)
+		if err != nil {
+			return fmt.Errorf("fido2: invalid ec2 public key")
 		}
 		if len(signature) != 64 {
 			return fmt.Errorf("fido2: es256 signature size")

@@ -7,13 +7,18 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"math/big"
 	"net"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
+	"blocowallet/internal/evm"
+
 	gethaccounts "github.com/ethereum/go-ethereum/accounts"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/gorilla/websocket"
 )
@@ -149,7 +154,11 @@ func TestTrezorButtonAckPrecedesConfirmationAndCancel(t *testing.T) {
 		t.Fatalf("unexpected write sequence: %v", transport.writes)
 	}
 
-	cancelTransport := &recordingPacketTransport{responses: [][]byte{trezorResponsePacket(trezorMessageButtonRequest, nil)}}
+	cancelTransport := &recordingPacketTransport{responses: [][]byte{
+		trezorResponsePacket(trezorMessageButtonRequest, nil),
+		trezorResponsePacket(trezorMessageFailure, nil),
+		trezorResponsePacket(trezorMessageFeatures, features),
+	}}
 	cancelDevice := &UDPDevice{transport: cancelTransport}
 	if _, err := cancelDevice.call(context.Background(), trezorMessageInitialize, trezorMessageFeatures, nil); !errors.Is(err, ErrTrezorInteractionRequired) {
 		t.Fatalf("missing handler was not rejected: %v", err)
@@ -157,11 +166,15 @@ func TestTrezorButtonAckPrecedesConfirmationAndCancel(t *testing.T) {
 	if len(cancelTransport.writes) != 2 || cancelTransport.writes[1] != trezorMessageCancel {
 		t.Fatalf("cancel was not sent after missing handler: %v", cancelTransport.writes)
 	}
+	if _, err := cancelDevice.call(context.Background(), trezorMessageInitialize, trezorMessageFeatures, nil); err != nil {
+		t.Fatalf("device was not reusable after cancel drain: %v", err)
+	}
 }
 
 func TestTrezorBridgeRejectsUnsafeURLs(t *testing.T) {
 	urls := []string{
 		"http://example.com:21328",
+		"https://example.com:21328",
 		"http://user@localhost:21328",
 		"http://localhost:21328?device=1",
 		"http://localhost:21328/#fragment",
@@ -169,7 +182,7 @@ func TestTrezorBridgeRejectsUnsafeURLs(t *testing.T) {
 	}
 	for _, bridgeURL := range urls {
 		t.Run(bridgeURL, func(t *testing.T) {
-			if _, err := NewBridgeDevice(context.Background(), bridgeURL); err == nil {
+			if _, err := NewBridgeDevice(context.Background(), bridgeURL, testGatewayForServer(t, "http://localhost:21328")); err == nil {
 				t.Fatal("unsafe bridge URL was accepted")
 			}
 		})
@@ -274,7 +287,7 @@ func TestTrezorEmulatorIntegration(t *testing.T) {
 	defer cancel()
 	var device *UDPDevice
 	if strings.HasPrefix(emulatorAddress, "http://") || strings.HasPrefix(emulatorAddress, "https://") {
-		bridgeDevice, err := NewBridgeDevice(ctx, emulatorAddress)
+		bridgeDevice, err := NewBridgeDevice(ctx, emulatorAddress, testGatewayForServer(t, emulatorAddress))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -325,6 +338,34 @@ func TestTrezorEmulatorIntegration(t *testing.T) {
 	if crypto.PubkeyToAddress(*parsedPublicKey).Hex() != expectedSeedAddress {
 		t.Fatalf("unexpected deterministic-seed address: %s", crypto.PubkeyToAddress(*parsedPublicKey).Hex())
 	}
+	to := common.HexToAddress("0x1111111111111111111111111111111111111111")
+	transactions := []struct {
+		transaction *types.Transaction
+		signer      types.Signer
+	}{
+		{
+			transaction: types.NewTx(&types.LegacyTx{Nonce: 1, GasPrice: big.NewInt(2_000_000_000), Gas: 21_000, To: &to, Value: big.NewInt(1)}),
+			signer:      types.NewEIP155Signer(big.NewInt(1)),
+		},
+		{
+			transaction: types.NewTx(&types.DynamicFeeTx{ChainID: big.NewInt(1), Nonce: 2, GasTipCap: big.NewInt(1_000_000_000), GasFeeCap: big.NewInt(2_000_000_000), Gas: 21_000, To: &to, Value: big.NewInt(1)}),
+			signer:      types.NewLondonSigner(big.NewInt(1)),
+		},
+	}
+	for _, transactionTest := range transactions {
+		digest := transactionTest.signer.Hash(transactionTest.transaction)
+		signature, err := device.SignTransaction(ctx, TrezorTransactionIntent{
+			UnsignedTransaction: transactionTest.transaction, ChainID: big.NewInt(1),
+			DerivationPath: "m/44'/60'/0'/0/0", Digest: digest,
+			ExpectedAddress: crypto.PubkeyToAddress(*parsedPublicKey),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := verifyTrezorSignature(publicKey, digest, signature); err != nil {
+			t.Fatal(err)
+		}
+	}
 
 	var domainHash, messageHash [32]byte
 	copy(domainHash[:], crypto.Keccak256([]byte("bloco trezor domain")))
@@ -341,6 +382,22 @@ func TestTrezorEmulatorIntegration(t *testing.T) {
 	} else {
 		if _, err := device.EthereumSignTypedHash(ctx, "m/44'/60'/0'/0/0", domainHash, messageHash); err == nil {
 			t.Fatal("core-model Trezor accepted legacy typed-hash signing")
+		}
+		coreSignature, err := device.EthereumSignTypedData(ctx, "m/44'/60'/0'/0/0", []byte(trezorTypedDataJSONFixture), true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		prepared, err := evm.PrepareEIP712Sign(evm.PrepareEIP712SignRequest{
+			AccountID: "11111111-1111-4111-8111-111111111111",
+			Signer:    crypto.PubkeyToAddress(*parsedPublicKey), ChainID: 1,
+			TypedData: []byte(trezorTypedDataJSONFixture), Origin: "trezor-emulator",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		coreDigest := prepared.Preview().Digest
+		if err := verifyTrezorSignature(publicKey, coreDigest, coreSignature); err != nil {
+			t.Fatal(err)
 		}
 	}
 

@@ -36,9 +36,27 @@ type TrezorDevice interface {
 	EthereumSignMessage(ctx context.Context, derivationPath string, message []byte) ([]byte, error)
 }
 
+type TrezorTypedDataDevice interface {
+	EthereumSignTypedData(ctx context.Context, derivationPath string, input any, metamaskV4Compat ...bool) ([]byte, error)
+}
+
+type TrezorTransactionDevice interface {
+	SignTransaction(context.Context, TrezorTransactionIntent) ([]byte, error)
+}
+
 type TrezorTypedHashRequest struct {
 	AccountID           string
 	ChainID             uint64
+	DomainSeparatorHash [32]byte
+	MessageHash         [32]byte
+	IntentHash          [32]byte
+	ApprovalID          string
+}
+
+type TrezorStructuredTypedDataRequest struct {
+	AccountID           string
+	ChainID             uint64
+	CanonicalJSON       []byte
 	DomainSeparatorHash [32]byte
 	MessageHash         [32]byte
 	IntentHash          [32]byte
@@ -112,6 +130,54 @@ func (signer *TrezorSigner) SignTypedHash(ctx context.Context, request TrezorTyp
 		AccountID: account.AccountID, Purpose: wallet.SigningPurposeMessage,
 		MessageScheme: wallet.MessageSigningEIP712, ChainID: request.ChainID,
 		Digest: digestArray, IntentHash: request.IntentHash, Signature: signature,
+	}, nil
+}
+
+func (signer *TrezorSigner) SignStructuredTypedData(ctx context.Context, request TrezorStructuredTypedDataRequest) (wallet.SoftwareSigningResult, error) {
+	if request.ChainID == 0 || len(request.CanonicalJSON) == 0 || len(request.CanonicalJSON) > 64<<10 || request.ApprovalID == "" || request.IntentHash == ([32]byte{}) {
+		return wallet.SoftwareSigningResult{}, fmt.Errorf("trezor signer: incomplete structured typed-data binding")
+	}
+	account, derivationPath, expectedAddress, err := signer.resolveAccount(ctx, request.AccountID)
+	if err != nil {
+		return wallet.SoftwareSigningResult{}, err
+	}
+	digestHash := crypto.Keccak256Hash([]byte{0x19, 0x01}, request.DomainSeparatorHash[:], request.MessageHash[:])
+	var digest [32]byte
+	copy(digest[:], digestHash[:])
+	if err := signer.messageApprovalVerifier.VerifyMessageApproval(ctx, wallet.MessageApprovalBinding{
+		AccountID: account.AccountID, Scheme: wallet.MessageSigningEIP712, ChainID: request.ChainID,
+		Digest: digest, IntentHash: request.IntentHash, ApprovalID: request.ApprovalID,
+	}); err != nil {
+		return wallet.SoftwareSigningResult{}, err
+	}
+	features, err := signer.ensureReady(ctx)
+	if err != nil {
+		return wallet.SoftwareSigningResult{}, err
+	}
+	var signature []byte
+	if features.Model == "1" {
+		signature, err = signer.device.EthereumSignTypedHash(ctx, derivationPath, request.DomainSeparatorHash, request.MessageHash)
+	} else {
+		device, ok := signer.device.(TrezorTypedDataDevice)
+		if !ok {
+			return wallet.SoftwareSigningResult{}, ErrTrezorTypedHashUnsupported
+		}
+		signature, err = device.EthereumSignTypedData(ctx, derivationPath, request.CanonicalJSON, true)
+	}
+	if err != nil {
+		return wallet.SoftwareSigningResult{}, fmt.Errorf("trezor signer: sign structured typed data: %w", err)
+	}
+	signature, err = normalizeSignature(signature)
+	if err != nil {
+		return wallet.SoftwareSigningResult{}, err
+	}
+	if err := verifyECDSASignature(expectedAddress, digest, signature); err != nil {
+		return wallet.SoftwareSigningResult{}, ErrTrezorSignature
+	}
+	return wallet.SoftwareSigningResult{
+		AccountID: account.AccountID, Purpose: wallet.SigningPurposeMessage,
+		MessageScheme: wallet.MessageSigningEIP712, ChainID: request.ChainID,
+		Digest: digest, IntentHash: request.IntentHash, Signature: signature,
 	}, nil
 }
 

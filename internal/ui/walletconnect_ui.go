@@ -280,19 +280,44 @@ func sessionChainSummary(session walletconnect.Session) string {
 	return strings.Join(chains, ", ")
 }
 
+type walletConnectProposalMsg struct {
+	proposal *walletconnect.Proposal
+}
+
+type walletConnectRequestMsg struct {
+	session *walletconnect.Session
+	params  *walletconnect.SessionRequestParams
+}
+
+func waitForWalletConnectEvent(events <-chan tea.Msg) tea.Cmd {
+	return func() tea.Msg { return <-events }
+}
+
 // WalletConnectProposalHandler exposes the proposal hook for the composition root.
 func (model *CLIModel) WalletConnectProposalHandler() func(ctx context.Context, proposal *walletconnect.Proposal) error {
 	return func(ctx context.Context, proposal *walletconnect.Proposal) error {
-		model.walletConnectHandleProposal(proposal)
-		return nil
+		select {
+		case model.walletConnectEvents <- walletConnectProposalMsg{proposal: proposal}:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			return fmt.Errorf("walletconnect proposal queue is full")
+		}
 	}
 }
 
 // WalletConnectRequestHandler exposes the session request hook for the composition root.
 func (model *CLIModel) WalletConnectRequestHandler() func(ctx context.Context, session *walletconnect.Session, params *walletconnect.SessionRequestParams) error {
 	return func(ctx context.Context, session *walletconnect.Session, params *walletconnect.SessionRequestParams) error {
-		model.walletConnectHandleRequest(session, params)
-		return nil
+		select {
+		case model.walletConnectEvents <- walletConnectRequestMsg{session: session, params: params}:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			return fmt.Errorf("walletconnect request queue is full")
+		}
 	}
 }
 

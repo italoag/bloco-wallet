@@ -25,7 +25,6 @@ func (service *personalSignServiceStub) ApproveAndSignEIP712(_ context.Context, 
 	if err != nil {
 		return evm.PersonalSignResult{}, err
 	}
-	defer key.D.SetInt64(0)
 	signature, err := crypto.Sign(preview.Digest[:], key)
 	if err != nil {
 		return evm.PersonalSignResult{}, err
@@ -42,7 +41,6 @@ func (service *personalSignServiceStub) ApproveAndSignPersonal(_ context.Context
 	if err != nil {
 		return evm.PersonalSignResult{}, err
 	}
-	defer key.D.SetInt64(0)
 	preview := prepared.Preview()
 	signature, err := crypto.Sign(preview.Digest[:], key)
 	if err != nil {
@@ -55,13 +53,15 @@ func (service *personalSignServiceStub) ApproveAndSignPersonal(_ context.Context
 	}, nil
 }
 
-type personalSignAuthorizerStub struct{}
+type personalSignAuthorizerStub struct{ active bool }
 
 func (personalSignAuthorizerStub) Authorize(_ context.Context, _ string, _ []byte, operation wallet.TransactionAuthorizationOperation) error {
 	return operation(wallet.CapabilityHandle{}, 1)
 }
 
-func (personalSignAuthorizerStub) HasActiveSession(context.Context, string) bool { return false }
+func (authorizer personalSignAuthorizerStub) HasActiveSession(context.Context, string) bool {
+	return authorizer.active
+}
 
 func TestPersonalSignFlowShowsPreviewSignatureAndKeepsViewPure(t *testing.T) {
 	previousLabels := localization.Labels
@@ -72,7 +72,6 @@ func TestPersonalSignFlowShowsPreviewSignatureAndKeepsViewPure(t *testing.T) {
 		t.Fatal(err)
 	}
 	signerAddress := crypto.PubkeyToAddress(key.PublicKey)
-	key.D.SetInt64(0)
 	model := &CLIModel{
 		width: 120, height: 30, styles: createStyles(),
 		transactionAuthorizer: personalSignAuthorizerStub{},
@@ -115,6 +114,42 @@ func TestPersonalSignFlowShowsPreviewSignatureAndKeepsViewPure(t *testing.T) {
 	_, _ = model.updatePersonalSign(tea.KeyMsg{Type: tea.KeyEsc})
 	if model.currentView != constants.WalletDetailsView || model.personalSign != nil {
 		t.Fatal("personal sign back navigation did not restore wallet details")
+	}
+}
+
+func TestHardwarePersonalSignDoesNotRequestStoragePassword(t *testing.T) {
+	key, err := crypto.HexToECDSA("4646464646464646464646464646464646464646464646464646464646464646")
+	if err != nil {
+		t.Fatal(err)
+	}
+	signerAddress := crypto.PubkeyToAddress(key.PublicKey)
+	model := &CLIModel{
+		width: 120, height: 30, styles: createStyles(),
+		transactionAuthorizer: personalSignAuthorizerStub{active: true},
+		selectedAccount: &wallet.AccountSummary{
+			AccountID: "11111111-1111-4111-8111-111111111111", Name: "Ledger",
+			Address: signerAddress.Hex(), SignerKind: wallet.SignerKindHardware,
+			State: wallet.AccountStateActive, Capabilities: wallet.CapabilitySignMessage,
+		},
+	}
+	model.ConfigureMessageSigningFactory(func(context.Context) (MessageSigningService, error) {
+		return &personalSignServiceStub{signer: signerAddress}, nil
+	})
+	model.initWalletDetailsComponents()
+	model.updateWalletDetailsKeyAvailability()
+	if !model.walletDetailsKeys.SignMessage.Enabled() {
+		t.Fatal("hardware message signing was not enabled")
+	}
+	_, _ = model.updateWalletDetails(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	model.personalSign.message.SetValue("Hardware message")
+	_, _ = model.updatePersonalSign(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	_, _ = model.updatePersonalSign(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	if view := model.viewPersonalSign(); !strings.Contains(view, "external signer") || strings.Contains(view, "Storage password") {
+		t.Fatalf("hardware confirmation view is incorrect: %q", view)
+	}
+	_, command := model.updatePersonalSign(tea.KeyMsg{Type: tea.KeyEnter})
+	if command == nil {
+		t.Fatal("hardware message did not submit without a password")
 	}
 }
 

@@ -21,7 +21,6 @@ func TestExportKeystoreV3InteroperatesWithGoEthereum(t *testing.T) {
 	}
 	privateKeyHex := hex.EncodeToString(crypto.FromECDSA(key))
 	expectedAddress := crypto.PubkeyToAddress(key.PublicKey).Hex()
-	key.D.SetInt64(0)
 	storagePassword := []byte("Strong storage password 1!")
 	summary, err := vault.ImportPrivateKey(context.Background(), PrivateKeyImportRequest{
 		Name:                   "Exported",
@@ -56,7 +55,6 @@ func TestExportKeystoreV3InteroperatesWithGoEthereum(t *testing.T) {
 		t.Fatal(err)
 	}
 	address := crypto.PubkeyToAddress(decrypted.PrivateKey.PublicKey).Hex()
-	decrypted.PrivateKey.D.SetInt64(0)
 	if address != expectedAddress {
 		t.Fatalf("exported address mismatch: %s", address)
 	}
@@ -88,7 +86,6 @@ func TestVerifyKeystoreV3ExportRejectsInvalidArtifacts(t *testing.T) {
 		Address:    crypto.PubkeyToAddress(key.PublicKey),
 		PrivateKey: key,
 	}, string(password), keystore.LightScryptN, keystore.LightScryptP)
-	key.D.SetInt64(0)
 	if err != nil {
 		t.Fatal(err)
 	}

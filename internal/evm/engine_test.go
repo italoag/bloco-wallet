@@ -294,6 +294,48 @@ func prepareNativeEngineTest(t *testing.T, repository *engineRepository, rpc *en
 	return engine, prepared
 }
 
+type recoveryTrackerStub struct {
+	state        evm.TransactionState
+	rebroadcasts int
+}
+
+func (tracker *recoveryTrackerStub) TrackTransaction(context.Context, string, uint64, time.Time) (evm.TrackingResult, error) {
+	return evm.TrackingResult{State: tracker.state}, nil
+}
+
+func (tracker *recoveryTrackerStub) Rebroadcast(context.Context, string) (evm.ExecutionResult, error) {
+	tracker.rebroadcasts++
+	return evm.ExecutionResult{}, nil
+}
+
+func TestRecoverySupervisorDoesNotRetryRemoteRejection(t *testing.T) {
+	now := time.Now().UTC()
+	record := evm.TransactionRecord{
+		TransactionID: "61111111-1111-4111-8111-111111111111", ChainID: 1,
+		State: evm.TransactionBroadcastFailed, TransactionHash: common.HexToHash("0x01"),
+		BroadcastAttempts: 1, ConfirmationTarget: 1, LastResultCode: "remote_rejected", UpdatedAt: now,
+	}
+	repository := &engineRepository{recoverable: []evm.TransactionRecord{record}}
+	tracker := &recoveryTrackerStub{state: evm.TransactionBroadcastFailed}
+	supervisor, err := evm.NewRecoverySupervisor(repository, func(context.Context, uint64) (evm.RecoveryTracker, error) { return tracker, nil }, 2*time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := supervisor.RecoverOnce(context.Background(), 10, now); err != nil {
+		t.Fatal(err)
+	}
+	if tracker.rebroadcasts != 0 {
+		t.Fatal("remote rejection was automatically rebroadcast")
+	}
+	repository.recoverable[0].LastResultCode = "transport_unknown"
+	if err := supervisor.RecoverOnce(context.Background(), 10, now); err != nil {
+		t.Fatal(err)
+	}
+	if tracker.rebroadcasts != 1 {
+		t.Fatal("ambiguous transport failure was not recovered")
+	}
+}
+
 func TestRecoverySupervisorReleasesStaleSigningNonce(t *testing.T) {
 	now := time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC)
 	repository := &engineRepository{recoverable: []evm.TransactionRecord{{

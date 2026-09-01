@@ -123,15 +123,15 @@ func (model *CLIModel) updateWalletDetailsKeyAvailability() {
 	pendingBackup := hasAccount && account.State == wallet.AccountStatePendingBackup
 	custodial := hasVault && account.SignerKind == wallet.SignerKindSoftware
 	canExport := custodial && account.Capabilities&wallet.CapabilityExportSecret != 0 && !pendingBackup
-	canTransact := hasAccount && model.transactionEngineFactory != nil && model.transactionAuthorizer != nil && account.SignerKind == wallet.SignerKindSoftware && account.Capabilities&wallet.CapabilitySignTransaction != 0 && (account.State == wallet.AccountStateActive || account.State == wallet.AccountStateLocked)
+	canTransact := hasAccount && model.transactionEngineFactory != nil && model.transactionAuthorizer != nil && account.SignerKind.SupportsEOASigning() && account.Capabilities&wallet.CapabilitySignTransaction != 0 && (account.State == wallet.AccountStateActive || account.State == wallet.AccountStateLocked)
 	model.walletDetailsKeys.Lock.SetEnabled(custodial && !pendingBackup)
 	model.walletDetailsKeys.Rotate.SetEnabled(custodial && !pendingBackup)
 	model.walletDetailsKeys.Export.SetEnabled(canExport)
 	model.walletDetailsKeys.EncryptedExport.SetEnabled(canExport)
 	model.walletDetailsKeys.FetchBalances.SetEnabled(hasAccount && model.balanceProvider != nil && !pendingBackup)
 	model.walletDetailsKeys.History.SetEnabled(hasAccount && model.historyReader != nil && !pendingBackup)
-	model.walletDetailsKeys.SignMessage.SetEnabled(hasAccount && model.messageSigningFactory != nil && model.transactionAuthorizer != nil && account.SignerKind == wallet.SignerKindSoftware && account.Capabilities&wallet.CapabilitySignMessage != 0 && !pendingBackup)
-	model.walletDetailsKeys.SignTypedData.SetEnabled(hasAccount && model.messageSigningFactory != nil && model.transactionAuthorizer != nil && account.SignerKind == wallet.SignerKindSoftware && account.Capabilities&wallet.CapabilitySignMessage != 0 && !pendingBackup)
+	model.walletDetailsKeys.SignMessage.SetEnabled(hasAccount && model.messageSigningFactory != nil && model.transactionAuthorizer != nil && account.SignerKind.SupportsEOASigning() && account.Capabilities&wallet.CapabilitySignMessage != 0 && !pendingBackup)
+	model.walletDetailsKeys.SignTypedData.SetEnabled(hasAccount && model.messageSigningFactory != nil && model.transactionAuthorizer != nil && account.SignerKind.SupportsEOASigning() && account.Capabilities&wallet.CapabilitySignMessage != 0 && !pendingBackup)
 	model.walletDetailsKeys.SendNative.SetEnabled(canTransact)
 	model.walletDetailsKeys.SendToken.SetEnabled(canTransact)
 	model.walletDetailsKeys.SendNFT.SetEnabled(canTransact)

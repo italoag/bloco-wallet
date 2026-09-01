@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"blocowallet/internal/blockchain"
 	"blocowallet/internal/walletconnect"
 
 	"github.com/gorilla/websocket"
@@ -209,6 +211,17 @@ func (relay *mockRelay) URL() string {
 	return "ws" + strings.TrimPrefix(relay.server.URL, "http")
 }
 
+func relayGateway(t *testing.T, rawURL string) *blockchain.RPCGateway {
+	t.Helper()
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return blockchain.NewRPCGateway(blockchain.RPCGatewayOptions{
+		AllowedLocalTargets: []string{parsed.Host}, MaxRequestsPerSecond: 256,
+	})
+}
+
 func hexString(message []byte) string {
 	const digits = "0123456789abcdef"
 	encoded := make([]byte, len(message)*2)
@@ -345,6 +358,64 @@ func TestWalletConnectProposalValidation(t *testing.T) {
 	}
 }
 
+func TestRelayClientSerializesConcurrentWrites(t *testing.T) {
+	relay := newMockRelay(t)
+	client, err := walletconnect.NewRelayClient(context.Background(), relay.URL(), relayGateway(t, relay.URL()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = client.Close() }()
+	topic := strings.Repeat("a", 64)
+	start := make(chan struct{})
+	errorsChannel := make(chan error, 32)
+	var wait sync.WaitGroup
+	for index := 0; index < 32; index++ {
+		wait.Add(1)
+		go func(value byte) {
+			defer wait.Done()
+			<-start
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			errorsChannel <- client.Publish(ctx, topic, []byte{value})
+		}(byte(index))
+	}
+	close(start)
+	wait.Wait()
+	close(errorsChannel)
+	for err := range errorsChannel {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestRelayClientRemoteCloseWakesPendingCall(t *testing.T) {
+	upgrader := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		connection, err := upgrader.Upgrade(writer, request, nil)
+		if err != nil {
+			return
+		}
+		_, _, _ = connection.ReadMessage()
+		_ = connection.Close()
+	}))
+	defer server.Close()
+	relayURL := "ws" + strings.TrimPrefix(server.URL, "http")
+	client, err := walletconnect.NewRelayClient(context.Background(), relayURL, relayGateway(t, relayURL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	err = client.Publish(ctx, strings.Repeat("b", 64), []byte("message"))
+	if err == nil || !strings.Contains(err.Error(), "relay closed") {
+		t.Fatalf("remote close returned %v", err)
+	}
+	if err := client.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestWalletConnectServiceEndToEndWithMockRelay(t *testing.T) {
 	relay := newMockRelay(t)
 	now := time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC)
@@ -354,7 +425,7 @@ func TestWalletConnectServiceEndToEndWithMockRelay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dappRelay, err := walletconnect.NewRelayClient(context.Background(), relay.URL())
+	dappRelay, err := walletconnect.NewRelayClient(context.Background(), relay.URL(), relayGateway(t, relay.URL()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -367,7 +438,7 @@ func TestWalletConnectServiceEndToEndWithMockRelay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	walletRelay, err := walletconnect.NewRelayClient(context.Background(), relay.URL())
+	walletRelay, err := walletconnect.NewRelayClient(context.Background(), relay.URL(), relayGateway(t, relay.URL()))
 	if err != nil {
 		t.Fatal(err)
 	}

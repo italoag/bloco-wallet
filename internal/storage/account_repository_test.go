@@ -508,6 +508,7 @@ func TestAccountRepositoryUpdatesStateAndEnvelope(t *testing.T) {
 		t.Fatal(err)
 	}
 	account.State = wallet.AccountStateActive
+	account.AuthorizationEpoch++
 	account.SecretEnvelope = []byte("rotated-envelope")
 	if err := repository.UpdateAccount(ctx, account); err != nil {
 		t.Fatal(err)

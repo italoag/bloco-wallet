@@ -17,7 +17,7 @@ type ApprovedDigestSigner interface {
 }
 
 type SigningAdapter struct {
-	signer ApprovedDigestSigner
+	signer TransactionIntentSigner
 }
 
 type SignedTransaction struct {
@@ -27,6 +27,11 @@ type SignedTransaction struct {
 }
 
 func NewSigningAdapter(signer ApprovedDigestSigner) *SigningAdapter {
+	adapter, _ := NewDigestSignerAdapter(signer)
+	return &SigningAdapter{signer: adapter}
+}
+
+func NewStructuredSigningAdapter(signer TransactionIntentSigner) *SigningAdapter {
 	return &SigningAdapter{signer: signer}
 }
 
@@ -40,26 +45,28 @@ func (adapter *SigningAdapter) Sign(ctx context.Context, handle wallet.Capabilit
 	if approval.ApprovalID == "" || approval.AccountID != plan.accountID || approval.Sender != plan.from || approval.ChainID != plan.chainID.Uint64() || approval.PlanHash != plan.planHash || approval.TransactionDigest != plan.transactionDigest {
 		return SignedTransaction{}, &EngineError{Code: ErrorPolicyDenied, Field: "approval binding"}
 	}
-	request := wallet.SoftwareSigningRequest{
-		AccountID:  plan.accountID,
-		Purpose:    wallet.SigningPurposeTransaction,
-		ChainID:    plan.chainID.Uint64(),
-		Digest:     plan.transactionDigest,
-		ApprovalID: approval.ApprovalID,
+	transaction := plan.Transaction()
+	if transaction == nil {
+		return SignedTransaction{}, &EngineError{Code: ErrorSigningFailed, Field: "transaction clone"}
 	}
-	result, err := adapter.signer.Sign(ctx, handle, request)
+	unsignedTransaction, err := transaction.MarshalBinary()
 	if err != nil {
-		return SignedTransaction{}, &EngineError{Code: ErrorSigningFailed, Field: "software signer", Cause: err}
+		return SignedTransaction{}, &EngineError{Code: ErrorSigningFailed, Field: "unsigned transaction", Cause: err}
 	}
-	if result.AccountID != request.AccountID || result.Purpose != request.Purpose || result.ChainID != request.ChainID || result.Digest != request.Digest {
+	intent := TransactionSigningIntent{
+		AccountID: plan.accountID, From: plan.from, ChainID: plan.chainID.Uint64(),
+		Digest: plan.transactionDigest, PlanHash: plan.planHash, ApprovalID: approval.ApprovalID,
+		UnsignedTransaction: unsignedTransaction,
+	}
+	result, err := adapter.signer.SignTransaction(ctx, handle, intent)
+	if err != nil {
+		return SignedTransaction{}, &EngineError{Code: ErrorSigningFailed, Field: "structured signer", Cause: err}
+	}
+	if result.AccountID != intent.AccountID || result.Purpose != wallet.SigningPurposeTransaction || result.ChainID != intent.ChainID || result.Digest != intent.Digest {
 		return SignedTransaction{}, &EngineError{Code: ErrorSigningFailed, Field: "signer result binding"}
 	}
 	if err := validateTransactionSignature(result.Signature, plan.from, plan.transactionDigest); err != nil {
 		return SignedTransaction{}, err
-	}
-	transaction := plan.Transaction()
-	if transaction == nil {
-		return SignedTransaction{}, &EngineError{Code: ErrorSigningFailed, Field: "transaction clone"}
 	}
 	transactionSigner, err := signerForTransaction(transaction, plan.chainID)
 	if err != nil {

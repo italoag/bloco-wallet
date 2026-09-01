@@ -17,6 +17,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 type blockingIPResolver struct{}
@@ -90,7 +92,7 @@ func TestRPCGatewayOptionsAndHelperErrorPaths(t *testing.T) {
 	if isAllowedLocalNodeAddress(netip.Addr{}) || isAllowedLocalNodeAddress(netip.MustParseAddr("93.184.216.34")) || !isAllowedLocalNodeAddress(netip.MustParseAddr("127.0.0.1")) {
 		t.Fatal("local node classifier failed")
 	}
-	if isUnsafeNetworkAddress(netip.MustParseAddr("93.184.216.34")) || !isUnsafeNetworkAddress(netip.MustParseAddr("64:ff9b::1")) {
+	if isUnsafeNetworkAddress(netip.MustParseAddr("93.184.216.34")) || !isUnsafeNetworkAddress(netip.MustParseAddr("64:ff9b::1")) || !isUnsafeNetworkAddress(netip.MustParseAddr("64:ff9b:1::7f00:1")) || !isUnsafeNetworkAddress(netip.MustParseAddr("::7f00:1")) {
 		t.Fatal("special address classifier failed")
 	}
 }
@@ -483,6 +485,133 @@ func TestRPCGatewayLimitsConcurrentRequests(t *testing.T) {
 	waitGroup.Wait()
 	if maximum.Load() > 2 {
 		t.Fatalf("maximum concurrency was %d", maximum.Load())
+	}
+}
+
+func TestRPCGatewayBoundedOutboundRequest(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodPost || request.Header.Get("Authorization") != "Bearer test" || request.Header.Get("Origin") != "https://python.trezor.io" {
+			t.Error("outbound request binding changed")
+		}
+		writer.WriteHeader(http.StatusForbidden)
+		_, _ = writer.Write([]byte(`{"error":"denied"}`))
+	}))
+	defer server.Close()
+	parsed, _ := url.Parse(server.URL)
+	gateway := NewRPCGateway(RPCGatewayOptions{AllowedLocalTargets: []string{parsed.Host}})
+	response, err := gateway.Request(context.Background(), OutboundRequest{
+		Method: http.MethodPost, URL: server.URL, Body: []byte(`{"digest":"0x01"}`),
+		Headers:          map[string]string{"Authorization": "Bearer test", "Origin": "https://python.trezor.io"},
+		MaxResponseBytes: 1024,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.StatusCode != http.StatusForbidden || string(response.Body) != `{"error":"denied"}` {
+		t.Fatalf("unexpected outbound response: %+v", response)
+	}
+	if _, err := gateway.Request(context.Background(), OutboundRequest{
+		Method: http.MethodPost, URL: server.URL,
+		Headers: map[string]string{"Host": "attacker.invalid"},
+	}); err == nil {
+		t.Fatal("forbidden outbound header was accepted")
+	}
+	if _, err := gateway.Request(context.Background(), OutboundRequest{
+		Method: "DELETE", URL: server.URL,
+	}); err == nil {
+		t.Fatal("unsupported outbound method was accepted")
+	}
+}
+
+func TestRPCGatewayHonorsBoundedPerRequestTimeout(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		time.Sleep(75 * time.Millisecond)
+		_, _ = writer.Write([]byte(`{"ok":true}`))
+	}))
+	defer server.Close()
+	parsed, _ := url.Parse(server.URL)
+	gateway := NewRPCGateway(RPCGatewayOptions{AllowedLocalTargets: []string{parsed.Host}, RequestTimeout: 20 * time.Millisecond})
+	response, err := gateway.Request(context.Background(), OutboundRequest{
+		Method: http.MethodGet, URL: server.URL, MaxResponseBytes: 1024, Timeout: 500 * time.Millisecond,
+	})
+	if err != nil || response.StatusCode != http.StatusOK {
+		t.Fatalf("per-request timeout was truncated: status=%d err=%v", response.StatusCode, err)
+	}
+}
+
+func TestRPCGatewayTracksCanceledSideEffectAsNotSent(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		_, _ = writer.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":true}`))
+	}))
+	defer server.Close()
+	parsed, _ := url.Parse(server.URL)
+	gateway := NewRPCGateway(RPCGatewayOptions{AllowedLocalTargets: []string{parsed.Host}})
+	destination, err := gateway.ValidateEndpoint(context.Background(), server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	sent, err := gateway.callDestinationTracked(ctx, destination, "eth_sendRawTransaction", []any{"0x01"}, nil)
+	if err == nil || sent || requests.Load() != 0 {
+		t.Fatalf("canceled side effect classification: sent=%t requests=%d err=%v", sent, requests.Load(), err)
+	}
+}
+
+func TestRPCGatewayDialsPinnedWebSocket(t *testing.T) {
+	upgrader := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		connection, err := upgrader.Upgrade(writer, request, nil)
+		if err != nil {
+			t.Errorf("upgrade: %v", err)
+			return
+		}
+		defer func() { _ = connection.Close() }()
+		messageType, message, err := connection.ReadMessage()
+		if err != nil {
+			return
+		}
+		_ = connection.WriteMessage(messageType, message)
+	}))
+	defer server.Close()
+	parsed, _ := url.Parse(server.URL)
+	gateway := NewRPCGateway(RPCGatewayOptions{AllowedLocalTargets: []string{parsed.Host}})
+	websocketURL := "ws" + strings.TrimPrefix(server.URL, "http")
+	connection, err := gateway.DialWebSocket(context.Background(), websocketURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = connection.Close() }()
+	if err := connection.WriteMessage(websocket.TextMessage, []byte("ping")); err != nil {
+		t.Fatal(err)
+	}
+	_, response, err := connection.ReadMessage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(response) != "ping" {
+		t.Fatalf("unexpected WebSocket response %q", response)
+	}
+}
+
+func TestRPCGatewayRejectsOversizedWebSocketHandshake(t *testing.T) {
+	upgrader := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		header := http.Header{"X-Oversized": []string{strings.Repeat("a", 70<<10)}}
+		connection, err := upgrader.Upgrade(writer, request, header)
+		if err == nil {
+			_ = connection.Close()
+		}
+	}))
+	defer server.Close()
+	parsed, _ := url.Parse(server.URL)
+	gateway := NewRPCGateway(RPCGatewayOptions{AllowedLocalTargets: []string{parsed.Host}})
+	websocketURL := "ws" + strings.TrimPrefix(server.URL, "http")
+	if connection, err := gateway.DialWebSocket(context.Background(), websocketURL); err == nil {
+		_ = connection.Close()
+		t.Fatal("oversized WebSocket handshake was accepted")
 	}
 }
 

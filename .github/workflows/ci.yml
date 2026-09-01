@@ -7,16 +7,11 @@ on:
     branches: [ main ]
 
 env:
-  GO_VERSION: '1.24.6'
-  GOLANGCI_LINT_VERSION: 'v1.64.8'
+  GO_VERSION: '1.26.7'
+  GOLANGCI_LINT_VERSION: 'v2.13.1'
 
 permissions:
   contents: read
-  issues: write
-  packages: write
-  id-token: write
-  pull-requests: write
-  security-events: write
 
 jobs:
   test:
@@ -24,15 +19,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: ${{ env.GO_VERSION }}
 
       - name: Cache Go build
-        uses: actions/cache@v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/go-build
           key: ${{ runner.os }}-go-build-${{ hashFiles('**/go.sum') }}
@@ -62,7 +57,7 @@ jobs:
         run: make cover
 
       - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
           file: ./coverage.out
           flags: unittests
@@ -75,15 +70,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: ${{ env.GO_VERSION }}
 
       - name: Cache Go build
-        uses: actions/cache@v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/go-build
           key: ${{ runner.os }}-go-build-${{ hashFiles('**/go.sum') }}
@@ -91,7 +86,7 @@ jobs:
             ${{ runner.os }}-go-build-
 
       - name: Cache golangci-lint
-        uses: actions/cache@v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/golangci-lint
           key: ${{ runner.os }}-golangci-lint-${{ env.GOLANGCI_LINT_VERSION }}
@@ -99,32 +94,55 @@ jobs:
             ${{ runner.os }}-golangci-lint-
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@1481404843c368bc19ca9406f87d6e0fc97bdcfd # v7.0.0
         with:
           version: ${{ env.GOLANGCI_LINT_VERSION }}
           args: --timeout=5m
 
+      - name: Validate GitHub Actions workflows
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+
   build:
-    name: Build
-    runs-on: ubuntu-latest
+    name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ${{ matrix.runner }}
     needs: [test, lint]
     strategy:
+      fail-fast: false
       matrix:
-        goos: [linux, darwin, windows]
-        goarch: [amd64, arm64]
+        include:
+          - runner: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            extension: ''
+          - runner: ubuntu-24.04-arm
+            goos: linux
+            goarch: arm64
+            extension: ''
+          - runner: macos-15-intel
+            goos: darwin
+            goarch: amd64
+            extension: ''
+          - runner: macos-14
+            goos: darwin
+            goarch: arm64
+            extension: ''
+          - runner: windows-latest
+            goos: windows
+            goarch: amd64
+            extension: '.exe'
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: ${{ env.GO_VERSION }}
 
       - name: Cache Go build
-        uses: actions/cache@v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/go-build
           key: ${{ runner.os }}-go-build-${{ hashFiles('**/go.sum') }}
@@ -134,24 +152,25 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
-      - name: Build binary
+      - name: Build and smoke-test binary
+        shell: bash
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: '0'
         run: |
           VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "v0.1.0")
           GIT_REV=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
           BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          EXT=""
-          if [ "$GOOS" = "windows" ]; then EXT=".exe"; fi
-          CGO_ENABLED=0 go build \
+          OUTPUT="bloco-wallet-${GOOS}-${GOARCH}${{ matrix.extension }}"
+          go build -trimpath -tags=netgo,nocgo \
             -ldflags="-w -s -X main.version=${VERSION} -X main.commit=${GIT_REV} -X main.date=${BUILD_DATE}" \
-            -a -tags=netgo \
-            -o "bloco-wallet-${GOOS}-${GOARCH}${EXT}" \
-            ./cmd/blocowallet
+            -o "$OUTPUT" ./cmd/blocowallet
+          "./$OUTPUT" --version
+          "./$OUTPUT" release-smoke
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: bloco-wallet-${{ matrix.goos }}-${{ matrix.goarch }}
           path: bloco-wallet-*
@@ -160,33 +179,39 @@ jobs:
   security:
     name: Security Scan
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
       - name: Run Gosec Security Scanner
-        uses: securego/gosec@master
+        uses: securego/gosec@9e75c0576c9878035d4221392108d458abe10fc3 # v2.28.0
         with:
-          args: '-no-fail -fmt sarif -out results.sarif ./...'
+          args: '-severity high -confidence high -exclude=G703 -exclude-dir=internal/wallet/testdata -fmt sarif -out results.sarif ./...'
 
       - name: Upload SARIF file
-        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        uses: github/codeql-action/upload-sarif@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
         with:
           sarif_file: results.sarif
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
           format: 'sarif'
           output: 'trivy-results.sarif'
+          exit-code: '1'
+          severity: 'CRITICAL,HIGH'
 
       - name: Check if Trivy SARIF exists
         run: |
@@ -196,12 +221,12 @@ jobs:
           fi
 
       - name: Upload Trivy scan results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
         if: always()
         with:
           sarif_file: 'trivy-results.sarif'
 
       - name: Run govulncheck
         run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
+          go install golang.org/x/vuln/cmd/govulncheck@v1.6.0
           govulncheck ./...

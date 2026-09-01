@@ -16,6 +16,7 @@ import (
 	"blocowallet/internal/evm"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
@@ -76,37 +77,51 @@ func TestEVMRPCHandlesNullableReceiptAndCanonicalHeader(t *testing.T) {
 }
 
 func TestEVMRPCBroadcastsExactSignedBytesAndVerifiesHash(t *testing.T) {
-	raw := []byte{0x02, 0x01, 0x02, 0x03}
-	localHash := crypto.Keccak256Hash(raw)
+	privateKey, err := crypto.HexToECDSA(strings.Repeat("1", 64))
+	if err != nil {
+		t.Fatal(err)
+	}
+	transaction, err := types.SignNewTx(privateKey, types.LatestSignerForChainID(big.NewInt(1)), &types.DynamicFeeTx{
+		ChainID: big.NewInt(1), Nonce: 1, GasTipCap: big.NewInt(1), GasFeeCap: big.NewInt(2),
+		Gas: 21_000, To: &common.Address{1}, Value: big.NewInt(3),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := transaction.MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	localHash := transaction.Hash()
+	expectedRaw := "0x" + common.Bytes2Hex(raw)
 	var alreadyKnown atomic.Bool
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		var payload json.RawMessage
+		var payload struct {
+			Method string            `json:"method"`
+			Params []json.RawMessage `json:"params"`
+		}
 		if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
 			http.Error(writer, "bad request", http.StatusBadRequest)
 			return
 		}
-		if len(payload) == 0 || payload[0] != '[' {
+		if payload.Method == "eth_chainId" {
 			_, _ = fmt.Fprint(writer, `{"jsonrpc":"2.0","id":1,"result":"0x1"}`)
 			return
 		}
-		var batch []struct {
-			Method string            `json:"method"`
-			Params []json.RawMessage `json:"params"`
-		}
-		if err := json.Unmarshal(payload, &batch); err != nil || len(batch) != 2 || batch[1].Method != "eth_sendRawTransaction" || len(batch[1].Params) != 1 {
-			http.Error(writer, "bad batch", http.StatusBadRequest)
+		if payload.Method != "eth_sendRawTransaction" || len(payload.Params) != 1 {
+			http.Error(writer, "bad method", http.StatusBadRequest)
 			return
 		}
 		var sent string
-		if err := json.Unmarshal(batch[1].Params[0], &sent); err != nil || sent != "0x02010203" {
+		if err := json.Unmarshal(payload.Params[0], &sent); err != nil || sent != expectedRaw {
 			http.Error(writer, "wrong payload", http.StatusBadRequest)
 			return
 		}
 		if alreadyKnown.Load() {
-			_, _ = fmt.Fprint(writer, `[{"jsonrpc":"2.0","id":1,"result":"0x1"},{"jsonrpc":"2.0","id":2,"error":{"code":-32000,"message":"already known"}}]`)
+			_, _ = fmt.Fprint(writer, `{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"already known"}}`)
 			return
 		}
-		_, _ = fmt.Fprintf(writer, `[{"jsonrpc":"2.0","id":1,"result":"0x1"},{"jsonrpc":"2.0","id":2,"result":%q}]`, localHash.Hex())
+		_, _ = fmt.Fprintf(writer, `{"jsonrpc":"2.0","id":1,"result":%q}`, localHash.Hex())
 	}))
 	defer server.Close()
 	parsed, _ := url.Parse(server.URL)

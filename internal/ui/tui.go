@@ -93,12 +93,13 @@ func NewCLIModel(vault *wallet.WalletVault) (*CLIModel, error) {
 		return nil, fmt.Errorf("wallet vault is required")
 	}
 	model := &CLIModel{
-		Vault:        vault,
-		currentView:  constants.SplashView,
-		menuItems:    NewMenu(),
-		selectedMenu: 0,
-		styles:       createStyles(),
-		displayTime:  time.Now(),
+		Vault:               vault,
+		currentView:         constants.SplashView,
+		menuItems:           NewMenu(),
+		selectedMenu:        0,
+		styles:              createStyles(),
+		displayTime:         time.Now(),
+		walletConnectEvents: make(chan tea.Msg, 64),
 	}
 
 	if err := initializeFont(model); err != nil {
@@ -294,6 +295,7 @@ func (m *CLIModel) Init() tea.Cmd {
 		splashCmd(),
 		clockTickCmd(),
 		walletCountCmd(m.Service, m.Vault),
+		waitForWalletConnectEvent(m.walletConnectEvents),
 	)
 }
 
@@ -312,6 +314,14 @@ func clockTickCmd() tea.Cmd {
 func (m *CLIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if msg == nil {
 		return m, nil
+	}
+	switch message := msg.(type) {
+	case walletConnectProposalMsg:
+		m.walletConnectHandleProposal(message.proposal)
+		return m, waitForWalletConnectEvent(m.walletConnectEvents)
+	case walletConnectRequestMsg:
+		m.walletConnectHandleRequest(message.session, message.params)
+		return m, waitForWalletConnectEvent(m.walletConnectEvents)
 	}
 	if preparedMessage, ok := msg.(nativePreparedMsg); ok && preparedMessage.prepared != nil {
 		if m.currentView != constants.NativeTransferView || m.nativeTransfer == nil || preparedMessage.generation != m.nativeTransfer.generation || m.nativeTransfer.phase != nativeTransferPreparing {
@@ -1874,7 +1884,7 @@ func (m *CLIModel) updateWalletDetails(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		switch {
 		case key.Matches(msg, m.walletDetailsKeys.ContractCall):
-			if m.transactionEngineFactory != nil && m.transactionAuthorizer != nil && m.selectedAccount != nil && m.selectedAccount.SignerKind == wallet.SignerKindSoftware && m.selectedAccount.Capabilities&wallet.CapabilitySignTransaction != 0 && (m.selectedAccount.State == wallet.AccountStateActive || m.selectedAccount.State == wallet.AccountStateLocked) {
+			if m.transactionEngineFactory != nil && m.transactionAuthorizer != nil && m.selectedAccount != nil && m.selectedAccount.SignerKind.SupportsEOASigning() && m.selectedAccount.Capabilities&wallet.CapabilitySignTransaction != 0 && (m.selectedAccount.State == wallet.AccountStateActive || m.selectedAccount.State == wallet.AccountStateLocked) {
 				m.initContractCall()
 				return m, nil
 			}
@@ -1889,7 +1899,7 @@ func (m *CLIModel) updateWalletDetails(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		case key.Matches(msg, m.walletDetailsKeys.SendNative), key.Matches(msg, m.walletDetailsKeys.SendToken), key.Matches(msg, m.walletDetailsKeys.SendNFT), key.Matches(msg, m.walletDetailsKeys.Send1155), key.Matches(msg, m.walletDetailsKeys.Send1155Batch), key.Matches(msg, m.walletDetailsKeys.ApproveToken):
-			if m.transactionEngineFactory != nil && m.transactionAuthorizer != nil && m.selectedAccount != nil && m.selectedAccount.SignerKind == wallet.SignerKindSoftware && m.selectedAccount.Capabilities&wallet.CapabilitySignTransaction != 0 && (m.selectedAccount.State == wallet.AccountStateActive || m.selectedAccount.State == wallet.AccountStateLocked) {
+			if m.transactionEngineFactory != nil && m.transactionAuthorizer != nil && m.selectedAccount != nil && m.selectedAccount.SignerKind.SupportsEOASigning() && m.selectedAccount.Capabilities&wallet.CapabilitySignTransaction != 0 && (m.selectedAccount.State == wallet.AccountStateActive || m.selectedAccount.State == wallet.AccountStateLocked) {
 				switch msg.String() {
 				case "n":
 					m.initNativeTransfer()

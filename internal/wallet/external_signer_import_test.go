@@ -54,12 +54,12 @@ func TestImportExternalSignerAccountBindsCustodyFreeAccounts(t *testing.T) {
 	cloud, err := wallet.ImportExternalSignerAccount(context.Background(), repository, wallet.ExternalSignerImportRequest{
 		Name: "Vault", Address: "0x9d8A62f656a8d1615C1294fd71e9CFb3E4855A4F",
 		SignerKind: wallet.SignerKindCloud, Reference: "cloud:v1:https://vault.example/sign",
-		AuthorizationEpoch: 1,
+		Capabilities: wallet.CapabilitySignTransaction | wallet.CapabilitySignMessage, AuthorizationEpoch: 1,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cloud.SignerKind != wallet.SignerKindCloud || cloud.Capabilities != 0 || cloud.SecretType != "" || len(cloud.SecretEnvelope) != 0 || cloud.DerivationScheme != "" {
+	if cloud.SignerKind != wallet.SignerKindCloud || cloud.Capabilities != wallet.CapabilitySignTransaction|wallet.CapabilitySignMessage || cloud.SecretType != "" || len(cloud.SecretEnvelope) != 0 || cloud.DerivationScheme != "" {
 		t.Fatalf("cloud account leaked custody material: %+v", cloud)
 	}
 	if cloud.SignerReference != "cloud:v1:https://vault.example/sign" || cloud.SourceIdentity == "" {
@@ -83,7 +83,7 @@ func TestImportExternalSignerAccountRejectsInvalidBindings(t *testing.T) {
 	base := wallet.ExternalSignerImportRequest{
 		Name: "Vault", Address: "0x9d8A62f656a8d1615C1294fd71e9CFb3E4855A4F",
 		SignerKind: wallet.SignerKindCloud, Reference: "cloud:v1:https://vault.example/sign",
-		AuthorizationEpoch: 1,
+		Capabilities: wallet.CapabilitySignTransaction | wallet.CapabilitySignMessage, AuthorizationEpoch: 1,
 	}
 	cases := []struct {
 		name   string
@@ -91,6 +91,11 @@ func TestImportExternalSignerAccountRejectsInvalidBindings(t *testing.T) {
 	}{
 		{"software kind", func(request *wallet.ExternalSignerImportRequest) { request.SignerKind = wallet.SignerKindSoftware }},
 		{"watch-only kind", func(request *wallet.ExternalSignerImportRequest) { request.SignerKind = wallet.SignerKindWatchOnly }},
+		{"unverified cloud capabilities", func(request *wallet.ExternalSignerImportRequest) { request.Capabilities = 0 }},
+		{"export capability", func(request *wallet.ExternalSignerImportRequest) {
+			request.Capabilities = wallet.CapabilityExportSecret
+		}},
+		{"multisig EOA capabilities", func(request *wallet.ExternalSignerImportRequest) { request.SignerKind = wallet.SignerKindMultisig }},
 		{"lowercase address", func(request *wallet.ExternalSignerImportRequest) {
 			request.Address = "0x9d8a62f656a8d1615c1294fd71e9cfb3e4855a4f"
 		}},
@@ -99,6 +104,11 @@ func TestImportExternalSignerAccountRejectsInvalidBindings(t *testing.T) {
 		}},
 		{"empty reference", func(request *wallet.ExternalSignerImportRequest) { request.Reference = "" }},
 		{"newline reference", func(request *wallet.ExternalSignerImportRequest) { request.Reference = "cloud:v1:\nhttps://evil" }},
+		{"remote plaintext reference", func(request *wallet.ExternalSignerImportRequest) { request.Reference = "cloud:v1:http://vault.example" }},
+		{"credential query reference", func(request *wallet.ExternalSignerImportRequest) {
+			request.Reference = "cloud:v1:https://vault.example?token=secret"
+		}},
+		{"noncanonical reference", func(request *wallet.ExternalSignerImportRequest) { request.Reference += "/" }},
 		{"long name", func(request *wallet.ExternalSignerImportRequest) { request.Name = string(make([]byte, 65)) }},
 	}
 	for _, test := range cases {

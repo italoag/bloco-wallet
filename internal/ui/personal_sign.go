@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"blocowallet/internal/constants"
 	"blocowallet/internal/evm"
@@ -70,6 +71,7 @@ type personalSignState struct {
 	password   textinput.Model
 	prepared   *evm.PreparedPersonalSign
 	result     *evm.PersonalSignResult
+	cancel     context.CancelFunc
 	generation uint64
 	err        string
 	keys       personalSignKeyMap
@@ -118,6 +120,10 @@ func (model *CLIModel) updatePersonalSign(message tea.Msg) (tea.Model, tea.Cmd) 
 	case personalSignResultMsg:
 		if message.generation != state.generation {
 			return model, nil
+		}
+		if state.cancel != nil {
+			state.cancel()
+			state.cancel = nil
 		}
 		state.password.SetValue("")
 		if message.err != nil {
@@ -182,11 +188,12 @@ func (model *CLIModel) updatePersonalSign(message tea.Msg) (tea.Model, tea.Cmd) 
 				return model, nil
 			}
 			if message.String() == "enter" {
-				password := state.password.Value()
-				if len(password) == 0 {
-					state.err = "storage password is required"
+				password := []byte(state.password.Value())
+				if len(password) == 0 && (model.transactionAuthorizer == nil || !model.transactionAuthorizer.HasActiveSession(context.Background(), state.account.AccountID)) {
+					state.err = "storage password is required for software accounts"
 					return model, nil
 				}
+				state.password.SetValue("")
 				state.err = ""
 				state.phase = personalSignSubmitting
 				model.personalSignGeneration++
@@ -196,19 +203,20 @@ func (model *CLIModel) updatePersonalSign(message tea.Msg) (tea.Model, tea.Cmd) 
 				authorizer := model.transactionAuthorizer
 				prepared := state.prepared
 				accountID := state.account.AccountID
+				operationContext, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+				state.cancel = cancel
 				return model, func() tea.Msg {
-					payload := make([]byte, len(password))
-					copy(payload, password)
+					defer clear(password)
+					defer cancel()
 					var result evm.PersonalSignResult
-					var err error
-					err = authorizer.Authorize(context.Background(), accountID, payload, func(handle wallet.CapabilityHandle, epoch uint64) error {
-						result, err = service.ApproveAndSignPersonal(context.Background(), handle, prepared, evm.PersonalSignApprovalRequest{
+					var operationErr error
+					operationErr = authorizer.Authorize(operationContext, accountID, password, func(handle wallet.CapabilityHandle, epoch uint64) error {
+						result, operationErr = service.ApproveAndSignPersonal(operationContext, handle, prepared, evm.PersonalSignApprovalRequest{
 							AuthorizationEpoch: epoch, ConfirmedIntentHash: prepared.Preview().IntentHash, ConfirmationLevel: evm.ConfirmationReinforced,
 						})
-						return err
+						return operationErr
 					})
-					clear(payload)
-					return personalSignResultMsg{generation: generation, result: result, err: err}
+					return personalSignResultMsg{generation: generation, result: result, err: operationErr}
 				}
 			}
 			var command tea.Cmd
@@ -235,7 +243,11 @@ func (model *CLIModel) viewPersonalSign() string {
 		_, _ = fmt.Fprintf(&content, "\n\nAccount: %s\nMessage length: %d bytes\nUTF-8: %t\nMessage:\n%s\n\nDigest: %s\nIntent: %s\n\nYou are signing exactly these bytes with personal_sign. The signature has no chain binding.\n\nPress a to approve and sign, p to edit the message, or esc to cancel.",
 			safeShort(state.account.Address), preview.MessageLength, preview.UTF8, safeInline(string(preview.Message)), preview.Digest.Hex(), preview.IntentHash.Hex())
 	case personalSignPassword:
-		content.WriteString("\n\n" + state.password.View())
+		if state.account.SignerKind == wallet.SignerKindSoftware {
+			content.WriteString("\n\n" + state.password.View())
+		} else {
+			content.WriteString("\n\nPress Enter, then confirm this message on the external signer.")
+		}
 	case personalSignSubmitting:
 		content.WriteString("\n\nSigning with reinforced confirmation after durable approval...")
 	case personalSignComplete:
@@ -260,6 +272,10 @@ func (model *CLIModel) viewPersonalSign() string {
 func (model *CLIModel) clearPersonalSign() {
 	model.personalSignGeneration++
 	if model.personalSign != nil {
+		if model.personalSign.cancel != nil {
+			model.personalSign.cancel()
+			model.personalSign.cancel = nil
+		}
 		model.personalSign.message.SetValue("")
 		model.personalSign.password.SetValue("")
 	}

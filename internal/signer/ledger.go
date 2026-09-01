@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	"blocowallet/internal/wallet"
 
@@ -25,8 +26,9 @@ const (
 	ledgerINSSignPersonalMessage = 0x08
 	ledgerINSSignEIP712          = 0x0c
 	// Status words.
-	ledgerSWOK   = 0x9000
-	ledgerSWDeny = 0x6985
+	ledgerSWOK       = 0x9000
+	ledgerSWDeny     = 0x6985
+	ledgerSWCanceled = 0x6982
 )
 
 var (
@@ -36,6 +38,8 @@ var (
 	ErrLedgerTransport = errors.New("ledger signer: transport failure")
 	// ErrLedgerSignature is returned when the device signs with another key.
 	ErrLedgerSignature = errors.New("ledger signer: signature verification failed")
+	// ErrLedgerInsecureApp rejects Ethereum app versions before 1.22.3.
+	ErrLedgerInsecureApp = errors.New("ledger signer: Ethereum app version is below the secure baseline")
 )
 
 // APDUTransport exchanges raw APDUs with the device (HID, TCP proxy, or
@@ -48,6 +52,7 @@ type APDUTransport interface {
 // LedgerDevice speaks the Ledger Ethereum application protocol.
 type LedgerDevice struct {
 	transport APDUTransport
+	mu        sync.Mutex
 }
 
 // NewLedgerDevice creates a device over the given transport.
@@ -56,6 +61,45 @@ func NewLedgerDevice(transport APDUTransport) (*LedgerDevice, error) {
 		return nil, fmt.Errorf("ledger signer: transport required")
 	}
 	return &LedgerDevice{transport: transport}, nil
+}
+
+// LedgerAppConfiguration is returned by Ethereum INS 0x06.
+type LedgerAppConfiguration struct {
+	Flags byte
+	Major byte
+	Minor byte
+	Patch byte
+}
+
+// Secure reports whether the app includes the 1.22.3 APDU review hardening.
+func (configuration LedgerAppConfiguration) Secure() bool {
+	if configuration.Major != 1 {
+		return configuration.Major > 1
+	}
+	if configuration.Minor != 22 {
+		return configuration.Minor > 22
+	}
+	return configuration.Patch >= 3
+}
+
+// GetAppConfiguration reads and validates the exact four-byte app response.
+func (device *LedgerDevice) GetAppConfiguration(ctx context.Context) (LedgerAppConfiguration, error) {
+	if device == nil || device.transport == nil {
+		return LedgerAppConfiguration{}, ErrLedgerTransport
+	}
+	device.mu.Lock()
+	defer device.mu.Unlock()
+	response, status, err := device.transport.Exchange(ctx, ledgerCLA, ledgerINSGetAppConfiguration, 0, 0, nil)
+	if err != nil {
+		return LedgerAppConfiguration{}, fmt.Errorf("ledger signer: app configuration: %w", err)
+	}
+	if status != ledgerSWOK {
+		return LedgerAppConfiguration{}, mapLedgerStatus(status)
+	}
+	if len(response) != 4 {
+		return LedgerAppConfiguration{}, ErrLedgerTransport
+	}
+	return LedgerAppConfiguration{Flags: response[0], Major: response[1], Minor: response[2], Patch: response[3]}, nil
 }
 
 // PublicKey is the result of GetPublicKey.
@@ -69,6 +113,8 @@ func (device *LedgerDevice) GetPublicKey(ctx context.Context, derivationPath str
 	if device == nil || device.transport == nil {
 		return PublicKey{}, ErrLedgerTransport
 	}
+	device.mu.Lock()
+	defer device.mu.Unlock()
 	path, err := derivationPathToNumbers(derivationPath)
 	if err != nil {
 		return PublicKey{}, err
@@ -118,6 +164,8 @@ func (device *LedgerDevice) SignTypedMessage(ctx context.Context, derivationPath
 	if device == nil || device.transport == nil {
 		return nil, ErrLedgerTransport
 	}
+	device.mu.Lock()
+	defer device.mu.Unlock()
 	path, err := derivationPathToNumbers(derivationPath)
 	if err != nil {
 		return nil, err
@@ -147,6 +195,8 @@ func (device *LedgerDevice) SignPersonalMessage(ctx context.Context, derivationP
 	if device == nil || device.transport == nil {
 		return nil, ErrLedgerTransport
 	}
+	device.mu.Lock()
+	defer device.mu.Unlock()
 	path, err := derivationPathToNumbers(derivationPath)
 	if err != nil {
 		return nil, err
@@ -269,6 +319,9 @@ func (signer *LedgerSigner) SignTypedHash(ctx context.Context, request LedgerTyp
 	}); err != nil {
 		return wallet.SoftwareSigningResult{}, err
 	}
+	if err := signer.ensureSecureApp(ctx); err != nil {
+		return wallet.SoftwareSigningResult{}, err
+	}
 	signature, err := signer.device.SignTypedMessage(ctx, derivationPath, request.DomainSeparatorHash, request.MessageHash)
 	if err != nil {
 		return wallet.SoftwareSigningResult{}, err
@@ -303,6 +356,9 @@ func (signer *LedgerSigner) SignPersonalMessage(ctx context.Context, request Led
 	}); err != nil {
 		return wallet.SoftwareSigningResult{}, err
 	}
+	if err := signer.ensureSecureApp(ctx); err != nil {
+		return wallet.SoftwareSigningResult{}, err
+	}
 	signature, err := signer.device.SignPersonalMessage(ctx, derivationPath, request.Message)
 	if err != nil {
 		return wallet.SoftwareSigningResult{}, err
@@ -315,6 +371,17 @@ func (signer *LedgerSigner) SignPersonalMessage(ctx context.Context, request Led
 		MessageScheme: wallet.MessageSigningEIP191Personal, ChainID: request.ChainID,
 		Digest: digest, IntentHash: request.IntentHash, Signature: signature,
 	}, nil
+}
+
+func (signer *LedgerSigner) ensureSecureApp(ctx context.Context) error {
+	configuration, err := signer.device.GetAppConfiguration(ctx)
+	if err != nil {
+		return err
+	}
+	if !configuration.Secure() {
+		return ErrLedgerInsecureApp
+	}
+	return nil
 }
 
 func (signer *LedgerSigner) resolveAccount(ctx context.Context, accountID string) (*wallet.Account, string, common.Address, error) {
@@ -347,7 +414,7 @@ func (signer *LedgerSigner) resolveAccount(ctx context.Context, accountID string
 }
 
 func mapLedgerStatus(status uint16) error {
-	if status == ledgerSWDeny {
+	if status == ledgerSWDeny || status == ledgerSWCanceled {
 		return ErrLedgerDenied
 	}
 	return fmt.Errorf("%w: status %#x", ErrLedgerTransport, status)

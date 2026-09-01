@@ -129,6 +129,20 @@ type Engine struct {
 }
 
 func NewEngine(repository TransactionRepository, rpc RPC, signer ApprovedDigestSigner, options EngineOptions) (*Engine, error) {
+	adapter, err := NewDigestSignerAdapter(signer)
+	if err != nil {
+		return nil, err
+	}
+	return newEngine(repository, rpc, adapter, options)
+}
+
+// NewEngineWithStructuredSigner constructs an engine that passes frozen
+// transaction intents to its signer.
+func NewEngineWithStructuredSigner(repository TransactionRepository, rpc RPC, signer TransactionIntentSigner, options EngineOptions) (*Engine, error) {
+	return newEngine(repository, rpc, signer, options)
+}
+
+func newEngine(repository TransactionRepository, rpc RPC, signer TransactionIntentSigner, options EngineOptions) (*Engine, error) {
 	if repository == nil || rpc == nil || signer == nil {
 		return nil, fmt.Errorf("EVM engine dependencies are required")
 	}
@@ -155,7 +169,7 @@ func NewEngine(repository TransactionRepository, rpc RPC, signer ApprovedDigestS
 		planner:    NewPlanner(),
 		simulator:  NewSimulator(),
 		feeOracle:  NewFeeOracle(),
-		signer:     NewSigningAdapter(signer),
+		signer:     NewStructuredSigningAdapter(signer),
 		options:    options,
 	}, nil
 }

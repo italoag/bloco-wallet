@@ -77,7 +77,6 @@ func TestWatchOnlyImportValidatesAddressAndLinksSameAddressAccounts(t *testing.T
 	}
 	privateKey := hex.EncodeToString(crypto.FromECDSA(key))
 	address := crypto.PubkeyToAddress(key.PublicKey).Hex()
-	key.D.SetInt64(0)
 	password := []byte("Strong storage password 1!")
 	software, err := vault.ImportPrivateKey(context.Background(), PrivateKeyImportRequest{
 		Name:                   "Custodial",
@@ -376,7 +375,6 @@ func TestCanonicalImportAcceptsPrintableUnicodeStoragePassword(t *testing.T) {
 		t.Fatal(err)
 	}
 	privateKey := hex.EncodeToString(crypto.FromECDSA(key))
-	key.D.SetInt64(0)
 	password := []byte("密碼密碼密碼密碼密碼密碼密碼密碼")
 	if _, err := vault.ImportPrivateKey(context.Background(), PrivateKeyImportRequest{
 		Name:                   "Unicode password",
@@ -395,7 +393,6 @@ func TestWalletVaultImportsPrivateKeyAndRejectsConfirmationErrors(t *testing.T) 
 		t.Fatal(err)
 	}
 	privateKey := hex.EncodeToString(crypto.FromECDSA(key))
-	key.D.SetInt64(0)
 	storagePassword := []byte("Strong storage password 1!")
 	request := PrivateKeyImportRequest{
 		Name:                   "Imported key",
@@ -440,7 +437,6 @@ func TestKeystoreImportAllowsEmptySourcePassword(t *testing.T) {
 		Address:    crypto.PubkeyToAddress(key.PublicKey),
 		PrivateKey: key,
 	}, "", keystore.LightScryptN, keystore.LightScryptP)
-	key.D.SetInt64(0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -574,7 +570,6 @@ func TestWalletVaultImportsKeystoreWithSeparatePasswords(t *testing.T) {
 	}
 	sourcePassword := []byte("External keystore password")
 	encoded, err := keystore.EncryptKey(keystoreKey, string(sourcePassword), keystore.LightScryptN, keystore.LightScryptP)
-	key.D.SetInt64(0)
 	if err != nil {
 		t.Fatal(err)
 	}

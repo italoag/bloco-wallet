@@ -152,7 +152,6 @@ func TestCanonicalSecretCompatibilityAndErrorPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 	keyBytes := crypto.FromECDSA(key)
-	key.D.SetInt64(0)
 	defer clear(keyBytes)
 	legacyKeyAccount := &Account{SecretType: SecretTypePrivateKey}
 	derived, _, err := deriveStoredSecretIdentity(legacyKeyAccount, keyBytes)

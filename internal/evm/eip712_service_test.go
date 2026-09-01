@@ -48,7 +48,6 @@ func (eip712SignerStub) Sign(_ context.Context, _ wallet.CapabilityHandle, reque
 	if err != nil {
 		return wallet.SoftwareSigningResult{}, err
 	}
-	defer key.D.SetInt64(0)
 	signature, err := crypto.Sign(request.Digest[:], key)
 	if err != nil {
 		return wallet.SoftwareSigningResult{}, err

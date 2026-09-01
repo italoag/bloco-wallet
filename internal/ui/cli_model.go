@@ -14,6 +14,7 @@ import (
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/digitallyserviced/tdfgo/tdf"
 )
 
@@ -53,6 +54,7 @@ type CLIModel struct {
 	walletConnectGeneration         uint64
 	walletConnectService            WalletConnectService
 	walletConnectReader             WalletConnectSessionReader
+	walletConnectEvents             chan tea.Msg
 	fido2                           *fido2State
 	fido2Generation                 uint64
 	fido2Service                    FIDO2Service

@@ -63,7 +63,6 @@ func (signer *personalSignerStub) Sign(_ context.Context, _ wallet.CapabilityHan
 	if err != nil {
 		return wallet.SoftwareSigningResult{}, err
 	}
-	defer key.D.SetInt64(0)
 	signature, err := crypto.Sign(request.Digest[:], key)
 	if err != nil {
 		return wallet.SoftwareSigningResult{}, err
@@ -112,7 +111,6 @@ func TestPersonalSignServiceBindsApprovalAndReturnsEthereumSignature(t *testing.
 		t.Fatal(err)
 	}
 	signerAddress := crypto.PubkeyToAddress(key.PublicKey)
-	key.D.SetInt64(0)
 	prepared, err := evm.PreparePersonalSign(evm.PreparePersonalSignRequest{
 		AccountID: "11111111-1111-4111-8111-111111111111", Signer: signerAddress,
 		Message: []byte("Approve exact bytes"), Origin: "local-user",

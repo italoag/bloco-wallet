@@ -1,0 +1,185 @@
+name: Hardware Emulator Integration
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hardware-emulators-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: '1.26.7'
+  SPECULOS_IMAGE: 'ghcr.io/ledgerhq/speculos@sha256:455d81fb8c6143e1413b5ac724887f8ca4cd887d54db5893758b12377df3d46c'
+  TREZOR_USER_ENV_IMAGE: 'ghcr.io/trezor/trezor-user-env@sha256:a899abeed8ec61f665a2b107ea6f23a12606271613b65e5b91e7c9aef2c3551a'
+  FOUNDRY_IMAGE: 'ghcr.io/foundry-rs/foundry@sha256:0c00cb0bda1ab1b91c9a6bf60f4c76c09c1a8870824b6d4718afbabacf6f9a17'
+
+jobs:
+  ledger:
+    name: Ledger Ethereum 1.22.3
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: Download pinned Ethereum app
+        run: |
+          mkdir -p build/hardware
+          curl --fail --location --silent --show-error \
+            https://github.com/LedgerHQ/app-ethereum/releases/download/1.22.3/app-1.22.3-nanox.elf \
+            --output build/hardware/ethereum-nanox.elf
+          echo '47705998a0419df75959f46faf2c4a214846f61943fd15d3708b92caf2a3559f  build/hardware/ethereum-nanox.elf' | sha256sum --check
+      - name: Start Speculos
+        run: |
+          docker run --detach --name speculos \
+            --volume "$PWD/build/hardware:/apps:ro" \
+            --publish 50010:5000 \
+            "$SPECULOS_IMAGE" \
+            --model nanox --display headless --api-port 5000 \
+            /apps/ethereum-nanox.elf
+          for attempt in $(seq 1 60); do
+            curl --fail --silent http://127.0.0.1:50010/events >/dev/null && exit 0
+            sleep 1
+          done
+          docker logs speculos
+          exit 1
+      - name: Test Ledger protocol and UI
+        env:
+          BLOCO_WALLET_SPECULOS_URL: http://127.0.0.1:50010
+        run: go test ./internal/signer -run TestLedgerSpeculosIntegration -v -count=1 -timeout=10m
+      - name: Stop Speculos
+        if: always()
+        run: docker rm --force speculos || true
+
+  trezor:
+    name: Trezor One and Model T
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: Start Trezor user environment
+        run: |
+          docker run --detach --name trezor-user-env \
+            --publish 9001:9001 --publish 9002:9002 \
+            --publish 21328:21328 \
+            "$TREZOR_USER_ENV_IMAGE" \
+            .venv/bin/python src/main.py
+          for attempt in $(seq 1 90); do
+            curl --fail --silent http://127.0.0.1:9002/ >/dev/null && exit 0
+            sleep 1
+          done
+          docker logs trezor-user-env
+          exit 1
+      - name: Start Trezor One and Bridge
+        run: |
+          docker exec -i trezor-user-env .venv/bin/python - <<'PY'
+          import asyncio, json
+          import websockets
+
+          async def send(ws, payload):
+              await ws.send(json.dumps(payload))
+              while True:
+                  message = json.loads(await asyncio.wait_for(ws.recv(), 90))
+                  if message.get("id") == payload["id"]:
+                      if not message.get("success"):
+                          raise RuntimeError(message)
+                      return
+
+          async def main():
+              async with websockets.connect("ws://127.0.0.1:9001/", ping_interval=None) as ws:
+                  initial = json.loads(await ws.recv())
+                  one = next(version for version in initial["firmwares"]["T1B1"] if "1.14.1" in version)
+                  await send(ws, {"id": 1, "type": "emulator-start", "version": one, "model": "T1B1", "wipe": True, "output_to_logfile": False, "save_screenshots": False, "show_animations": False})
+                  await send(ws, {"id": 2, "type": "emulator-setup", "mnemonic": "all all all all all all all all all all all all", "pin": "", "passphrase_protection": False, "label": "Bloco Test"})
+                  await send(ws, {"id": 3, "type": "bridge-start", "version": "node-bridge", "output_to_logfile": False})
+          asyncio.run(main())
+          PY
+          for attempt in $(seq 1 60); do
+            if configuration=$(curl --fail --silent --request POST http://127.0.0.1:21328/configure \
+              --header 'Origin: https://python.trezor.io'); then
+              CONFIGURATION="$configuration" python3 -c 'import json,os; c=json.loads(os.environ["CONFIGURATION"]); assert c["version"] == "3.2.1" and c["protocolMessages"] is True'
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs trezor-user-env
+          exit 1
+      - name: Test Trezor One
+        env:
+          BLOCO_WALLET_TREZOR_EMULATOR: http://127.0.0.1:21328
+          BLOCO_WALLET_TREZOR_CONTROLLER_URL: ws://127.0.0.1:9001/
+        run: go test ./internal/signer -run TestTrezorEmulatorIntegration -v -count=1 -timeout=10m
+      - name: Switch to Model T
+        run: |
+          docker exec -i trezor-user-env .venv/bin/python - <<'PY'
+          import asyncio, json
+          import websockets
+
+          async def send(ws, payload):
+              await ws.send(json.dumps(payload))
+              while True:
+                  message = json.loads(await asyncio.wait_for(ws.recv(), 90))
+                  if message.get("id") == payload["id"]:
+                      if not message.get("success"):
+                          raise RuntimeError(message)
+                      return
+
+          async def main():
+              async with websockets.connect("ws://127.0.0.1:9001/", ping_interval=None) as ws:
+                  initial = json.loads(await ws.recv())
+                  model_t = next(version for version in initial["firmwares"]["T2T1"] if "2.12.4" in version)
+                  await send(ws, {"id": 4, "type": "emulator-stop"})
+                  await send(ws, {"id": 5, "type": "emulator-start", "version": model_t, "model": "T2T1", "wipe": True, "output_to_logfile": False, "save_screenshots": False, "show_animations": False})
+                  await send(ws, {"id": 6, "type": "emulator-setup", "mnemonic": "all all all all all all all all all all all all", "pin": "", "passphrase_protection": False, "label": "Bloco Test"})
+          asyncio.run(main())
+          PY
+      - name: Test Model T
+        env:
+          BLOCO_WALLET_TREZOR_EMULATOR: http://127.0.0.1:21328
+          BLOCO_WALLET_TREZOR_CONTROLLER_URL: ws://127.0.0.1:9001/
+        run: go test ./internal/signer -run TestTrezorEmulatorIntegration -v -count=1 -timeout=10m
+      - name: Stop Trezor user environment
+        if: always()
+        run: docker rm --force trezor-user-env || true
+
+  safe:
+    name: Safe 1.5.0 on Anvil
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: Start Anvil
+        run: |
+          docker run --detach --name anvil --publish 18545:8545 \
+            --entrypoint anvil "$FOUNDRY_IMAGE" --host 0.0.0.0
+          for attempt in $(seq 1 60); do
+            curl --fail --silent --request POST http://127.0.0.1:18545 \
+              --header 'Content-Type: application/json' \
+              --data '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}' >/dev/null && exit 0
+            sleep 1
+          done
+          docker logs anvil
+          exit 1
+      - name: Test Safe contracts and coordinator
+        env:
+          BLOCO_WALLET_ANVIL_URL: http://127.0.0.1:18545
+        run: go test ./internal/signer -run 'TestSafe(EIP1271AgainstRealContract|CoordinatorAgainstRealSafe)$' -v -count=1 -timeout=10m
+      - name: Stop Anvil
+        if: always()
+        run: docker rm --force anvil || true

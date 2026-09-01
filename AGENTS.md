@@ -24,7 +24,7 @@ go test ./... -v -tags=production         # direct Go
 ```
 
 ## Coding Style & Naming Conventions
-- Language: Go 1.23+. Format with `go fmt`; lint with `golangci-lint` (via `make lint`).
+- Language: Go 1.26.7+. Format with `go fmt`; lint with `golangci-lint` (via `make lint`).
 - Indentation: tabs (Go default). Line length: keep readable; prefer small functions.
 - Packages: lower-case short names; files use `snake_case.go`.
 - Exported identifiers: `CamelCase`; unexported: `camelCase`. Errors use `error` values, wrap with context.
@@ -44,5 +44,5 @@ go test ./... -v -tags=production         # direct Go
 ## Security & Configuration Tips
 - Do not commit secrets, private keys, or real keystores. Use `internal/wallet/testdata` only for tests.
 - Config lives under the per-OS app dir (resolved by `pkg/config`); env prefix: `BLOCO_WALLET_` (e.g., `BLOCO_WALLET_APP_APP_DIR`).
-- SQLite requires CGO; macOS linker warnings are handled via `CGO_LDFLAGS` in the Makefile.
+- Native builds may use CGO SQLite; `CGO_ENABLED=0` with the `nocgo` tag selects the pure-Go SQLite release path.
 

@@ -1,17 +1,17 @@
 package signer
 
 import (
-	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net"
-	"net/http"
 	"net/url"
 	"strings"
 	"time"
+
+	"blocowallet/internal/blockchain"
 )
 
 type bridgeProtocolMessage struct {
@@ -20,18 +20,23 @@ type bridgeProtocolMessage struct {
 }
 
 type bridgePacketTransport struct {
-	baseURL string
-	origin  string
-	session string
-	client  *http.Client
-	pending [][]byte
+	baseURL          string
+	origin           string
+	session          string
+	gateway          *blockchain.RPCGateway
+	protocolMessages bool
+	writeBuffer      []byte
+	pending          [][]byte
 }
 
 type BridgeDevice struct {
 	*UDPDevice
 }
 
-func NewBridgeDevice(ctx context.Context, baseURL string) (*BridgeDevice, error) {
+func NewBridgeDevice(ctx context.Context, baseURL string, gateway *blockchain.RPCGateway) (*BridgeDevice, error) {
+	if gateway == nil {
+		return nil, fmt.Errorf("trezor signer: RPC gateway required")
+	}
 	baseURL = strings.TrimSuffix(baseURL, "/")
 	parsed, err := url.Parse(baseURL)
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Path != "" && parsed.Path != "/") {
@@ -40,16 +45,13 @@ func NewBridgeDevice(ctx context.Context, baseURL string) (*BridgeDevice, error)
 	host := parsed.Hostname()
 	ip := net.ParseIP(host)
 	loopback := host == "localhost" || (ip != nil && ip.IsLoopback())
-	if parsed.Scheme == "http" && !loopback {
-		return nil, fmt.Errorf("trezor signer: plaintext bridge must be loopback")
+	if !loopback {
+		return nil, fmt.Errorf("trezor signer: bridge must be loopback")
 	}
 	transport := &bridgePacketTransport{
 		baseURL: baseURL,
 		origin:  "https://python.trezor.io",
-		client: &http.Client{
-			Timeout:       30 * time.Second,
-			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-		},
+		gateway: gateway,
 	}
 	var configuration struct {
 		Version          string `json:"version"`
@@ -58,9 +60,10 @@ func NewBridgeDevice(ctx context.Context, baseURL string) (*BridgeDevice, error)
 	if err := transport.postJSON(ctx, "/configure", nil, &configuration); err != nil {
 		return nil, fmt.Errorf("trezor signer: bridge configure: %w", err)
 	}
-	if configuration.Version == "" || !configuration.ProtocolMessages {
-		return nil, fmt.Errorf("trezor signer: bridge protocol messages unsupported")
+	if configuration.Version == "" {
+		return nil, fmt.Errorf("trezor signer: bridge returned no version")
 	}
+	transport.protocolMessages = configuration.ProtocolMessages
 	var devices []struct {
 		Path string `json:"path"`
 	}
@@ -89,13 +92,45 @@ func (transport *bridgePacketTransport) WritePacket(ctx context.Context, packet 
 	if len(packet) != trezorPacketSize {
 		return fmt.Errorf("trezor signer: invalid packet size")
 	}
-	request := bridgeProtocolMessage{Protocol: "v1", Data: hex.EncodeToString(packet)}
-	var response bridgeProtocolMessage
-	if err := transport.postJSON(ctx, "/post/"+url.PathEscape(transport.session), request, &response); err != nil {
-		return fmt.Errorf("trezor signer: bridge post: %w", err)
+	if transport.protocolMessages {
+		request := bridgeProtocolMessage{Protocol: "v1", Data: hex.EncodeToString(packet)}
+		var response bridgeProtocolMessage
+		if err := transport.postJSON(ctx, "/post/"+url.PathEscape(transport.session), request, &response); err != nil {
+			return fmt.Errorf("trezor signer: bridge post: %w", err)
+		}
+		if response.Protocol != "v1" {
+			return fmt.Errorf("trezor signer: bridge protocol mismatch")
+		}
+		return nil
 	}
-	if response.Protocol != "v1" {
-		return fmt.Errorf("trezor signer: bridge protocol mismatch")
+	if len(transport.writeBuffer) == 0 {
+		if packet[0] != '?' || packet[1] != '#' || packet[2] != '#' {
+			return fmt.Errorf("trezor signer: malformed first bridge packet")
+		}
+		transport.writeBuffer = append(transport.writeBuffer, packet[1:]...)
+	} else {
+		if packet[0] != '?' {
+			transport.writeBuffer = nil
+			return fmt.Errorf("trezor signer: malformed continuation bridge packet")
+		}
+		transport.writeBuffer = append(transport.writeBuffer, packet[1:]...)
+	}
+	if len(transport.writeBuffer) < 8 {
+		return nil
+	}
+	messageLength := int(binary.BigEndian.Uint32(transport.writeBuffer[4:8]))
+	frameLength := 8 + messageLength
+	if messageLength > trezorMaxMessageBytes || frameLength < 8 {
+		transport.writeBuffer = nil
+		return fmt.Errorf("trezor signer: bridge message too large")
+	}
+	if len(transport.writeBuffer) < frameLength {
+		return nil
+	}
+	frame := append([]byte(nil), transport.writeBuffer[2:frameLength]...)
+	transport.writeBuffer = nil
+	if _, err := transport.postPlain(ctx, "/post/"+url.PathEscape(transport.session), hex.EncodeToString(frame)); err != nil {
+		return fmt.Errorf("trezor signer: bridge post: %w", err)
 	}
 	return nil
 }
@@ -105,6 +140,21 @@ func (transport *bridgePacketTransport) ReadPacket(ctx context.Context) ([]byte,
 		packet := transport.pending[0]
 		transport.pending = transport.pending[1:]
 		return packet, nil
+	}
+	if !transport.protocolMessages {
+		encoded, err := transport.postPlain(ctx, "/read/"+url.PathEscape(transport.session), "")
+		if err != nil {
+			return nil, fmt.Errorf("trezor signer: bridge read: %w", err)
+		}
+		decoded, err := hex.DecodeString(strings.TrimSpace(encoded))
+		if err != nil || len(decoded) < 6 {
+			return nil, fmt.Errorf("trezor signer: malformed bridge message")
+		}
+		messageLength := int(binary.BigEndian.Uint32(decoded[2:6]))
+		if messageLength > trezorMaxMessageBytes || len(decoded) != 6+messageLength {
+			return nil, fmt.Errorf("trezor signer: malformed bridge message")
+		}
+		return transport.queueBridgeMessage(decoded)
 	}
 	request := bridgeProtocolMessage{Protocol: "v1"}
 	var response bridgeProtocolMessage
@@ -138,63 +188,89 @@ func (transport *bridgePacketTransport) ReadPacket(ctx context.Context) ([]byte,
 	return first, nil
 }
 
+func (transport *bridgePacketTransport) queueBridgeMessage(frame []byte) ([]byte, error) {
+	buffer := make([]byte, 2+len(frame))
+	copy(buffer, "##")
+	copy(buffer[2:], frame)
+	for offset := 0; offset < len(buffer); {
+		end := offset + trezorPacketDataSize
+		if end > len(buffer) {
+			end = len(buffer)
+		}
+		packet := make([]byte, trezorPacketSize)
+		packet[0] = '?'
+		copy(packet[1:], buffer[offset:end])
+		transport.pending = append(transport.pending, packet)
+		offset = end
+	}
+	if len(transport.pending) == 0 {
+		return nil, fmt.Errorf("trezor signer: empty bridge message")
+	}
+	packet := transport.pending[0]
+	transport.pending = transport.pending[1:]
+	return packet, nil
+}
+
 func (transport *bridgePacketTransport) Close() error {
 	if transport == nil || transport.session == "" {
 		return nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		transport.baseURL+"/release/"+url.PathEscape(transport.session), nil)
+	response, err := transport.gateway.Request(ctx, blockchain.OutboundRequest{
+		Method: "POST", URL: transport.baseURL + "/release/" + url.PathEscape(transport.session),
+		Headers: map[string]string{"Origin": transport.origin}, MaxResponseBytes: 4 << 10,
+	})
 	if err != nil {
 		return err
 	}
-	request.Header.Set("Origin", transport.origin)
-	response, err := transport.client.Do(request)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = response.Body.Close() }()
 	transport.session = ""
-	if response.StatusCode != http.StatusOK {
+	if response.StatusCode != 200 {
 		return fmt.Errorf("trezor signer: bridge release status %d", response.StatusCode)
 	}
 	return nil
 }
 
+func (transport *bridgePacketTransport) postPlain(ctx context.Context, path, body string) (string, error) {
+	response, err := transport.gateway.Request(ctx, blockchain.OutboundRequest{
+		Method: "POST", URL: transport.baseURL + path,
+		Headers: map[string]string{"Origin": transport.origin, "Content-Type": "text/plain"},
+		Body:    []byte(body), MaxResponseBytes: 2*trezorMaxMessageBytes + 64, Timeout: 5 * time.Minute,
+	})
+	if err != nil {
+		return "", err
+	}
+	if response.StatusCode != 200 {
+		return "", fmt.Errorf("trezor signer: bridge status %d", response.StatusCode)
+	}
+	return string(response.Body), nil
+}
+
 func (transport *bridgePacketTransport) postJSON(ctx context.Context, path string, input any, output any) error {
-	var body io.Reader
+	var body []byte
+	headers := map[string]string{"Origin": transport.origin}
 	if input != nil {
 		encoded, err := json.Marshal(input)
 		if err != nil {
 			return err
 		}
-		body = bytes.NewReader(encoded)
+		body = encoded
+		headers["Content-Type"] = "application/json"
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, transport.baseURL+path, body)
+	response, err := transport.gateway.Request(ctx, blockchain.OutboundRequest{
+		Method: "POST", URL: transport.baseURL + path, Headers: headers,
+		Body: body, MaxResponseBytes: trezorMaxMessageBytes, Timeout: 5 * time.Minute,
+	})
 	if err != nil {
 		return err
 	}
-	request.Header.Set("Origin", transport.origin)
-	if input != nil {
-		request.Header.Set("Content-Type", "application/json")
-	}
-	response, err := transport.client.Do(request)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = response.Body.Close() }()
-	responseBody, err := io.ReadAll(io.LimitReader(response.Body, trezorMaxMessageBytes))
-	if err != nil {
-		return err
-	}
-	if response.StatusCode != http.StatusOK {
-		return fmt.Errorf("status %d: %s", response.StatusCode, strings.TrimSpace(string(responseBody)))
+	if response.StatusCode != 200 {
+		return fmt.Errorf("trezor signer: bridge status %d", response.StatusCode)
 	}
 	if output == nil {
 		return nil
 	}
-	if err := json.Unmarshal(responseBody, output); err != nil {
+	if err := json.Unmarshal(response.Body, output); err != nil {
 		return err
 	}
 	return nil

@@ -12,7 +12,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/core/types"
 )
 
 type EVMRPC struct {
@@ -192,29 +192,36 @@ func (client *EVMRPC) SendRawTransaction(ctx context.Context, raw []byte) (commo
 	if len(raw) == 0 || len(raw) > 128<<10 {
 		return common.Hash{}, fmt.Errorf("signed EVM payload is outside policy")
 	}
-	localHash := crypto.Keccak256Hash(raw)
+	var transaction types.Transaction
+	if err := transaction.UnmarshalBinary(raw); err != nil || !transaction.Protected() || transaction.ChainId() == nil || !transaction.ChainId().IsInt64() || transaction.ChainId().Int64() != client.session.chainID {
+		return common.Hash{}, &evm.BroadcastError{Kind: evm.BroadcastFailureRejected, Cause: fmt.Errorf("signed EVM payload chain binding is invalid")}
+	}
+	if _, err := types.Sender(types.LatestSignerForChainID(transaction.ChainId()), &transaction); err != nil {
+		return common.Hash{}, &evm.BroadcastError{Kind: evm.BroadcastFailureRejected, Cause: fmt.Errorf("signed EVM payload signature is invalid")}
+	}
+	localHash := transaction.Hash()
 	var encoded string
-	if err := client.gateway.Call(ctx, client.session, "eth_sendRawTransaction", []any{hexutil.Encode(raw)}, &encoded); err != nil {
+	sent, callErr := client.gateway.callSideEffect(ctx, client.session, "eth_sendRawTransaction", []any{hexutil.Encode(raw)}, &encoded)
+	if callErr != nil {
 		var remoteError *RPCRemoteError
-		if errors.As(err, &remoteError) {
+		if errors.As(callErr, &remoteError) {
 			switch remoteError.Kind {
 			case RPCErrorAlreadyKnown:
 				return localHash, nil
 			case RPCErrorNonceTooLow:
-				return common.Hash{}, &evm.BroadcastError{Kind: evm.BroadcastFailureNonceLow, Cause: err}
+				return common.Hash{}, &evm.BroadcastError{Kind: evm.BroadcastFailureNonceLow, Cause: callErr}
 			default:
-				return common.Hash{}, &evm.BroadcastError{Kind: evm.BroadcastFailureRejected, Cause: err}
+				return common.Hash{}, &evm.BroadcastError{Kind: evm.BroadcastFailureRejected, Cause: callErr}
 			}
 		}
-		var transportError *networkTransportError
-		if errors.As(err, &transportError) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return common.Hash{}, &evm.BroadcastError{Kind: evm.BroadcastFailureAmbiguous, Cause: err}
+		if sent {
+			return common.Hash{}, &evm.BroadcastError{Kind: evm.BroadcastFailureAmbiguous, Cause: callErr}
 		}
-		return common.Hash{}, &evm.BroadcastError{Kind: evm.BroadcastFailureRejected, Cause: err}
+		return common.Hash{}, &evm.BroadcastError{Kind: evm.BroadcastFailureRejected, Cause: callErr}
 	}
 	remoteHash, err := decodeRPCData32(encoded)
 	if err != nil || remoteHash != localHash {
-		return common.Hash{}, &evm.BroadcastError{Kind: evm.BroadcastFailureRejected, Cause: fmt.Errorf("broadcast EVM transaction hash mismatch")}
+		return common.Hash{}, &evm.BroadcastError{Kind: evm.BroadcastFailureAmbiguous, Cause: fmt.Errorf("broadcast EVM transaction hash mismatch")}
 	}
 	return remoteHash, nil
 }

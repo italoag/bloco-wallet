@@ -56,6 +56,15 @@ func TestMessageSigningRepositoryConsumesApprovalOnceAndBlocksReplay(t *testing.
 	if err := repository.VerifyMessageApproval(context.Background(), binding); err != nil {
 		t.Fatalf("consumed message approval was not bound to signing record: %v", err)
 	}
+	if err := repository.db.Model(&wallet.Account{}).Where("account_id = ?", account.AccountID).Update("authorization_epoch", account.AuthorizationEpoch+1).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.VerifyMessageApproval(context.Background(), binding); err == nil {
+		t.Fatal("message approval survived account epoch rotation")
+	}
+	if err := repository.db.Model(&wallet.Account{}).Where("account_id = ?", account.AccountID).Update("authorization_epoch", account.AuthorizationEpoch).Error; err != nil {
+		t.Fatal(err)
+	}
 	wrong := binding
 	wrong.IntentHash[0] ^= 0xff
 	if err := repository.VerifyMessageApproval(context.Background(), wrong); err == nil {
@@ -100,6 +109,37 @@ func TestMessageSigningRepositoryConsumesApprovalOnceAndBlocksReplay(t *testing.
 	}
 	if signatureColumns != 0 {
 		t.Fatal("message signing schema stores raw signature or payload bytes")
+	}
+}
+
+func TestMessageSigningRepositoryAllowsHardwareEOA(t *testing.T) {
+	repository := newAccountTestRepository(t)
+	account := testAccount("11111111-1111-4111-8111-111111111111", "hardware-message")
+	account.SignerKind = wallet.SignerKindHardware
+	account.SignerReference = "ledger:v1:m/44'/60'/0'/0/0"
+	account.SecretType = ""
+	account.SecretEnvelope = nil
+	account.DerivationScheme = "bip44"
+	account.State = wallet.AccountStateActive
+	if err := repository.CreateAccount(context.Background(), account); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	approval := testMessageApproval(account, now)
+	if err := repository.IssueMessageApproval(context.Background(), approval); err != nil {
+		t.Fatal(err)
+	}
+	record, err := repository.AuthorizeMessageSigning(context.Background(), evm.AuthorizeMessageSigningRequest{
+		SigningID: "71111111-1111-4111-8111-111111111111", ApprovalID: approval.ApprovalID,
+		AccountID: account.AccountID, Signer: approval.Signer, Scheme: approval.Scheme,
+		Digest: approval.Digest, IntentHash: approval.IntentHash,
+		AuthorizationEpoch: account.AuthorizationEpoch, AuthorizedAt: now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.AccountID != account.AccountID || record.State != evm.MessageSigningInProgress {
+		t.Fatalf("unexpected hardware signing record: %+v", record)
 	}
 }
 

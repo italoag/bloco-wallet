@@ -344,6 +344,7 @@ func (repo *GORMRepository) UpdateAccount(ctx context.Context, account *wallet.A
 		Where("address = ? AND signer_kind = ? AND signer_reference = ? AND secret_type = ?", account.Address, account.SignerKind, account.SignerReference, account.SecretType).
 		Where("derivation_scheme = ? AND derivation_path = ? AND account_index = ? AND change_index = ? AND address_index = ?", account.DerivationScheme, account.DerivationPath, account.AccountIndex, account.ChangeIndex, account.AddressIndex).
 		Where("b_ip39_language = ? AND has_b_ip39_passphrase = ? AND source_identity = ? AND related_account_id = ?", account.BIP39Language, account.HasBIP39Passphrase, account.SourceIdentity, account.RelatedAccountID).
+		Where("authorization_epoch <= ? AND ((state = ? AND capabilities = ?) OR (state = ? AND ? = ?) OR authorization_epoch < ?)", account.AuthorizationEpoch, account.State, account.Capabilities, wallet.AccountStatePendingBackup, account.State, wallet.AccountStateActive, account.AuthorizationEpoch).
 		Updates(map[string]any{
 			"name":                account.Name,
 			"state":               account.State,

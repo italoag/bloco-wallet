@@ -32,6 +32,17 @@ const (
 	SignerKindMultisig  SignerKind = "multisig"
 )
 
+// SupportsEOASigning reports whether the signer kind can produce an ECDSA
+// signature for the account address. Multisig contracts use a separate flow.
+func (kind SignerKind) SupportsEOASigning() bool {
+	switch kind {
+	case SignerKindSoftware, SignerKindHardware, SignerKindCloud:
+		return true
+	default:
+		return false
+	}
+}
+
 type AccountCapability uint64
 
 const (
@@ -116,8 +127,8 @@ func (account *Account) Validate() error {
 			return fmt.Errorf("watch-only account cannot sign or store custody material")
 		}
 	case SignerKindHardware, SignerKindCloud, SignerKindMultisig:
-		if len(account.SecretEnvelope) != 0 {
-			return fmt.Errorf("external signer account cannot store software secrets")
+		if len(account.SecretEnvelope) != 0 || account.Capabilities&CapabilityExportSecret != 0 {
+			return fmt.Errorf("external signer account cannot store or export software secrets")
 		}
 	default:
 		return fmt.Errorf("invalid signer kind")

@@ -10,9 +10,11 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
+	"blocowallet/internal/blockchain"
 	"blocowallet/internal/wallet"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -38,13 +40,28 @@ func (verifier fakeApprovalVerifier) VerifyMessageApproval(context.Context, wall
 	return verifier.requireError
 }
 
-func testCloudAccount(privateKey *ecdsa.PrivateKey) *wallet.Account {
+func testCloudAccount(privateKey *ecdsa.PrivateKey, references ...string) *wallet.Account {
+	reference := "cloud:v1:https://vault.example"
+	if len(references) == 1 {
+		reference = references[0]
+	}
 	return &wallet.Account{
 		AccountID: "11111111-1111-4111-8111-111111111111",
 		Name:      "cloud", Address: crypto.PubkeyToAddress(privateKey.PublicKey).Hex(),
-		SignerKind: wallet.SignerKindCloud, SignerReference: "cloud:v1:https://vault.example",
+		SignerKind: wallet.SignerKindCloud, SignerReference: reference,
 		State: wallet.AccountStateActive,
 	}
+}
+
+func testGatewayForServer(t *testing.T, rawURL string) *blockchain.RPCGateway {
+	t.Helper()
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return blockchain.NewRPCGateway(blockchain.RPCGatewayOptions{
+		AllowedLocalTargets: []string{parsed.Host}, MaxRequestsPerSecond: 256,
+	})
 }
 
 func signForTest(privateKey *ecdsa.PrivateKey, digest [32]byte) []byte {
@@ -53,6 +70,17 @@ func signForTest(privateKey *ecdsa.PrivateKey, digest [32]byte) []byte {
 		panic(err)
 	}
 	return signature
+}
+
+func TestCloudSignerRejectsUnsafeEndpoints(t *testing.T) {
+	gateway := blockchain.NewRPCGateway(blockchain.RPCGatewayOptions{})
+	for _, endpoint := range []string{
+		"http://example.com/sign", "https://user:secret@example.com/sign", "https://example.com/sign?token=secret", "https://example.com/sign#secret",
+	} {
+		if _, err := NewVaultCompatibleAPI(endpoint, func() (string, error) { return "token", nil }, gateway); err == nil {
+			t.Fatalf("unsafe cloud signer endpoint was accepted: %s", endpoint)
+		}
+	}
 }
 
 func TestCloudSignerSignsApprovedDigestAndVerifiesAddress(t *testing.T) {
@@ -69,11 +97,11 @@ func TestCloudSignerSignsApprovedDigestAndVerifiesAddress(t *testing.T) {
 		_, _ = writer.Write([]byte(`{"signature":"0x` + common.Bytes2Hex(signForTest(privateKey, [32]byte{7})) + `"}`))
 	}))
 	defer server.Close()
-	api, err := NewVaultCompatibleAPI(server.URL, func() (string, error) { return "tok-123", nil })
+	api, err := NewVaultCompatibleAPI(server.URL, func() (string, error) { return "tok-123", nil }, testGatewayForServer(t, server.URL))
 	if err != nil {
 		t.Fatal(err)
 	}
-	account := testCloudAccount(privateKey)
+	account := testCloudAccount(privateKey, api.Reference())
 	signer, err := NewCloudSigner(api, fakeAccountLookup{account: account}, fakeApprovalVerifier{}, fakeApprovalVerifier{})
 	if err != nil {
 		t.Fatal(err)
@@ -117,11 +145,11 @@ func TestCloudSignerRejectsForeignSignatureAndDeniedApproval(t *testing.T) {
 		_, _ = writer.Write([]byte(`{"signature":"0x` + common.Bytes2Hex(signForTest(foreignKey, [32]byte{7})) + `"}`))
 	}))
 	defer server.Close()
-	api, err := NewVaultCompatibleAPI(server.URL, func() (string, error) { return "tok", nil })
+	api, err := NewVaultCompatibleAPI(server.URL, func() (string, error) { return "tok", nil }, testGatewayForServer(t, server.URL))
 	if err != nil {
 		t.Fatal(err)
 	}
-	account := testCloudAccount(ownerKey)
+	account := testCloudAccount(ownerKey, api.Reference())
 	signer, err := NewCloudSigner(api, fakeAccountLookup{account: account}, fakeApprovalVerifier{}, fakeApprovalVerifier{})
 	if err != nil {
 		t.Fatal(err)

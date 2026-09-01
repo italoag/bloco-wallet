@@ -267,7 +267,6 @@ func (eks *EnhancedKeyStoreService) generateWalletInfo(privateKeyBytes []byte) (
 	if err != nil {
 		return nil, fmt.Errorf("erro ao converter chave privada: %w", err)
 	}
-	defer privateKey.D.SetInt64(0)
 
 	// Gera chave pública
 	publicKey := privateKey.Public().(*ecdsa.PublicKey)
@@ -293,15 +292,13 @@ func (eks *EnhancedKeyStoreService) generateWalletInfo(privateKeyBytes []byte) (
 
 // validateEthereumKey valida chave para Ethereum
 func (eks *EnhancedKeyStoreService) validateEthereumKey(privateKey *ecdsa.PrivateKey) error {
-	// Verifica se a chave privada não é zero
-	if privateKey.D.Sign() == 0 {
-		return errors.New("chave privada não pode ser zero")
+	if privateKey == nil {
+		return errors.New("chave privada não pode ser vazia")
 	}
-
-	// Verifica se a chave privada está no range válido
-	if privateKey.D.Cmp(privateKey.Curve.Params().N) >= 0 {
+	encoded := crypto.FromECDSA(privateKey)
+	defer clear(encoded)
+	if _, err := crypto.ToECDSA(encoded); err != nil {
 		return errors.New("chave privada fora do range válido")
 	}
-
 	return nil
 }

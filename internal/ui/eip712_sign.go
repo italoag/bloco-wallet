@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"blocowallet/internal/constants"
 	"blocowallet/internal/evm"
@@ -67,6 +68,7 @@ type eip712SignState struct {
 	password   textinput.Model
 	prepared   *evm.PreparedEIP712Sign
 	result     *evm.PersonalSignResult
+	cancel     context.CancelFunc
 	generation uint64
 	err        string
 	keys       eip712SignKeyMap
@@ -128,6 +130,10 @@ func (model *CLIModel) updateEIP712Sign(message tea.Msg) (tea.Model, tea.Cmd) {
 	case eip712SignResultMsg:
 		if message.generation != state.generation {
 			return model, nil
+		}
+		if state.cancel != nil {
+			state.cancel()
+			state.cancel = nil
 		}
 		state.password.SetValue("")
 		if message.err != nil {
@@ -211,11 +217,12 @@ func (model *CLIModel) updateEIP712Sign(message tea.Msg) (tea.Model, tea.Cmd) {
 				return model, nil
 			}
 			if message.String() == "enter" {
-				password := state.password.Value()
-				if len(password) == 0 {
-					state.err = "storage password is required"
+				password := []byte(state.password.Value())
+				if len(password) == 0 && (model.transactionAuthorizer == nil || !model.transactionAuthorizer.HasActiveSession(context.Background(), state.account.AccountID)) {
+					state.err = "storage password is required for software accounts"
 					return model, nil
 				}
+				state.password.SetValue("")
 				state.err = ""
 				state.phase = eip712SignSubmitting
 				model.eip712SignGeneration++
@@ -225,19 +232,20 @@ func (model *CLIModel) updateEIP712Sign(message tea.Msg) (tea.Model, tea.Cmd) {
 				authorizer := model.transactionAuthorizer
 				prepared := state.prepared
 				accountID := state.account.AccountID
+				operationContext, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+				state.cancel = cancel
 				return model, func() tea.Msg {
-					payload := make([]byte, len(password))
-					copy(payload, password)
+					defer clear(password)
+					defer cancel()
 					var result evm.PersonalSignResult
-					var err error
-					err = authorizer.Authorize(context.Background(), accountID, payload, func(handle wallet.CapabilityHandle, epoch uint64) error {
-						result, err = service.ApproveAndSignEIP712(context.Background(), handle, prepared, evm.PersonalSignApprovalRequest{
+					var operationErr error
+					operationErr = authorizer.Authorize(operationContext, accountID, password, func(handle wallet.CapabilityHandle, epoch uint64) error {
+						result, operationErr = service.ApproveAndSignEIP712(operationContext, handle, prepared, evm.PersonalSignApprovalRequest{
 							AuthorizationEpoch: epoch, ConfirmedIntentHash: prepared.Preview().IntentHash, ConfirmationLevel: evm.ConfirmationReinforced,
 						})
-						return err
+						return operationErr
 					})
-					clear(payload)
-					return eip712SignResultMsg{generation: generation, result: result, err: err}
+					return eip712SignResultMsg{generation: generation, result: result, err: operationErr}
 				}
 			}
 			var command tea.Cmd
@@ -274,7 +282,11 @@ func (model *CLIModel) viewEIP712Sign() string {
 		_, _ = fmt.Fprintf(&content, "\n\nChain: %s (%d)\nDigest: %s\nIntent: %s\n\n%s\n\nPress a to approve and sign, p to edit, or esc to cancel.",
 			safeShort(state.networks[state.selected].key), preview.DomainChainID, preview.Digest.Hex(), preview.IntentHash.Hex(), preview.Rendered)
 	case eip712SignPassword:
-		content.WriteString("\n\n" + state.password.View())
+		if state.account.SignerKind == wallet.SignerKindSoftware {
+			content.WriteString("\n\n" + state.password.View())
+		} else {
+			content.WriteString("\n\nPress Enter, then confirm the typed data or hashes shown by the external signer. Hash-only hardware requires explicit blind-signing policy.")
+		}
 	case eip712SignSubmitting:
 		content.WriteString("\n\nSigning with reinforced confirmation after durable approval...")
 	case eip712SignComplete:
@@ -299,6 +311,10 @@ func (model *CLIModel) viewEIP712Sign() string {
 func (model *CLIModel) clearEIP712Sign() {
 	model.eip712SignGeneration++
 	if model.eip712Sign != nil {
+		if model.eip712Sign.cancel != nil {
+			model.eip712Sign.cancel()
+			model.eip712Sign.cancel = nil
+		}
 		model.eip712Sign.typedData.SetValue("")
 		model.eip712Sign.password.SetValue("")
 	}

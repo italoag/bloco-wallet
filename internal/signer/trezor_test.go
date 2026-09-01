@@ -7,6 +7,7 @@ import (
 	"errors"
 	"testing"
 
+	"blocowallet/internal/evm"
 	"blocowallet/internal/wallet"
 
 	gethaccounts "github.com/ethereum/go-ethereum/accounts"
@@ -53,6 +54,32 @@ func (device *fakeTrezorDevice) EthereumSignMessage(_ context.Context, derivatio
 		return nil, errors.New("path mismatch")
 	}
 	return crypto.Sign(gethaccounts.TextHash(message), device.signingKey())
+}
+
+type fakeCoreTrezorDevice struct {
+	*fakeTrezorDevice
+	typedDataCalls int
+}
+
+func (device *fakeCoreTrezorDevice) EthereumSignTypedData(_ context.Context, derivationPath string, input any, _ ...bool) ([]byte, error) {
+	device.typedDataCalls++
+	if device.path != "" && derivationPath != device.path {
+		return nil, errors.New("path mismatch")
+	}
+	encoded, ok := input.([]byte)
+	if !ok {
+		return nil, errors.New("typed data input mismatch")
+	}
+	prepared, err := evm.PrepareEIP712Sign(evm.PrepareEIP712SignRequest{
+		AccountID: "11111111-1111-4111-8111-111111111111",
+		Signer:    crypto.PubkeyToAddress(device.key.PublicKey), ChainID: 1,
+		TypedData: encoded, Origin: "fake-trezor",
+	})
+	if err != nil {
+		return nil, err
+	}
+	digest := prepared.Preview().Digest
+	return crypto.Sign(digest[:], device.signingKey())
 }
 
 func (device *fakeTrezorDevice) signingKey() *ecdsa.PrivateKey {
@@ -141,6 +168,44 @@ func TestTrezorSignerSignsTypedHashAndPersonalMessage(t *testing.T) {
 	if device.signCalls != 2 {
 		t.Fatalf("unexpected device sign calls: %d", device.signCalls)
 	}
+}
+
+func TestTrezorSignerSignsStructuredTypedDataOnCore(t *testing.T) {
+	key, err := ecdsa.GenerateKey(crypto.S256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	account := testHardwareAccount(key)
+	baseDevice := &fakeTrezorDevice{
+		key: key, path: "m/44'/60'/0'/0/0",
+		features: TrezorFeatures{Model: "T2T1", Version: "2.12.4", Initialized: true},
+	}
+	device := &fakeCoreTrezorDevice{fakeTrezorDevice: baseDevice}
+	signer, err := NewTrezorSigner(device, fakeAccountLookup{account: account}, fakeApprovalVerifier{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepared, err := evm.PrepareEIP712Sign(evm.PrepareEIP712SignRequest{
+		AccountID: account.AccountID, Signer: common.HexToAddress(account.Address), ChainID: 1,
+		TypedData: []byte(trezorTypedDataJSONFixture), Origin: "fake-trezor",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	preview := prepared.Preview()
+	result, err := signer.SignStructuredTypedData(context.Background(), TrezorStructuredTypedDataRequest{
+		AccountID: account.AccountID, ChainID: 1,
+		CanonicalJSON:       preview.CanonicalJSON,
+		DomainSeparatorHash: preview.DomainSeparatorHash, MessageHash: preview.MessageHash,
+		IntentHash: [32]byte{3}, ApprovalID: "71111111-1111-4111-8111-111111111111",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if device.typedDataCalls != 1 {
+		t.Fatalf("Core typed-data calls: %d", device.typedDataCalls)
+	}
+	assertRecoveredAddress(t, result.Digest, result.Signature, common.HexToAddress(account.Address))
 }
 
 func TestTrezorSignerFailsClosed(t *testing.T) {

@@ -36,7 +36,6 @@ func (vault *WalletVault) ExportKeystoreV3(ctx context.Context, request Keystore
 		if err != nil {
 			return err
 		}
-		defer privateKey.D.SetInt64(0)
 		encoded, err := keystore.EncryptKey(&keystore.Key{
 			Id:         uuid.New(),
 			Address:    crypto.PubkeyToAddress(privateKey.PublicKey),
@@ -66,7 +65,6 @@ func verifyKeystoreV3Export(encoded, password []byte, expectedAddress string) er
 		return fmt.Errorf("verify Keystore V3 export: %w", err)
 	}
 	decryptedAddress := crypto.PubkeyToAddress(decrypted.PrivateKey.PublicKey).Hex()
-	decrypted.PrivateKey.D.SetInt64(0)
 	if !addressesEqual(decryptedAddress, expectedAddress) {
 		return fmt.Errorf("verified Keystore V3 address mismatch")
 	}

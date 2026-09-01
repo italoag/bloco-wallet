@@ -3,6 +3,7 @@ package wallet
 import (
 	"context"
 	"crypto/ecdsa"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -222,7 +223,6 @@ func (ws *WalletService) ImportWalletFromPrivateKey(name, privateKeyHex, passwor
 	}
 
 	// Import the private key to keystore
-	defer privKey.D.SetInt64(0)
 	keyID, err := uuid.NewRandom()
 	if err != nil {
 		return nil, fmt.Errorf("generate keystore identity: %w", err)
@@ -556,7 +556,6 @@ func (ws *WalletService) ImportWalletFromKeystoreV3WithContext(ctx context.Conte
 			err,
 		)
 	}
-	defer privateKey.D.SetInt64(0)
 
 	// Step 14: Verify address matches derived address
 	derivedAddress := crypto.PubkeyToAddress(privateKey.PublicKey).Hex()
@@ -668,7 +667,11 @@ func (ws *WalletService) ImportWalletFromKeystoreV3WithContext(ctx context.Conte
 	if err != nil {
 		return nil, NewKeystoreImportError(ErrorInvalidKeystore, "Keystore is not supported for persistent use", err)
 	}
-	if reloadedKey.Address.Hex() != address || reloadedKey.PrivateKey.D.Cmp(privateKey.D) != 0 {
+	reloadedPrivateKey := crypto.FromECDSA(reloadedKey.PrivateKey)
+	defer clear(reloadedPrivateKey)
+	originalPrivateKey := crypto.FromECDSA(privateKey)
+	defer clear(originalPrivateKey)
+	if reloadedKey.Address.Hex() != address || subtle.ConstantTimeCompare(reloadedPrivateKey, originalPrivateKey) != 1 {
 		return nil, NewKeystoreImportError(ErrorAddressMismatch, "Stored keystore identity mismatch", nil)
 	}
 
@@ -780,11 +783,10 @@ func (ws *WalletService) LoadWallet(wallet *Wallet, password string) (*WalletDet
 	if err != nil {
 		return nil, fmt.Errorf("error reading the wallet file: %v", err)
 	}
-	key, err := decryptKeySafely(keyJSON, password)
+	_, err = decryptKeySafely(keyJSON, password)
 	if err != nil {
 		return nil, fmt.Errorf("incorrect password")
 	}
-	key.PrivateKey.D.SetInt64(0)
 
 	// Decrypt the mnemonic
 	var mnemonicPtr *string
@@ -879,7 +881,6 @@ func decryptKeySafelyContext(ctx context.Context, keyJSON []byte, password strin
 		return nil, err
 	}
 	if err := ctx.Err(); err != nil {
-		key.PrivateKey.D.SetInt64(0)
 		return nil, err
 	}
 	return key, nil

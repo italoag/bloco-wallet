@@ -83,11 +83,10 @@ build-static: ## Build static binary using pure Go SQLite driver
 	@echo "$(GREEN)✓ Static build complete: ${OUTPUT_BIN}-static$(RESET)"
 
 .PHONY: build-all
-build-all: clean ## Build for all supported platforms (both CGO and static versions)
+build-all: clean ## Build functional pure-Go SQLite binaries for all supported platforms
 	@echo "$(CYAN)Building ${NAME} for all platforms...$(RESET)"
 	@mkdir -p ${DIST_DIR}
 	@$(foreach platform,$(PLATFORMS),$(call build_platform,$(platform)))
-	@$(foreach platform,$(PLATFORMS),$(call build_platform_static,$(platform)))
 	@echo "$(GREEN)✓ All platform builds complete$(RESET)"
 
 .PHONY: build-linux
@@ -138,7 +137,7 @@ test-production: ## Run tests with production-grade security parameters
 	@echo "$(CYAN)Running tests with production parameters...$(RESET)"
 	@echo "$(YELLOW)⚠️  This will take longer due to secure scrypt parameters$(RESET)"
 	@$(GO) clean --testcache
-	@$(RUN_GO_ISOLATED) CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GO) test ./... -v -race -count=1 -shuffle=on -tags=production
+	@$(RUN_GO_ISOLATED) CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GO) test ./... -v -race -count=1 -shuffle=on -tags=production -timeout=25m
 	@echo "$(GREEN)✓ Production tests complete$(RESET)"
 
 .PHONY: test-quiet
@@ -353,7 +352,7 @@ info: ## Show build environment information
 help: ## Display this help
 	@awk 'BEGIN {FS = ":.*##"; printf "\n$(CYAN)Usage:$(RESET)\n  make $(YELLOW)<target>$(RESET)\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  $(YELLOW)%-15s$(RESET) %s\n", $$1, $$2 } /^##@/ { printf "\n$(CYAN)%s$(RESET)\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
-# Build function for cross-compilation
+# Build function for pure-Go cross-compilation
 define build_platform
 	$(eval GOOS := $(word 1,$(subst /, ,$(1))))
 	$(eval GOARCH := $(word 2,$(subst /, ,$(1))))
@@ -361,11 +360,11 @@ define build_platform
 	$(eval OUTPUT := ${DIST_DIR}/${NAME}-${VERSION}-$(GOOS)-$(GOARCH)$(EXT))
 	$(eval ARCHIVE := $(if $(filter windows,$(GOOS)),${DIST_DIR}/${NAME}-${VERSION}-$(GOOS)-$(GOARCH).zip,${DIST_DIR}/${NAME}-${VERSION}-$(GOOS)-$(GOARCH).tar.gz))
 	
-	@echo "$(BLUE)  Building for $(GOOS)/$(GOARCH) (CGO)...$(RESET)"
-	@CGO_ENABLED=${CGO_ENABLED} GOOS=$(GOOS) GOARCH=$(GOARCH) \
+	@echo "$(BLUE)  Building for $(GOOS)/$(GOARCH) (pure Go SQLite)...$(RESET)"
+	@CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) \
 		go build ${GO_FLAGS} \
 		-ldflags "${LDFLAGS}" \
-		-a -tags=${GO_TAGS} \
+		-a -tags="${GO_TAGS},nocgo" \
 		-o $(OUTPUT) \
 		./${CMD_DIR}
 	

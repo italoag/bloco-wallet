@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"strconv"
 	"strings"
 
 	"blocowallet/internal/terminal"
@@ -25,7 +26,7 @@ const (
 	MaxEIP712ArrayLength      = 64
 	MaxEIP712RenderValueBytes = 512
 	MaxEIP712RenderArrayItems = 8
-	eip712IntentDomain        = "bloco-wallet/eip712/v1"
+	eip712IntentDomain        = "bloco-wallet/eip712/v2"
 )
 
 type PrepareEIP712SignRequest struct {
@@ -37,29 +38,34 @@ type PrepareEIP712SignRequest struct {
 }
 
 type EIP712Preview struct {
-	AccountID         string
-	Signer            common.Address
-	ChainID           uint64
-	PrimaryType       string
-	DomainName        string
-	DomainVersion     string
-	DomainChainID     uint64
-	VerifyingContract common.Address
-	Digest            common.Hash
-	IntentHash        common.Hash
-	CanonicalJSON     []byte
-	Rendered          string
+	AccountID           string
+	Signer              common.Address
+	ChainID             uint64
+	PrimaryType         string
+	DomainName          string
+	DomainVersion       string
+	DomainChainID       uint64
+	VerifyingContract   common.Address
+	DomainSeparatorHash common.Hash
+	MessageHash         common.Hash
+	Digest              common.Hash
+	IntentHash          common.Hash
+	CanonicalJSON       []byte
+	Rendered            string
 }
 
 type PreparedEIP712Sign struct {
-	accountID     string
-	signer        common.Address
-	chainID       uint64
-	typedData     *apitypes.TypedData
-	canonicalJSON []byte
-	digest        common.Hash
-	intentHash    common.Hash
-	rendered      string
+	accountID           string
+	signer              common.Address
+	chainID             uint64
+	origin              string
+	typedData           *apitypes.TypedData
+	canonicalJSON       []byte
+	domainSeparatorHash common.Hash
+	messageHash         common.Hash
+	digest              common.Hash
+	intentHash          common.Hash
+	rendered            string
 }
 
 func PrepareEIP712Sign(request PrepareEIP712SignRequest) (*PreparedEIP712Sign, error) {
@@ -97,20 +103,34 @@ func PrepareEIP712Sign(request PrepareEIP712SignRequest) (*PreparedEIP712Sign, e
 	if verifyingContract == (common.Address{}) {
 		return nil, &EngineError{Code: ErrorPolicyDenied, Field: "EIP-712 verifying contract"}
 	}
+	domainHashBytes, err := typedData.HashStruct("EIP712Domain", apitypes.TypedDataMessage(typedData.Domain.Map()))
+	if err != nil {
+		return nil, &EngineError{Code: ErrorInvalidIntent, Field: "EIP-712 domain hash", Cause: err}
+	}
+	messageHashBytes, err := typedData.HashStruct(typedData.PrimaryType, typedData.Message)
+	if err != nil {
+		return nil, &EngineError{Code: ErrorInvalidIntent, Field: "EIP-712 message hash", Cause: err}
+	}
 	digestBytes, _, err := apitypes.TypedDataAndHash(*typedData)
 	if err != nil {
 		return nil, &EngineError{Code: ErrorInvalidIntent, Field: "EIP-712 digest", Cause: err}
 	}
-	var digest common.Hash
+	var domainSeparatorHash, messageHash, digest common.Hash
+	copy(domainSeparatorHash[:], domainHashBytes)
+	copy(messageHash[:], messageHashBytes)
 	copy(digest[:], digestBytes)
-	intentHash := eip712IntentHash(request.AccountID, request.Signer, request.ChainID, request.Origin, digest)
+	if crypto.Keccak256Hash([]byte{0x19, 0x01}, domainSeparatorHash[:], messageHash[:]) != digest {
+		return nil, &EngineError{Code: ErrorInvalidIntent, Field: "EIP-712 hash consistency"}
+	}
+	intentHash := eip712IntentHash(request.AccountID, request.Signer, request.ChainID, request.Origin, canonical, domainSeparatorHash, messageHash, digest)
 	rendered, err := renderEIP712Message(typedData, digest)
 	if err != nil {
 		return nil, err
 	}
 	return &PreparedEIP712Sign{
-		accountID: request.AccountID, signer: request.Signer, chainID: request.ChainID,
-		typedData: typedData, canonicalJSON: canonical, digest: digest, intentHash: intentHash, rendered: rendered,
+		accountID: request.AccountID, signer: request.Signer, chainID: request.ChainID, origin: request.Origin,
+		typedData: typedData, canonicalJSON: canonical, domainSeparatorHash: domainSeparatorHash,
+		messageHash: messageHash, digest: digest, intentHash: intentHash, rendered: rendered,
 	}, nil
 }
 
@@ -126,6 +146,7 @@ func (prepared *PreparedEIP712Sign) Preview() EIP712Preview {
 		AccountID: prepared.accountID, Signer: prepared.signer, ChainID: prepared.chainID,
 		PrimaryType: prepared.typedData.PrimaryType, DomainName: domainName, DomainVersion: domainVersion,
 		DomainChainID: domainChainID, VerifyingContract: verifyingContract,
+		DomainSeparatorHash: prepared.domainSeparatorHash, MessageHash: prepared.messageHash,
 		Digest: prepared.digest, IntentHash: prepared.intentHash,
 		CanonicalJSON: append([]byte(nil), prepared.canonicalJSON...), Rendered: prepared.rendered,
 	}
@@ -172,8 +193,11 @@ func validateEIP712TypedData(canonical []byte) (*apitypes.TypedData, error) {
 	if message, ok := normalized.(map[string]any); ok {
 		typedData.Message = apitypes.TypedDataMessage(message)
 	}
-	if typedData.PrimaryType == "" || len(typedData.Types) == 0 || len(typedData.Types) > MaxEIP712Types {
+	if !isEIP712Identifier(typedData.PrimaryType) || len(typedData.Types) == 0 || len(typedData.Types) > MaxEIP712Types {
 		return nil, invalidIntent("EIP-712 type graph")
+	}
+	if len(typedData.Domain.Name) > 128 || len(typedData.Domain.Version) > 128 {
+		return nil, invalidIntent("EIP-712 domain display fields")
 	}
 	if _, exists := typedData.Types[typedData.PrimaryType]; !exists {
 		return nil, invalidIntent("EIP-712 primary type")
@@ -182,8 +206,12 @@ func validateEIP712TypedData(canonical []byte) (*apitypes.TypedData, error) {
 		return nil, invalidIntent("EIP-712 domain type")
 	}
 	totalFields := 0
+	domainTypes := map[string]string{
+		"name": "string", "version": "string", "chainId": "uint256",
+		"verifyingContract": "address", "salt": "bytes32",
+	}
 	for typeName, fields := range typedData.Types {
-		if len(fields) == 0 || len(fields) > MaxEIP712FieldsPerType {
+		if !isEIP712Identifier(typeName) || len(fields) == 0 || len(fields) > MaxEIP712FieldsPerType {
 			return nil, invalidIntent("EIP-712 field budget")
 		}
 		totalFields += len(fields)
@@ -192,8 +220,14 @@ func validateEIP712TypedData(canonical []byte) (*apitypes.TypedData, error) {
 		}
 		seen := make(map[string]struct{}, len(fields))
 		for _, field := range fields {
-			if field.Name == "" || field.Type == "" {
+			if !isEIP712Identifier(field.Name) || field.Type == "" {
 				return nil, invalidIntent("EIP-712 field identity")
+			}
+			if typeName == "EIP712Domain" {
+				expectedType, known := domainTypes[field.Name]
+				if !known || field.Type != expectedType {
+					return nil, invalidIntent("EIP-712 domain field type")
+				}
 			}
 			if _, duplicate := seen[field.Name]; duplicate {
 				return nil, invalidIntent("EIP-712 duplicate field")
@@ -234,21 +268,9 @@ func normalizeEIP712MessageNumbers(value any) any {
 }
 
 func validateEIP712FieldType(fieldType, owner string, types map[string][]apitypes.Type) error {
-	baseType := strings.TrimSuffix(fieldType, "[]")
-	baseType = strings.TrimSuffix(baseType, "]")
-	for {
-		trimmed := strings.TrimSuffix(baseType, "[]")
-		if trimmed == baseType {
-			break
-		}
-		baseType = trimmed
-	}
-	if baseType == "" || len(baseType) > 64 {
-		return invalidIntent("EIP-712 field type")
-	}
-	arrayCount := strings.Count(fieldType, "[]")
-	if arrayCount > 2 {
-		return invalidIntent("EIP-712 array nesting")
+	baseType, _, err := parseEIP712ArrayType(fieldType)
+	if err != nil {
+		return err
 	}
 	if _, isPrimitive := eip712PrimitiveTypes[baseType]; isPrimitive {
 		return nil
@@ -257,6 +279,52 @@ func validateEIP712FieldType(fieldType, owner string, types map[string][]apitype
 		return invalidIntent("EIP-712 type reference")
 	}
 	return nil
+}
+
+func isEIP712Identifier(value string) bool {
+	if value == "" || len(value) > 64 {
+		return false
+	}
+	for index, character := range []byte(value) {
+		if (character >= 'a' && character <= 'z') || (character >= 'A' && character <= 'Z') || character == '_' || character == '$' || (index > 0 && character >= '0' && character <= '9') {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func parseEIP712ArrayType(fieldType string) (string, int, error) {
+	if fieldType == "" || len(fieldType) > 80 {
+		return "", 0, invalidIntent("EIP-712 field type")
+	}
+	baseType := fieldType
+	arrayDepth := 0
+	for strings.HasSuffix(baseType, "]") {
+		open := strings.LastIndexByte(baseType, '[')
+		if open <= 0 {
+			return "", 0, invalidIntent("EIP-712 array type")
+		}
+		lengthText := baseType[open+1 : len(baseType)-1]
+		if lengthText != "" {
+			if len(lengthText) > 1 && lengthText[0] == '0' {
+				return "", 0, invalidIntent("EIP-712 fixed array length")
+			}
+			length, err := strconv.ParseUint(lengthText, 10, 16)
+			if err != nil || length == 0 || length > MaxEIP712ArrayLength {
+				return "", 0, invalidIntent("EIP-712 fixed array length")
+			}
+		}
+		arrayDepth++
+		if arrayDepth > 2 {
+			return "", 0, invalidIntent("EIP-712 array nesting")
+		}
+		baseType = baseType[:open]
+	}
+	if baseType == "" || len(baseType) > 64 || strings.ContainsAny(baseType, "[]") {
+		return "", 0, invalidIntent("EIP-712 field type")
+	}
+	return baseType, arrayDepth, nil
 }
 
 var eip712PrimitiveTypes = map[string]struct{}{
@@ -290,7 +358,10 @@ func validateEIP712TypeGraph(primaryType string, types map[string][]apitypes.Typ
 		}
 		state[typeName] = 1
 		for _, field := range types[typeName] {
-			baseType := strings.TrimSuffix(field.Type, "[]")
+			baseType, _, err := parseEIP712ArrayType(field.Type)
+			if err != nil {
+				return err
+			}
 			if _, isPrimitive := eip712PrimitiveTypes[baseType]; isPrimitive {
 				continue
 			}
@@ -343,8 +414,8 @@ func domainStringField(typedData *apitypes.TypedData, key string) string {
 	return value
 }
 
-func eip712IntentHash(accountID string, signer common.Address, chainID uint64, origin string, digest common.Hash) common.Hash {
-	canonical := make([]byte, 0, len(eip712IntentDomain)+len(accountID)+len(origin)+64)
+func eip712IntentHash(accountID string, signer common.Address, chainID uint64, origin string, typedData []byte, domainHash, messageHash, digest common.Hash) common.Hash {
+	canonical := make([]byte, 0, len(eip712IntentDomain)+len(accountID)+len(origin)+160)
 	canonical = append(canonical, eip712IntentDomain...)
 	canonical = append(canonical, 0)
 	canonical = append(canonical, accountID...)
@@ -355,6 +426,9 @@ func eip712IntentHash(accountID string, signer common.Address, chainID uint64, o
 	binary.BigEndian.PutUint64(length[:], uint64(len(origin)))
 	canonical = append(canonical, length[:]...)
 	canonical = append(canonical, origin...)
+	canonical = append(canonical, crypto.Keccak256(typedData)...)
+	canonical = append(canonical, domainHash[:]...)
+	canonical = append(canonical, messageHash[:]...)
 	canonical = append(canonical, digest[:]...)
 	return crypto.Keccak256Hash(canonical)
 }
@@ -397,12 +471,15 @@ func renderEIP712Fields(rendered *strings.Builder, typeName string, message map[
 			rendered.WriteString(strings.Repeat("  ", depth) + fieldName + ": <missing>\n")
 			continue
 		}
-		baseType := strings.TrimSuffix(field.Type, "[]")
-		if _, isPrimitive := eip712PrimitiveTypes[baseType]; isPrimitive && !strings.HasSuffix(field.Type, "[]") {
+		baseType, arrayDepth, err := parseEIP712ArrayType(field.Type)
+		if err != nil {
+			return err
+		}
+		if _, isPrimitive := eip712PrimitiveTypes[baseType]; isPrimitive && arrayDepth == 0 {
 			rendered.WriteString(strings.Repeat("  ", depth) + fieldName + ": " + safeRenderValue(eip712PrimitiveString(value)) + "\n")
 			continue
 		}
-		if strings.HasSuffix(field.Type, "[]") {
+		if arrayDepth > 0 {
 			array, ok := value.([]any)
 			if !ok || len(array) > MaxEIP712ArrayLength {
 				return invalidIntent("EIP-712 render array")

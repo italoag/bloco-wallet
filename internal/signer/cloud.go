@@ -5,19 +5,18 @@
 package signer
 
 import (
-	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"math/big"
-	"net/http"
+	"net"
+	"net/url"
 	"strings"
-	"time"
 
+	"blocowallet/internal/blockchain"
 	"blocowallet/internal/wallet"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -44,6 +43,7 @@ type RemoteSigningResult struct {
 // RemoteSigningAPI signs an approved digest remotely.
 type RemoteSigningAPI interface {
 	Sign(ctx context.Context, request RemoteSigningRequest) (RemoteSigningResult, error)
+	Reference() string
 }
 
 // CloudSigner signs approved digests through a remote signing API. It never
@@ -63,8 +63,8 @@ type AccountLookup interface {
 
 // NewCloudSigner creates a cloud signer.
 func NewCloudSigner(api RemoteSigningAPI, accounts AccountLookup, transactionVerifier wallet.TransactionApprovalVerifier, messageVerifier wallet.MessageApprovalVerifier) (*CloudSigner, error) {
-	if api == nil || accounts == nil || transactionVerifier == nil || messageVerifier == nil {
-		return nil, fmt.Errorf("cloud signer: api, accounts, and verifiers are required")
+	if api == nil || accounts == nil || transactionVerifier == nil || messageVerifier == nil || api.Reference() == "" {
+		return nil, fmt.Errorf("cloud signer: api, accounts, reference, and verifiers are required")
 	}
 	return &CloudSigner{
 		api: api, accounts: accounts,
@@ -83,7 +83,7 @@ func (signer *CloudSigner) Sign(ctx context.Context, handle wallet.CapabilityHan
 	if err != nil {
 		return wallet.SoftwareSigningResult{}, fmt.Errorf("cloud signer: account: %w", err)
 	}
-	if account.SignerKind != wallet.SignerKindCloud {
+	if account.SignerKind != wallet.SignerKindCloud || account.SignerReference != signer.api.Reference() {
 		return wallet.SoftwareSigningResult{}, ErrCloudSigningDenied
 	}
 	expectedAddress := common.HexToAddress(account.Address)
@@ -150,32 +150,50 @@ func verifyECDSASignature(expected common.Address, digest [32]byte, signature []
 // VaultCompatibleAPI signs digests through a HashiCorp Vault-like endpoint:
 // POST {endpoint}/sign with the digest and account, Bearer token auth.
 type VaultCompatibleAPI struct {
-	Endpoint      string
-	TokenProvider func() (string, error)
-	Client        *http.Client
+	Endpoint        string
+	SignerReference string
+	TokenProvider   func() (string, error)
+	Gateway         *blockchain.RPCGateway
 }
 
 // NewVaultCompatibleAPI creates the HTTP adapter.
-func NewVaultCompatibleAPI(endpoint string, tokenProvider func() (string, error)) (*VaultCompatibleAPI, error) {
+func NewVaultCompatibleAPI(endpoint string, tokenProvider func() (string, error), gateway *blockchain.RPCGateway) (*VaultCompatibleAPI, error) {
 	if endpoint == "" {
 		return nil, fmt.Errorf("cloud signer: endpoint required")
 	}
-	if !strings.HasPrefix(endpoint, "https://") && !strings.HasPrefix(endpoint, "http://") {
-		return nil, fmt.Errorf("cloud signer: endpoint must be http(s)")
+	parsed, err := url.Parse(endpoint)
+	if err != nil || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Scheme != "https" && parsed.Scheme != "http") {
+		return nil, fmt.Errorf("cloud signer: endpoint must be a credential-free HTTP(S) URL")
 	}
-	if tokenProvider == nil {
-		return nil, fmt.Errorf("cloud signer: token provider required")
+	if parsed.Scheme == "http" {
+		host := parsed.Hostname()
+		ip := net.ParseIP(host)
+		if host != "localhost" && (ip == nil || !ip.IsLoopback()) {
+			return nil, fmt.Errorf("cloud signer: plaintext endpoint must be loopback")
+		}
 	}
+	if tokenProvider == nil || gateway == nil {
+		return nil, fmt.Errorf("cloud signer: token provider and RPC gateway required")
+	}
+	normalizedEndpoint := strings.TrimSuffix(endpoint, "/")
 	return &VaultCompatibleAPI{
-		Endpoint:      strings.TrimSuffix(endpoint, "/"),
-		TokenProvider: tokenProvider,
-		Client:        &http.Client{Timeout: 30 * time.Second},
+		Endpoint:        normalizedEndpoint,
+		SignerReference: "cloud:v1:" + normalizedEndpoint,
+		TokenProvider:   tokenProvider,
+		Gateway:         gateway,
 	}, nil
+}
+
+func (api *VaultCompatibleAPI) Reference() string {
+	if api == nil {
+		return ""
+	}
+	return api.SignerReference
 }
 
 // Sign performs the remote signing round trip.
 func (api *VaultCompatibleAPI) Sign(ctx context.Context, request RemoteSigningRequest) (RemoteSigningResult, error) {
-	if api == nil || api.Client == nil {
+	if api == nil || api.Gateway == nil {
 		return RemoteSigningResult{}, fmt.Errorf("cloud signer: api not configured")
 	}
 	token, err := api.TokenProvider()
@@ -190,23 +208,15 @@ func (api *VaultCompatibleAPI) Sign(ctx context.Context, request RemoteSigningRe
 	if err != nil {
 		return RemoteSigningResult{}, fmt.Errorf("cloud signer: encode request: %w", err)
 	}
-	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodPost, api.Endpoint+"/sign", bytes.NewReader(payload))
-	if err != nil {
-		return RemoteSigningResult{}, fmt.Errorf("cloud signer: build request: %w", err)
-	}
-	httpRequest.Header.Set("Authorization", "Bearer "+token)
-	httpRequest.Header.Set("Content-Type", "application/json")
-	response, err := api.Client.Do(httpRequest)
+	response, err := api.Gateway.Request(ctx, blockchain.OutboundRequest{
+		Method: "POST", URL: api.Endpoint + "/sign", Body: payload, MaxResponseBytes: 64 << 10,
+		Headers: map[string]string{"Authorization": "Bearer " + token, "Content-Type": "application/json"},
+	})
 	if err != nil {
 		return RemoteSigningResult{}, fmt.Errorf("cloud signer: transport: %w", err)
 	}
-	defer func() { _ = response.Body.Close() }()
-	body, err := io.ReadAll(io.LimitReader(response.Body, 64<<10))
-	if err != nil {
-		return RemoteSigningResult{}, fmt.Errorf("cloud signer: read response: %w", err)
-	}
-	if response.StatusCode != http.StatusOK {
-		if response.StatusCode == http.StatusForbidden || response.StatusCode == http.StatusUnauthorized {
+	if response.StatusCode != 200 {
+		if response.StatusCode == 401 || response.StatusCode == 403 {
 			return RemoteSigningResult{}, ErrCloudSigningDenied
 		}
 		return RemoteSigningResult{}, fmt.Errorf("cloud signer: status %d", response.StatusCode)
@@ -214,7 +224,7 @@ func (api *VaultCompatibleAPI) Sign(ctx context.Context, request RemoteSigningRe
 	var decoded struct {
 		Signature string `json:"signature"`
 	}
-	if err := json.Unmarshal(body, &decoded); err != nil {
+	if err := json.Unmarshal(response.Body, &decoded); err != nil {
 		return RemoteSigningResult{}, fmt.Errorf("cloud signer: decode response: %w", err)
 	}
 	signature, err := hex.DecodeString(strings.TrimPrefix(strings.TrimSpace(decoded.Signature), "0x"))

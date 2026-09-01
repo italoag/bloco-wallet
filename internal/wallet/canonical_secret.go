@@ -80,11 +80,9 @@ func validateCanonicalSecret(secret canonicalSecretV1) error {
 		if len(secret.PrivateKey) != 32 {
 			return fmt.Errorf("private key secret must contain 32 bytes")
 		}
-		key, err := crypto.ToECDSA(secret.PrivateKey)
-		if err != nil {
+		if _, err := crypto.ToECDSA(secret.PrivateKey); err != nil {
 			return fmt.Errorf("invalid private key secret: %w", err)
 		}
-		key.D.SetInt64(0)
 	default:
 		return fmt.Errorf("unsupported canonical secret kind")
 	}
@@ -107,7 +105,6 @@ func deriveCanonicalSecretIdentity(secret canonicalSecretV1) ([]byte, string, er
 			return nil, "", err
 		}
 		address := crypto.PubkeyToAddress(key.PublicKey).Hex()
-		key.D.SetInt64(0)
 		return privateKey, address, nil
 	default:
 		return nil, "", fmt.Errorf("unsupported canonical secret kind")

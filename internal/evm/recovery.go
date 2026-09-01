@@ -67,7 +67,8 @@ func (supervisor *RecoverySupervisor) RecoverOnce(ctx context.Context, limit int
 			recoveryErrors = append(recoveryErrors, err)
 			continue
 		}
-		if record.BroadcastAttempts < 3 && (tracking.State == TransactionBroadcasting || tracking.State == TransactionBroadcastFailed || tracking.State == TransactionReorged) {
+		shouldRebroadcast := tracking.State == TransactionBroadcasting || tracking.State == TransactionReorged || (tracking.State == TransactionBroadcastFailed && record.LastResultCode == "transport_unknown")
+		if record.BroadcastAttempts < 3 && shouldRebroadcast {
 			if _, err := tracker.Rebroadcast(ctx, record.TransactionID); err != nil {
 				recoveryErrors = append(recoveryErrors, err)
 			}

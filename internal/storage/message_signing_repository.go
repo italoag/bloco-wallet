@@ -65,8 +65,10 @@ func (repository *GORMRepository) VerifyMessageApproval(ctx context.Context, bin
 	var count int64
 	err := repository.db.WithContext(ctx).Table("message_signing_approvals AS approval").
 		Joins("JOIN message_signing_records AS signing_record ON signing_record.approval_id = approval.approval_id").
-		Where("approval.approval_id = ? AND approval.account_id = ? AND approval.scheme = ? AND approval.chain_id = ? AND approval.digest = ? AND approval.intent_hash = ? AND approval.state = ? AND approval.expires_at_ms > ?", binding.ApprovalID, binding.AccountID, string(binding.Scheme), int64(binding.ChainID), binding.Digest[:], binding.IntentHash[:], string(evm.MessageApprovalConsumed), time.Now().UTC().UnixMilli()).
-		Where("signing_record.account_id = ? AND signing_record.scheme = ? AND signing_record.chain_id = ? AND signing_record.digest = ? AND signing_record.intent_hash = ? AND signing_record.state = ?", binding.AccountID, string(binding.Scheme), int64(binding.ChainID), binding.Digest[:], binding.IntentHash[:], string(evm.MessageSigningInProgress)).
+		Joins("JOIN accounts AS account ON account.account_id = approval.account_id").
+		Where("approval.approval_id = ? AND approval.account_id = ? AND approval.scheme = ? AND approval.chain_id = ? AND approval.digest = ? AND approval.intent_hash = ? AND approval.state = ? AND approval.consumed_at_ms IS NOT NULL AND approval.consumed_at_ms >= approval.created_at_ms AND approval.consumed_at_ms < approval.expires_at_ms", binding.ApprovalID, binding.AccountID, string(binding.Scheme), int64(binding.ChainID), binding.Digest[:], binding.IntentHash[:], string(evm.MessageApprovalConsumed)).
+		Where("signing_record.account_id = ? AND signing_record.signer_address = approval.signer_address AND signing_record.scheme = ? AND signing_record.chain_id = ? AND signing_record.digest = ? AND signing_record.intent_hash = ? AND signing_record.state = ?", binding.AccountID, string(binding.Scheme), int64(binding.ChainID), binding.Digest[:], binding.IntentHash[:], string(evm.MessageSigningInProgress)).
+		Where("account.authorization_epoch = approval.authorization_epoch AND account.state IN ? AND account.signer_kind IN ? AND (account.capabilities & ?) != 0", []string{string(wallet.AccountStateActive), string(wallet.AccountStateLocked)}, []string{string(wallet.SignerKindSoftware), string(wallet.SignerKindCloud), string(wallet.SignerKindHardware)}, int64(wallet.CapabilitySignMessage)).
 		Count(&count).Error
 	if err != nil {
 		return fmt.Errorf("verify message approval: %w", err)
@@ -107,7 +109,7 @@ func (repository *GORMRepository) AuthorizeMessageSigning(ctx context.Context, r
 		if err := transaction.Select("account_id", "address", "signer_kind", "state", "capabilities", "authorization_epoch").Where("account_id = ?", request.AccountID).First(&account).Error; err != nil {
 			return fmt.Errorf("load message signing account: %w", err)
 		}
-		if common.HexToAddress(account.Address) != request.Signer || account.SignerKind != wallet.SignerKindSoftware || (account.State != wallet.AccountStateActive && account.State != wallet.AccountStateLocked) || account.Capabilities&wallet.CapabilitySignMessage == 0 || account.AuthorizationEpoch != request.AuthorizationEpoch {
+		if common.HexToAddress(account.Address) != request.Signer || !account.SignerKind.SupportsEOASigning() || (account.State != wallet.AccountStateActive && account.State != wallet.AccountStateLocked) || account.Capabilities&wallet.CapabilitySignMessage == 0 || account.AuthorizationEpoch != request.AuthorizationEpoch {
 			return &evm.EngineError{Code: evm.ErrorPolicyDenied, Field: "message signing account"}
 		}
 		var approval messageApprovalRow
@@ -148,6 +150,7 @@ func (repository *GORMRepository) CompleteMessageSigning(ctx context.Context, re
 	completedAt := request.CompletedAt.UTC().UnixMilli()
 	result := repository.db.WithContext(ctx).Model(&messageSigningRow{}).
 		Where("signing_id = ? AND state = ?", request.SigningID, string(evm.MessageSigningInProgress)).
+		Where("EXISTS (SELECT 1 FROM message_signing_approvals approval JOIN accounts account ON account.account_id = approval.account_id WHERE approval.approval_id = message_signing_records.approval_id AND account.authorization_epoch = approval.authorization_epoch AND account.state IN ? AND (account.capabilities & ?) != 0)", []string{string(wallet.AccountStateActive), string(wallet.AccountStateLocked)}, int64(wallet.CapabilitySignMessage)).
 		Updates(map[string]any{
 			"state": string(evm.MessageSigningSigned), "signature_hash": request.SignatureHash.Bytes(),
 			"last_result_code": "signed", "completed_at_ms": completedAt, "revision": gorm.Expr("revision + 1"),

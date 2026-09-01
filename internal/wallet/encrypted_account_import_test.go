@@ -46,7 +46,6 @@ func TestEncryptedAccountImportRejectsInvalidArtifacts(t *testing.T) {
 	}
 	privateKey := crypto.FromECDSA(key)
 	address := crypto.PubkeyToAddress(key.PublicKey).Hex()
-	key.D.SetInt64(0)
 	secretJSON, err := encodeCanonicalSecret(canonicalSecretV1{Version: canonicalSecretVersion, Kind: SecretTypePrivateKey, PrivateKey: privateKey})
 	clear(privateKey)
 	if err != nil {
@@ -181,7 +180,6 @@ func TestEncryptedAccountExportImportRoundTrip(t *testing.T) {
 	}
 	privateKey := hex.EncodeToString(crypto.FromECDSA(key))
 	expectedAddress := crypto.PubkeyToAddress(key.PublicKey).Hex()
-	key.D.SetInt64(0)
 	storagePassword := []byte("Strong source storage password 1!")
 	source, err := sourceVault.ImportPrivateKey(context.Background(), PrivateKeyImportRequest{
 		Name:                   "Source",

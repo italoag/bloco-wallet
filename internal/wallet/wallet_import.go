@@ -396,7 +396,6 @@ func canonicalPrivateKeyFromKeystoreContext(ctx context.Context, data, sourcePas
 	}
 	privateKey := crypto.FromECDSA(key.PrivateKey)
 	address := crypto.PubkeyToAddress(key.PrivateKey.PublicKey).Hex()
-	key.PrivateKey.D.SetInt64(0)
 	if validated.Address != "" {
 		expectedAddress := common.HexToAddress(validated.Address).Hex()
 		if !addressesEqual(expectedAddress, address) {

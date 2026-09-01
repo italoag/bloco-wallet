@@ -316,7 +316,6 @@ func deriveEVMAccount(mnemonic, passphrase string, language BIP39Language, path 
 		return nil, "", err
 	}
 	address := crypto.PubkeyToAddress(ecdsaKey.PublicKey).Hex()
-	ecdsaKey.D.SetInt64(0)
 	return privateKey, address, nil
 }
 

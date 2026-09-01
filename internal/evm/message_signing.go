@@ -57,7 +57,7 @@ func PreparePersonalSign(request PreparePersonalSignRequest) (*PreparedPersonalS
 	if request.Signer == (common.Address{}) {
 		return nil, invalidIntent("personal-sign signer")
 	}
-	if len(request.Message) > MaxPersonalSignMessageBytes {
+	if len(request.Message) == 0 || len(request.Message) > MaxPersonalSignMessageBytes {
 		return nil, invalidIntent("personal-sign message size")
 	}
 	if request.Origin == "" || len(request.Origin) > maxMessageOriginBytes || terminal.SanitizeInline(request.Origin, maxMessageOriginBytes) != request.Origin {
@@ -192,7 +192,7 @@ type MessageSigningOptions struct {
 
 type MessageSigningService struct {
 	repository MessageSigningRepository
-	signer     ApprovedDigestSigner
+	signer     MessageIntentSigner
 	options    MessageSigningOptions
 }
 
@@ -213,6 +213,20 @@ type PersonalSignResult struct {
 }
 
 func NewMessageSigningService(repository MessageSigningRepository, signer ApprovedDigestSigner, options MessageSigningOptions) (*MessageSigningService, error) {
+	adapter, err := NewDigestSignerAdapter(signer)
+	if err != nil {
+		return nil, err
+	}
+	return newMessageSigningService(repository, adapter, options)
+}
+
+// NewMessageSigningServiceWithStructuredSigner passes canonical message
+// payloads to a structured signer.
+func NewMessageSigningServiceWithStructuredSigner(repository MessageSigningRepository, signer MessageIntentSigner, options MessageSigningOptions) (*MessageSigningService, error) {
+	return newMessageSigningService(repository, signer, options)
+}
+
+func newMessageSigningService(repository MessageSigningRepository, signer MessageIntentSigner, options MessageSigningOptions) (*MessageSigningService, error) {
 	if repository == nil || signer == nil {
 		return nil, fmt.Errorf("message signing dependencies are required")
 	}
@@ -235,6 +249,7 @@ func (service *MessageSigningService) ApproveAndSignPersonal(ctx context.Context
 	return service.approveAndSignMessage(ctx, handle, messageApprovalIntent{
 		accountID: prepared.accountID, signer: prepared.signer, scheme: wallet.MessageSigningEIP191Personal,
 		digest: prepared.digest, intentHash: prepared.intentHash, payloadSize: uint64(len(prepared.message)),
+		personalMessage: append([]byte(nil), prepared.message...), origin: prepared.origin,
 	}, request, "personal-sign")
 }
 
@@ -245,18 +260,25 @@ func (service *MessageSigningService) ApproveAndSignEIP712(ctx context.Context, 
 	return service.approveAndSignMessage(ctx, handle, messageApprovalIntent{
 		accountID: prepared.accountID, signer: prepared.signer, scheme: wallet.MessageSigningEIP712,
 		chainID: prepared.chainID, digest: prepared.digest, intentHash: prepared.intentHash,
-		payloadSize: uint64(len(prepared.canonicalJSON)),
+		payloadSize: uint64(len(prepared.canonicalJSON)), origin: prepared.origin,
+		canonicalJSON:       append([]byte(nil), prepared.canonicalJSON...),
+		domainSeparatorHash: prepared.domainSeparatorHash, messageHash: prepared.messageHash,
 	}, request, "EIP-712")
 }
 
 type messageApprovalIntent struct {
-	accountID   string
-	signer      common.Address
-	scheme      wallet.MessageSigningScheme
-	chainID     uint64
-	digest      [32]byte
-	intentHash  [32]byte
-	payloadSize uint64
+	accountID           string
+	signer              common.Address
+	scheme              wallet.MessageSigningScheme
+	chainID             uint64
+	digest              [32]byte
+	intentHash          [32]byte
+	payloadSize         uint64
+	origin              string
+	personalMessage     []byte
+	canonicalJSON       []byte
+	domainSeparatorHash [32]byte
+	messageHash         [32]byte
 }
 
 func (service *MessageSigningService) approveAndSignMessage(ctx context.Context, handle wallet.CapabilityHandle, intent messageApprovalIntent, request PersonalSignApprovalRequest, field string) (PersonalSignResult, error) {
@@ -306,16 +328,29 @@ func (service *MessageSigningService) approveAndSignMessage(ctx context.Context,
 		service.failMessageSigning(signingID, "persistence_failed")
 		return PersonalSignResult{}, &EngineError{Code: ErrorSigningFailed, Field: "message signing record binding"}
 	}
-	signingRequest := wallet.SoftwareSigningRequest{
-		AccountID: approval.AccountID, Purpose: wallet.SigningPurposeMessage, MessageScheme: approval.Scheme,
-		ChainID: approval.ChainID, Digest: approval.Digest, IntentHash: approval.IntentHash, ApprovalID: approval.ApprovalID,
+	var signed wallet.SoftwareSigningResult
+	switch approval.Scheme {
+	case wallet.MessageSigningEIP191Personal:
+		signed, err = service.signer.SignPersonalMessage(ctx, handle, PersonalMessageSigningIntent{
+			AccountID: approval.AccountID, Signer: approval.Signer,
+			Message: append([]byte(nil), intent.personalMessage...), Origin: intent.origin,
+			Digest: approval.Digest, IntentHash: approval.IntentHash, ApprovalID: approval.ApprovalID,
+		})
+	case wallet.MessageSigningEIP712:
+		signed, err = service.signer.SignEIP712(ctx, handle, EIP712SigningIntent{
+			AccountID: approval.AccountID, Signer: approval.Signer, ChainID: approval.ChainID, Origin: intent.origin,
+			CanonicalJSON:       append([]byte(nil), intent.canonicalJSON...),
+			DomainSeparatorHash: intent.domainSeparatorHash, MessageHash: intent.messageHash,
+			Digest: approval.Digest, IntentHash: approval.IntentHash, ApprovalID: approval.ApprovalID,
+		})
+	default:
+		err = fmt.Errorf("unsupported structured message scheme")
 	}
-	signed, err := service.signer.Sign(ctx, handle, signingRequest)
 	if err != nil {
 		service.failMessageSigning(signingID, "signer_rejected")
 		return PersonalSignResult{}, &EngineError{Code: ErrorSigningFailed, Field: field + " signer", Cause: err}
 	}
-	if signed.AccountID != signingRequest.AccountID || signed.Purpose != signingRequest.Purpose || signed.MessageScheme != signingRequest.MessageScheme || signed.ChainID != signingRequest.ChainID || signed.Digest != signingRequest.Digest || signed.IntentHash != signingRequest.IntentHash {
+	if signed.AccountID != approval.AccountID || signed.Purpose != wallet.SigningPurposeMessage || signed.MessageScheme != approval.Scheme || signed.ChainID != approval.ChainID || signed.Digest != approval.Digest || signed.IntentHash != approval.IntentHash {
 		service.failMessageSigning(signingID, "invalid_signature")
 		return PersonalSignResult{}, &EngineError{Code: ErrorSigningFailed, Field: field + " result binding"}
 	}
