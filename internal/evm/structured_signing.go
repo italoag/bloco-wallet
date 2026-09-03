@@ -128,8 +128,9 @@ func (intent EIP712SigningIntent) Validate() error {
 }
 
 // SafeOwnerDigestRequest signs one digest as an EOA owner of a Safe
-// proposal. The digest is the raw Safe transaction hash (not an EIP-191 or
-// EIP-712 wrapped hash) so the Safe contract can ecrecover it directly.
+// proposal. The digest is the Safe transaction hash (an EIP-712 digest), so
+// software/cloud signers sign it directly while hardware signers reproduce
+// the same hash from the typed-data components below.
 type SafeOwnerDigestRequest struct {
 	AccountID  string
 	Signer     common.Address
@@ -137,6 +138,11 @@ type SafeOwnerDigestRequest struct {
 	Digest     [32]byte
 	IntentHash [32]byte
 	ApprovalID string
+	// DomainSeparatorHash, MessageHash, and CanonicalJSON let hardware
+	// wallets reconstruct the EIP-712 payload whose digest is signed.
+	DomainSeparatorHash [32]byte
+	MessageHash         [32]byte
+	CanonicalJSON       []byte
 }
 
 // Validate checks the Safe-owner approval bindings.

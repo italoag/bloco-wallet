@@ -339,10 +339,25 @@ func (service *Service) Sign(ctx context.Context, request SafeSignRequest, autho
 	if authorize == nil {
 		return nil, fmt.Errorf("safe proposal: authorization callback is required")
 	}
+	typedData, typedDataErr := signer.EncodeSafeTransactionEIP712(proposal.SafeAddress, proposal.ChainID, signer.SafeTransaction{
+		To: proposal.Transaction.To, Value: proposal.Transaction.Value, Data: proposal.Transaction.Data,
+		Operation: proposal.Transaction.Operation, SafeTxGas: proposal.Transaction.SafeTxGas,
+		BaseGas: proposal.Transaction.BaseGas, GasPrice: proposal.Transaction.GasPrice,
+		GasToken: proposal.Transaction.GasToken, RefundReceiver: proposal.Transaction.RefundReceiver,
+		Nonce: proposal.Transaction.Nonce,
+	})
+	if typedDataErr != nil {
+		return nil, typedDataErr
+	}
+	if typedData.Digest != proposal.Digest {
+		return nil, fmt.Errorf("safe proposal: EIP-712 digest mismatch")
+	}
 	signingErr := authorize(ownerAccount.AccountID, func(handle wallet.CapabilityHandle) error {
 		signed, signErr := service.signer.SignSafeOwnerDigest(ctx, handle, evm.SafeOwnerDigestRequest{
 			AccountID: ownerAccount.AccountID, Signer: ownerAddress, ChainID: proposal.ChainID,
 			Digest: proposal.Digest, IntentHash: proposal.Commitment, ApprovalID: approvalID,
+			DomainSeparatorHash: typedData.DomainSeparatorHash, MessageHash: typedData.MessageHash,
+			CanonicalJSON: append([]byte(nil), typedData.CanonicalJSON...),
 		})
 		if signErr == nil {
 			result = signed

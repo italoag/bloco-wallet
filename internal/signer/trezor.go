@@ -181,6 +181,58 @@ func (signer *TrezorSigner) SignStructuredTypedData(ctx context.Context, request
 	}, nil
 }
 
+// SignSafeOwnerTypedData signs the complete EIP-712 Safe transaction payload
+// (Trezor Core models) or the domain/message hash pair (legacy Model One).
+// The device displays the transaction fields; the signature covers the Safe
+// transaction digest that checkNSignatures recovers.
+func (signer *TrezorSigner) SignSafeOwnerTypedData(ctx context.Context, request TrezorStructuredTypedDataRequest) (wallet.SoftwareSigningResult, error) {
+	if request.ChainID == 0 || len(request.CanonicalJSON) == 0 || len(request.CanonicalJSON) > 64<<10 || request.ApprovalID == "" || request.IntentHash == ([32]byte{}) {
+		return wallet.SoftwareSigningResult{}, fmt.Errorf("trezor signer: incomplete safe-owner typed-data binding")
+	}
+	account, derivationPath, expectedAddress, err := signer.resolveAccount(ctx, request.AccountID)
+	if err != nil {
+		return wallet.SoftwareSigningResult{}, err
+	}
+	digestHash := crypto.Keccak256Hash([]byte{0x19, 0x01}, request.DomainSeparatorHash[:], request.MessageHash[:])
+	var digest [32]byte
+	copy(digest[:], digestHash[:])
+	if err := signer.messageApprovalVerifier.VerifyMessageApproval(ctx, wallet.MessageApprovalBinding{
+		AccountID: account.AccountID, Scheme: wallet.MessageSigningSafeOwner, ChainID: request.ChainID,
+		Digest: digest, IntentHash: request.IntentHash, ApprovalID: request.ApprovalID,
+	}); err != nil {
+		return wallet.SoftwareSigningResult{}, err
+	}
+	features, err := signer.ensureReady(ctx)
+	if err != nil {
+		return wallet.SoftwareSigningResult{}, err
+	}
+	var signature []byte
+	if features.Model == "1" {
+		signature, err = signer.device.EthereumSignTypedHash(ctx, derivationPath, request.DomainSeparatorHash, request.MessageHash)
+	} else {
+		device, ok := signer.device.(TrezorTypedDataDevice)
+		if !ok {
+			return wallet.SoftwareSigningResult{}, ErrTrezorTypedHashUnsupported
+		}
+		signature, err = device.EthereumSignTypedData(ctx, derivationPath, request.CanonicalJSON, true)
+	}
+	if err != nil {
+		return wallet.SoftwareSigningResult{}, fmt.Errorf("trezor signer: sign safe-owner typed data: %w", err)
+	}
+	signature, err = normalizeSignature(signature)
+	if err != nil {
+		return wallet.SoftwareSigningResult{}, err
+	}
+	if err := verifyECDSASignature(expectedAddress, digest, signature); err != nil {
+		return wallet.SoftwareSigningResult{}, ErrTrezorSignature
+	}
+	return wallet.SoftwareSigningResult{
+		AccountID: account.AccountID, Purpose: wallet.SigningPurposeMessage,
+		MessageScheme: wallet.MessageSigningSafeOwner, ChainID: request.ChainID,
+		Digest: digest, IntentHash: request.IntentHash, Signature: signature,
+	}, nil
+}
+
 func (signer *TrezorSigner) SignPersonalMessage(ctx context.Context, request TrezorPersonalMessageRequest) (wallet.SoftwareSigningResult, error) {
 	if len(request.Message) == 0 || len(request.Message) > 64<<10 {
 		return wallet.SoftwareSigningResult{}, fmt.Errorf("trezor signer: message size")

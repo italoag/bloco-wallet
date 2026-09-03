@@ -336,6 +336,43 @@ func (signer *LedgerSigner) SignTypedHash(ctx context.Context, request LedgerTyp
 	}, nil
 }
 
+// SignSafeOwnerTypedHash signs the EIP-712 domain/message hash pair of a
+// Safe transaction. The device displays both hashes; the resulting signature
+// covers the Safe transaction digest that checkNSignatures recovers.
+func (signer *LedgerSigner) SignSafeOwnerTypedHash(ctx context.Context, request LedgerTypedHashRequest) (wallet.SoftwareSigningResult, error) {
+	if request.ChainID == 0 || request.ApprovalID == "" || request.IntentHash == ([32]byte{}) {
+		return wallet.SoftwareSigningResult{}, fmt.Errorf("ledger signer: incomplete safe-owner binding")
+	}
+	account, derivationPath, expectedAddress, err := signer.resolveAccount(ctx, request.AccountID)
+	if err != nil {
+		return wallet.SoftwareSigningResult{}, err
+	}
+	digestHash := crypto.Keccak256Hash([]byte{0x19, 0x01}, request.DomainSeparatorHash[:], request.MessageHash[:])
+	var digest [32]byte
+	copy(digest[:], digestHash[:])
+	if err := signer.messageApprovalVerifier.VerifyMessageApproval(ctx, wallet.MessageApprovalBinding{
+		AccountID: account.AccountID, Scheme: wallet.MessageSigningSafeOwner, ChainID: request.ChainID,
+		Digest: digest, IntentHash: request.IntentHash, ApprovalID: request.ApprovalID,
+	}); err != nil {
+		return wallet.SoftwareSigningResult{}, err
+	}
+	if err := signer.ensureSecureApp(ctx); err != nil {
+		return wallet.SoftwareSigningResult{}, err
+	}
+	signature, err := signer.device.SignTypedMessage(ctx, derivationPath, request.DomainSeparatorHash, request.MessageHash)
+	if err != nil {
+		return wallet.SoftwareSigningResult{}, err
+	}
+	if err := verifyECDSASignature(expectedAddress, digest, signature); err != nil {
+		return wallet.SoftwareSigningResult{}, ErrLedgerSignature
+	}
+	return wallet.SoftwareSigningResult{
+		AccountID: account.AccountID, Purpose: wallet.SigningPurposeMessage,
+		MessageScheme: wallet.MessageSigningSafeOwner, ChainID: request.ChainID,
+		Digest: digest, IntentHash: request.IntentHash, Signature: signature,
+	}, nil
+}
+
 // SignPersonalMessage signs an approved raw EIP-191 message.
 func (signer *LedgerSigner) SignPersonalMessage(ctx context.Context, request LedgerPersonalMessageRequest) (wallet.SoftwareSigningResult, error) {
 	if len(request.Message) == 0 || len(request.Message) > 64<<10 {

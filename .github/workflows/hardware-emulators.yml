@@ -54,7 +54,7 @@ jobs:
       - name: Test Ledger protocol and UI
         env:
           BLOCO_WALLET_SPECULOS_URL: http://127.0.0.1:50010
-        run: go test ./internal/signer -run TestLedgerSpeculosIntegration -v -count=1 -timeout=10m
+        run: go test ./internal/signer -run 'TestLedger(SpeculosIntegration|SignsSafeOwnerTypedData)$' -v -count=1 -timeout=10m
       - name: Stop Speculos
         if: always()
         run: docker rm --force speculos || true
@@ -120,7 +120,7 @@ jobs:
         env:
           BLOCO_WALLET_TREZOR_EMULATOR: http://127.0.0.1:21328
           BLOCO_WALLET_TREZOR_CONTROLLER_URL: ws://127.0.0.1:9001/
-        run: go test ./internal/signer -run TestTrezorEmulatorIntegration -v -count=1 -timeout=10m
+        run: go test ./internal/signer -run 'TestTrezor(EmulatorIntegration|SignsSafeOwnerTypedData)$' -v -count=1 -timeout=10m
       - name: Switch to Model T
         run: |
           docker exec -i trezor-user-env .venv/bin/python - <<'PY'
@@ -149,7 +149,7 @@ jobs:
         env:
           BLOCO_WALLET_TREZOR_EMULATOR: http://127.0.0.1:21328
           BLOCO_WALLET_TREZOR_CONTROLLER_URL: ws://127.0.0.1:9001/
-        run: go test ./internal/signer -run TestTrezorEmulatorIntegration -v -count=1 -timeout=10m
+        run: go test ./internal/signer -run 'TestTrezor(EmulatorIntegration|SignsSafeOwnerTypedData)$' -v -count=1 -timeout=10m
       - name: Stop Trezor user environment
         if: always()
         run: docker rm --force trezor-user-env || true

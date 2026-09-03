@@ -1,6 +1,7 @@
 package signer
 
 import (
+	"encoding/json"
 	"fmt"
 	"math/big"
 
@@ -69,6 +70,103 @@ func SafeTransactionDigest(safe common.Address, chainID uint64, transaction Safe
 	structData = append(structData, safeAddressWord(transaction.RefundReceiver)...)
 	structData = append(structData, safeUint256Word(transaction.Nonce)...)
 	return safeTypedDigest(safeDomainSeparator(safe, chainID), crypto.Keccak256(structData)), nil
+}
+
+// SafeTransactionEIP712 exposes the EIP-712 components hardware wallets
+// need to produce a valid Safe owner signature: the canonical typed-data
+// JSON (Trezor Core), the domain separator, the message hash (Ledger V0),
+// and the final digest the Safe contract recovers.
+type SafeTransactionEIP712 struct {
+	CanonicalJSON       []byte
+	DomainSeparatorHash [32]byte
+	MessageHash         [32]byte
+	Digest              [32]byte
+}
+
+// EncodeSafeTransactionEIP712 builds the EIP-712 payload for one Safe
+// transaction. The digest equals SafeTransactionDigest, so a device
+// signature over the EIP-712 hash is accepted by Safe.checkNSignatures.
+func EncodeSafeTransactionEIP712(safe common.Address, chainID uint64, transaction SafeTransaction) (*SafeTransactionEIP712, error) {
+	if safe == (common.Address{}) || chainID == 0 {
+		return nil, fmt.Errorf("safe signer: invalid transaction binding")
+	}
+	if err := validateSafeTransaction(transaction); err != nil {
+		return nil, err
+	}
+	domainSeparator := safeDomainSeparator(safe, chainID)
+	structData := make([]byte, 0, 11*32)
+	structData = append(structData, safeTransactionTypeHash[:]...)
+	structData = append(structData, safeAddressWord(transaction.To)...)
+	structData = append(structData, safeUint256Word(transaction.Value)...)
+	structData = append(structData, crypto.Keccak256(transaction.Data)...)
+	structData = append(structData, safeUint256Word(new(big.Int).SetUint64(uint64(transaction.Operation)))...)
+	structData = append(structData, safeUint256Word(transaction.SafeTxGas)...)
+	structData = append(structData, safeUint256Word(transaction.BaseGas)...)
+	structData = append(structData, safeUint256Word(transaction.GasPrice)...)
+	structData = append(structData, safeAddressWord(transaction.GasToken)...)
+	structData = append(structData, safeAddressWord(transaction.RefundReceiver)...)
+	structData = append(structData, safeUint256Word(transaction.Nonce)...)
+	messageHash := crypto.Keccak256(structData)
+	digest := safeTypedDigest(domainSeparator, messageHash)
+	canonical, err := encodeSafeTransactionTypedDataJSON(safe, chainID, transaction)
+	if err != nil {
+		return nil, err
+	}
+	var domainHash, messageHashArray, digestArray [32]byte
+	copy(domainHash[:], domainSeparator)
+	copy(messageHashArray[:], messageHash)
+	copy(digestArray[:], digest[:])
+	return &SafeTransactionEIP712{
+		CanonicalJSON: canonical, DomainSeparatorHash: domainHash,
+		MessageHash: messageHashArray, Digest: digestArray,
+	}, nil
+}
+
+func encodeSafeTransactionTypedDataJSON(safe common.Address, chainID uint64, transaction SafeTransaction) ([]byte, error) {
+	type typedData struct {
+		Types       map[string][]map[string]string `json:"types"`
+		PrimaryType string                         `json:"primaryType"`
+		Domain      map[string]any                 `json:"domain"`
+		Message     map[string]any                 `json:"message"`
+	}
+	payload := typedData{
+		Types: map[string][]map[string]string{
+			"EIP712Domain": {
+				{"name": "chainId", "type": "uint256"},
+				{"name": "verifyingContract", "type": "address"},
+			},
+			"SafeTx": {
+				{"name": "to", "type": "address"},
+				{"name": "value", "type": "uint256"},
+				{"name": "data", "type": "bytes"},
+				{"name": "operation", "type": "uint8"},
+				{"name": "safeTxGas", "type": "uint256"},
+				{"name": "baseGas", "type": "uint256"},
+				{"name": "gasPrice", "type": "uint256"},
+				{"name": "gasToken", "type": "address"},
+				{"name": "refundReceiver", "type": "address"},
+				{"name": "nonce", "type": "uint256"},
+			},
+		},
+		PrimaryType: "SafeTx",
+		Domain: map[string]any{
+			"chainId":           new(big.Int).SetUint64(chainID),
+			"verifyingContract": safe.Hex(),
+		},
+		Message: map[string]any{
+			"to":             transaction.To.Hex(),
+			"value":          new(big.Int).Set(transaction.Value),
+			"data":           common.Bytes2Hex(transaction.Data),
+			"operation":      uint8(transaction.Operation),
+			"safeTxGas":      new(big.Int).Set(transaction.SafeTxGas),
+			"baseGas":        new(big.Int).Set(transaction.BaseGas),
+			"gasPrice":       new(big.Int).Set(transaction.GasPrice),
+			"gasToken":       transaction.GasToken.Hex(),
+			"refundReceiver": transaction.RefundReceiver.Hex(),
+			"nonce":          new(big.Int).Set(transaction.Nonce),
+		},
+	}
+	return json.Marshal(payload)
 }
 
 func validateSafeTransaction(transaction SafeTransaction) error {

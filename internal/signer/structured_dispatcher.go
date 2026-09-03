@@ -176,10 +176,10 @@ func (dispatcher *StructuredDispatcher) SignEIP712(ctx context.Context, handle w
 	return wallet.SoftwareSigningResult{}, fmt.Errorf("structured dispatcher: unsupported EIP-712 route")
 }
 
-// SignSafeOwnerDigest signs the raw Safe transaction digest with an EOA
-// owner. Hardware owners cannot sign raw digests without an EIP-191/EIP-712
-// wrapper, which Safe would reject on-chain; only software and cloud owners
-// are supported until a raw-digest device flow exists.
+// SignSafeOwnerDigest signs the Safe transaction digest with an EOA owner.
+// Software and cloud owners sign the digest directly; hardware owners
+// reconstruct the EIP-712 SafeTx payload so the device displays the same
+// domain/message hashes (or fields) that bind the approved digest.
 func (dispatcher *StructuredDispatcher) SignSafeOwnerDigest(ctx context.Context, handle wallet.CapabilityHandle, request evm.SafeOwnerDigestRequest) (wallet.SoftwareSigningResult, error) {
 	if err := request.Validate(); err != nil {
 		return wallet.SoftwareSigningResult{}, err
@@ -197,7 +197,31 @@ func (dispatcher *StructuredDispatcher) SignSafeOwnerDigest(ctx context.Context,
 		}
 		return dispatcher.cloud.SignSafeOwnerDigest(ctx, handle, request)
 	case wallet.SignerKindHardware:
-		return wallet.SoftwareSigningResult{}, fmt.Errorf("structured dispatcher: hardware Safe owners require a raw-digest signing flow")
+		if request.DomainSeparatorHash == ([32]byte{}) || request.MessageHash == ([32]byte{}) || len(request.CanonicalJSON) == 0 {
+			return wallet.SoftwareSigningResult{}, fmt.Errorf("structured dispatcher: hardware Safe owners require the EIP-712 SafeTx payload")
+		}
+		if strings.HasPrefix(account.SignerReference, "ledger:v1:") {
+			if dispatcher.ledger == nil {
+				return wallet.SoftwareSigningResult{}, fmt.Errorf("structured dispatcher: Ledger unavailable")
+			}
+			return dispatcher.ledger.SignSafeOwnerTypedHash(ctx, LedgerTypedHashRequest{
+				AccountID: request.AccountID, ChainID: request.ChainID,
+				DomainSeparatorHash: request.DomainSeparatorHash, MessageHash: request.MessageHash,
+				IntentHash: request.IntentHash, ApprovalID: request.ApprovalID,
+			})
+		}
+		if strings.HasPrefix(account.SignerReference, "trezor:v1:") {
+			if dispatcher.trezor == nil {
+				return wallet.SoftwareSigningResult{}, fmt.Errorf("structured dispatcher: Trezor unavailable")
+			}
+			return dispatcher.trezor.SignSafeOwnerTypedData(ctx, TrezorStructuredTypedDataRequest{
+				AccountID: request.AccountID, ChainID: request.ChainID,
+				CanonicalJSON:       append([]byte(nil), request.CanonicalJSON...),
+				DomainSeparatorHash: request.DomainSeparatorHash, MessageHash: request.MessageHash,
+				IntentHash: request.IntentHash, ApprovalID: request.ApprovalID,
+			})
+		}
+		return wallet.SoftwareSigningResult{}, fmt.Errorf("structured dispatcher: unknown hardware reference")
 	default:
 		return wallet.SoftwareSigningResult{}, fmt.Errorf("structured dispatcher: signer kind %q cannot sign Safe owner digest", account.SignerKind)
 	}
