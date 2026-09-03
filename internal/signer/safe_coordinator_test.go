@@ -502,7 +502,7 @@ func TestSafeCoordinatorAgainstRealSafe(t *testing.T) {
 	deployer := common.HexToAddress(accounts[0])
 	recipient := common.HexToAddress(accounts[1])
 
-	singletonTx, err := rpc.sendTransaction(ctx, deployer, nil, common.FromHex(safeBytecode))
+	singletonTx, err := rpc.sendTransaction(ctx, deployer, nil, common.FromHex(SafeBytecode))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -510,7 +510,7 @@ func TestSafeCoordinatorAgainstRealSafe(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	factoryTx, err := rpc.sendTransaction(ctx, deployer, nil, common.FromHex(safeProxyFactoryBytecode))
+	factoryTx, err := rpc.sendTransaction(ctx, deployer, nil, common.FromHex(SafeProxyFactoryBytecode))
 	if err != nil {
 		t.Fatal(err)
 	}

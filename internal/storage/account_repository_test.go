@@ -220,6 +220,8 @@ func TestVaultRepositoryAppliesHistoryAndWatchGuardMigrations(t *testing.T) {
 		"DROP TABLE fido2_challenges",
 		"DROP TRIGGER trg_wc_session_binding_immutable",
 		"DROP TABLE wc_sessions",
+		"DROP TRIGGER trg_safe_proposal_binding_immutable",
+		"DROP TABLE safe_proposals",
 		"DROP TABLE message_signing_approvals",
 		"DROP TRIGGER trg_evm_effect_immutable",
 		"DROP TABLE evm_transaction_effects",
@@ -342,6 +344,8 @@ func TestVaultRepositoryAppliesERC721MigrationPreservingRecords(t *testing.T) {
 		"DROP TABLE fido2_challenges",
 		"DROP TRIGGER trg_wc_session_binding_immutable",
 		"DROP TABLE wc_sessions",
+		"DROP TRIGGER trg_safe_proposal_binding_immutable",
+		"DROP TABLE safe_proposals",
 	} {
 		if err := repository.db.Exec(statement).Error; err != nil {
 			t.Fatal(err)

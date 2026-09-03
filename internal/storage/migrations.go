@@ -10,7 +10,7 @@ import (
 	"gorm.io/gorm"
 )
 
-const latestSchemaVersion uint = 14
+const latestSchemaVersion uint = 15
 
 type schemaMigration struct {
 	Version   uint      `gorm:"primaryKey"`
@@ -95,6 +95,7 @@ func runMigrations(database *gorm.DB, includeLegacy bool) error {
 			{version: 12, apply: migrateContractCallOperation},
 			{version: 13, apply: migrateFIDO2Credentials},
 			{version: 14, apply: migrateWalletConnectSessions},
+			{version: 15, apply: migrateSafeProposals},
 		}
 		for _, migration := range migrations {
 			if _, exists := applied[migration.version]; exists {
@@ -670,6 +671,32 @@ func migrateWalletConnectSessions(transaction *gorm.DB) error {
 		`CREATE TRIGGER trg_wc_session_binding_immutable
 			BEFORE UPDATE OF topic, peer_name, peer_metadata, account_id, namespaces ON wc_sessions
 			BEGIN SELECT RAISE(ABORT, 'immutable WalletConnect session binding'); END`,
+	}
+	for _, statement := range statements {
+		if err := transaction.Exec(statement).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func migrateSafeProposals(transaction *gorm.DB) error {
+	statements := []string{
+		`CREATE TABLE safe_proposals (
+			proposal_id TEXT PRIMARY KEY NOT NULL CHECK(length(proposal_id) = 36),
+			account_id TEXT NOT NULL CHECK(length(account_id) = 36),
+			safe_address TEXT NOT NULL CHECK(length(safe_address) = 42),
+			chain_id INTEGER NOT NULL CHECK(chain_id > 0),
+			status TEXT NOT NULL CHECK(status IN ('pending', 'executed', 'failed')),
+			encoding BLOB NOT NULL CHECK(typeof(encoding) = 'blob' AND length(encoding) > 0),
+			revision INTEGER NOT NULL DEFAULT 1 CHECK(revision > 0),
+			created_at_ms INTEGER NOT NULL CHECK(created_at_ms >= 0),
+			updated_at_ms INTEGER NOT NULL CHECK(updated_at_ms >= 0)
+		) STRICT`,
+		`CREATE INDEX ix_safe_proposals_account ON safe_proposals(account_id, chain_id, created_at_ms)`,
+		`CREATE TRIGGER trg_safe_proposal_binding_immutable
+			BEFORE UPDATE OF proposal_id, account_id, safe_address, chain_id, created_at_ms ON safe_proposals
+			BEGIN SELECT RAISE(ABORT, 'immutable Safe proposal binding'); END`,
 	}
 	for _, statement := range statements {
 		if err := transaction.Exec(statement).Error; err != nil {

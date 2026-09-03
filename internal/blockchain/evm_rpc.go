@@ -226,6 +226,49 @@ func (client *EVMRPC) SendRawTransaction(ctx context.Context, raw []byte) (commo
 	return remoteHash, nil
 }
 
+// SendRawContractTransaction broadcasts a signed transaction whose sender is
+// a contract (e.g. Safe execTransaction). The signed payload is still fully
+// validated for chain binding, signature structure, and hash agreement; the
+// sender recovery check is intentionally skipped because contracts have no
+// secp256k1 key.
+func (client *EVMRPC) SendRawContractTransaction(ctx context.Context, raw []byte) (common.Hash, error) {
+	if client == nil || client.gateway == nil || client.session == nil {
+		return common.Hash{}, fmt.Errorf("EVM RPC client is required")
+	}
+	if len(raw) == 0 || len(raw) > 128<<10 {
+		return common.Hash{}, fmt.Errorf("signed EVM payload is outside policy")
+	}
+	var transaction types.Transaction
+	if err := transaction.UnmarshalBinary(raw); err != nil || !transaction.Protected() || transaction.ChainId() == nil || !transaction.ChainId().IsInt64() || transaction.ChainId().Int64() != client.session.chainID {
+		return common.Hash{}, &evm.BroadcastError{Kind: evm.BroadcastFailureRejected, Cause: fmt.Errorf("signed EVM payload chain binding is invalid")}
+	}
+	localHash := transaction.Hash()
+	var encoded string
+	sent, callErr := client.gateway.callSideEffect(ctx, client.session, "eth_sendRawTransaction", []any{hexutil.Encode(raw)}, &encoded)
+	if callErr != nil {
+		var remoteError *RPCRemoteError
+		if errors.As(callErr, &remoteError) {
+			switch remoteError.Kind {
+			case RPCErrorAlreadyKnown:
+				return localHash, nil
+			case RPCErrorNonceTooLow:
+				return common.Hash{}, &evm.BroadcastError{Kind: evm.BroadcastFailureNonceLow, Cause: callErr}
+			default:
+				return common.Hash{}, &evm.BroadcastError{Kind: evm.BroadcastFailureRejected, Cause: callErr}
+			}
+		}
+		if sent {
+			return common.Hash{}, &evm.BroadcastError{Kind: evm.BroadcastFailureAmbiguous, Cause: callErr}
+		}
+		return common.Hash{}, &evm.BroadcastError{Kind: evm.BroadcastFailureRejected, Cause: callErr}
+	}
+	remoteHash, err := decodeRPCData32(encoded)
+	if err != nil || remoteHash != localHash {
+		return common.Hash{}, &evm.BroadcastError{Kind: evm.BroadcastFailureAmbiguous, Cause: fmt.Errorf("broadcast EVM transaction hash mismatch")}
+	}
+	return remoteHash, nil
+}
+
 func (client *EVMRPC) SuggestGasPrice(ctx context.Context) (*big.Int, error) {
 	return client.feeQuantity(ctx, "eth_gasPrice", "legacy gas price")
 }

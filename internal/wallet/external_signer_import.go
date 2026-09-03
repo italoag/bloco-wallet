@@ -32,8 +32,8 @@ func ImportExternalSignerAccount(ctx context.Context, repository AccountReposito
 	if request.SignerKind == SignerKindCloud && (request.Capabilities == 0 || request.Capabilities&^allowedCloudCapabilities != 0) {
 		return nil, fmt.Errorf("cloud signer capabilities must be verified before import")
 	}
-	if request.SignerKind == SignerKindMultisig && request.Capabilities != 0 {
-		return nil, fmt.Errorf("multisig capabilities are coordinator-managed")
+	if request.SignerKind == SignerKindMultisig && (request.Capabilities == 0 || request.Capabilities&^allowedCloudCapabilities != 0) {
+		return nil, fmt.Errorf("multisig capabilities must be verified before import")
 	}
 	if request.Name == "" || len(request.Name) > 64 {
 		return nil, fmt.Errorf("account name is required")

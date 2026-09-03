@@ -176,6 +176,33 @@ func (dispatcher *StructuredDispatcher) SignEIP712(ctx context.Context, handle w
 	return wallet.SoftwareSigningResult{}, fmt.Errorf("structured dispatcher: unsupported EIP-712 route")
 }
 
+// SignSafeOwnerDigest signs the raw Safe transaction digest with an EOA
+// owner. Hardware owners cannot sign raw digests without an EIP-191/EIP-712
+// wrapper, which Safe would reject on-chain; only software and cloud owners
+// are supported until a raw-digest device flow exists.
+func (dispatcher *StructuredDispatcher) SignSafeOwnerDigest(ctx context.Context, handle wallet.CapabilityHandle, request evm.SafeOwnerDigestRequest) (wallet.SoftwareSigningResult, error) {
+	if err := request.Validate(); err != nil {
+		return wallet.SoftwareSigningResult{}, err
+	}
+	account, err := dispatcher.account(ctx, request.AccountID, request.Signer)
+	if err != nil {
+		return wallet.SoftwareSigningResult{}, err
+	}
+	switch account.SignerKind {
+	case wallet.SignerKindSoftware:
+		return dispatcher.software.SignSafeOwnerDigest(ctx, handle, request)
+	case wallet.SignerKindCloud:
+		if dispatcher.cloud == nil {
+			return wallet.SoftwareSigningResult{}, fmt.Errorf("structured dispatcher: cloud signer unavailable")
+		}
+		return dispatcher.cloud.SignSafeOwnerDigest(ctx, handle, request)
+	case wallet.SignerKindHardware:
+		return wallet.SoftwareSigningResult{}, fmt.Errorf("structured dispatcher: hardware Safe owners require a raw-digest signing flow")
+	default:
+		return wallet.SoftwareSigningResult{}, fmt.Errorf("structured dispatcher: signer kind %q cannot sign Safe owner digest", account.SignerKind)
+	}
+}
+
 func (dispatcher *StructuredDispatcher) signHardwareTransaction(ctx context.Context, account *wallet.Account, intent evm.TransactionSigningIntent) (wallet.SoftwareSigningResult, error) {
 	transaction, err := intent.Transaction()
 	if err != nil {

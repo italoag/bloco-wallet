@@ -179,9 +179,9 @@ func TestSafeOfficialArtifactHashes(t *testing.T) {
 		bytecode string
 		expected string
 	}{
-		{name: "Safe", bytecode: safeBytecode, expected: safeCreationCodeHash},
-		{name: "SafeProxyFactory", bytecode: safeProxyFactoryBytecode, expected: factoryCreationCodeHash},
-		{name: "CompatibilityFallbackHandler", bytecode: compatibilityFallbackHandlerBytecode, expected: handlerCreationCodeHash},
+		{name: "Safe", bytecode: SafeBytecode, expected: safeCreationCodeHash},
+		{name: "SafeProxyFactory", bytecode: SafeProxyFactoryBytecode, expected: factoryCreationCodeHash},
+		{name: "CompatibilityFallbackHandler", bytecode: CompatibilityFallbackHandlerBytecode, expected: handlerCreationCodeHash},
 	}
 	for _, artifact := range artifacts {
 		t.Run(artifact.name, func(t *testing.T) {
@@ -219,7 +219,7 @@ func TestSafeEIP1271AgainstRealContract(t *testing.T) {
 	deployer := common.HexToAddress(accounts[0])
 
 	// Deploy the Safe v1.5.0 singleton, proxy factory, and EIP-1271 handler.
-	singletonTx, err := rpc.sendTransaction(ctx, deployer, nil, common.FromHex(safeBytecode))
+	singletonTx, err := rpc.sendTransaction(ctx, deployer, nil, common.FromHex(SafeBytecode))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -238,7 +238,7 @@ func TestSafeEIP1271AgainstRealContract(t *testing.T) {
 	if string(version) != "1.5.0" {
 		t.Fatalf("unexpected Safe version %q", version)
 	}
-	factoryTx, err := rpc.sendTransaction(ctx, deployer, nil, common.FromHex(safeProxyFactoryBytecode))
+	factoryTx, err := rpc.sendTransaction(ctx, deployer, nil, common.FromHex(SafeProxyFactoryBytecode))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,7 +246,7 @@ func TestSafeEIP1271AgainstRealContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handlerTx, err := rpc.sendTransaction(ctx, deployer, nil, common.FromHex(compatibilityFallbackHandlerBytecode))
+	handlerTx, err := rpc.sendTransaction(ctx, deployer, nil, common.FromHex(CompatibilityFallbackHandlerBytecode))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"blocowallet/internal/blockchain"
+	"blocowallet/internal/evm"
 	"blocowallet/internal/wallet"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -119,6 +120,49 @@ func (signer *CloudSigner) Sign(ctx context.Context, handle wallet.CapabilityHan
 	return wallet.SoftwareSigningResult{
 		AccountID: request.AccountID, Purpose: request.Purpose, MessageScheme: request.MessageScheme,
 		ChainID: request.ChainID, Digest: request.Digest, IntentHash: request.IntentHash,
+		Signature: append([]byte(nil), result.Signature...),
+	}, nil
+}
+
+// SignSafeOwnerDigest verifies the Safe-owner approval and signs the raw
+// Safe transaction digest with the remote key (no EIP-191/EIP-712 wrapper).
+func (signer *CloudSigner) SignSafeOwnerDigest(ctx context.Context, handle wallet.CapabilityHandle, request evm.SafeOwnerDigestRequest) (wallet.SoftwareSigningResult, error) {
+	if signer == nil {
+		return wallet.SoftwareSigningResult{}, fmt.Errorf("cloud signer: nil signer")
+	}
+	if err := request.Validate(); err != nil {
+		return wallet.SoftwareSigningResult{}, err
+	}
+	account, err := signer.accounts.GetAccount(ctx, request.AccountID)
+	if err != nil {
+		return wallet.SoftwareSigningResult{}, fmt.Errorf("cloud signer: account: %w", err)
+	}
+	if account.SignerKind != wallet.SignerKindCloud || account.SignerReference != signer.api.Reference() {
+		return wallet.SoftwareSigningResult{}, ErrCloudSigningDenied
+	}
+	expectedAddress := common.HexToAddress(account.Address)
+	if expectedAddress == (common.Address{}) || expectedAddress != request.Signer {
+		return wallet.SoftwareSigningResult{}, ErrCloudSigningDenied
+	}
+	if err := signer.messageApprovalVerifier.VerifyMessageApproval(ctx, wallet.MessageApprovalBinding{
+		AccountID: request.AccountID, Scheme: wallet.MessageSigningSafeOwner, ChainID: request.ChainID,
+		Digest: request.Digest, IntentHash: request.IntentHash, ApprovalID: request.ApprovalID,
+	}); err != nil {
+		return wallet.SoftwareSigningResult{}, err
+	}
+	result, err := signer.api.Sign(ctx, RemoteSigningRequest{
+		AccountID: request.AccountID, ChainID: request.ChainID, Digest: request.Digest,
+	})
+	if err != nil {
+		return wallet.SoftwareSigningResult{}, err
+	}
+	if err := verifyECDSASignature(expectedAddress, request.Digest, result.Signature); err != nil {
+		return wallet.SoftwareSigningResult{}, ErrCloudSignature
+	}
+	return wallet.SoftwareSigningResult{
+		AccountID: request.AccountID, Purpose: wallet.SigningPurposeMessage,
+		MessageScheme: wallet.MessageSigningSafeOwner, ChainID: request.ChainID,
+		Digest: request.Digest, IntentHash: request.IntentHash,
 		Signature: append([]byte(nil), result.Signature...),
 	}, nil
 }

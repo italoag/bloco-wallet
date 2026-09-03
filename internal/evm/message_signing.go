@@ -426,7 +426,7 @@ func validMessageSchemeBinding(scheme wallet.MessageSigningScheme, chainID uint6
 	switch scheme {
 	case wallet.MessageSigningEIP191Personal:
 		return chainID == 0
-	case wallet.MessageSigningEIP712:
+	case wallet.MessageSigningEIP712, wallet.MessageSigningSafeOwner:
 		return chainID > 0 && chainID <= math.MaxInt64
 	default:
 		return false

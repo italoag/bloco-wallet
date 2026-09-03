@@ -19,6 +19,7 @@ type MessageSigningScheme string
 const (
 	MessageSigningEIP191Personal MessageSigningScheme = "eip191_personal"
 	MessageSigningEIP712         MessageSigningScheme = "eip712"
+	MessageSigningSafeOwner      MessageSigningScheme = "safe_owner"
 )
 
 type SoftwareSigningRequest struct {
@@ -122,6 +123,10 @@ func (signer *SoftwareSigner) Sign(ctx context.Context, handle CapabilityHandle,
 		case MessageSigningEIP712:
 			if request.ChainID == 0 {
 				return SoftwareSigningResult{}, fmt.Errorf("EIP-712 signing requires validated chain ID")
+			}
+		case MessageSigningSafeOwner:
+			if request.ChainID == 0 {
+				return SoftwareSigningResult{}, fmt.Errorf("safe owner signing requires validated chain ID")
 			}
 		default:
 			return SoftwareSigningResult{}, fmt.Errorf("unsupported message signing scheme")

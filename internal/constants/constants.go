@@ -36,6 +36,7 @@ const (
 	LanguageSelectionView     = "language_selection"
 	NetworkListView           = "network_list"
 	AddNetworkView            = "add_network"
+	SafeView                  = "safe"
 	StyleWidth                = 40
 	StyleMargin               = 1
 	SplashDuration            = 2 * time.Second

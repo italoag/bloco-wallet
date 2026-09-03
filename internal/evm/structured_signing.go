@@ -127,6 +127,31 @@ func (intent EIP712SigningIntent) Validate() error {
 	return nil
 }
 
+// SafeOwnerDigestRequest signs one digest as an EOA owner of a Safe
+// proposal. The digest is the raw Safe transaction hash (not an EIP-191 or
+// EIP-712 wrapped hash) so the Safe contract can ecrecover it directly.
+type SafeOwnerDigestRequest struct {
+	AccountID  string
+	Signer     common.Address
+	ChainID    uint64
+	Digest     [32]byte
+	IntentHash [32]byte
+	ApprovalID string
+}
+
+// Validate checks the Safe-owner approval bindings.
+func (request SafeOwnerDigestRequest) Validate() error {
+	if request.AccountID == "" || request.Signer == (common.Address{}) || request.ChainID == 0 || request.Digest == ([32]byte{}) || request.IntentHash == ([32]byte{}) || request.ApprovalID == "" {
+		return fmt.Errorf("structured signer: incomplete Safe-owner digest intent")
+	}
+	return nil
+}
+
+// SafeOwnerSigner signs a raw Safe transaction digest with an EOA owner.
+type SafeOwnerSigner interface {
+	SignSafeOwnerDigest(context.Context, wallet.CapabilityHandle, SafeOwnerDigestRequest) (wallet.SoftwareSigningResult, error)
+}
+
 // TransactionIntentSigner signs frozen EVM transaction intents.
 type TransactionIntentSigner interface {
 	SignTransaction(context.Context, wallet.CapabilityHandle, TransactionSigningIntent) (wallet.SoftwareSigningResult, error)
@@ -142,6 +167,7 @@ type MessageIntentSigner interface {
 type StructuredSigner interface {
 	TransactionIntentSigner
 	MessageIntentSigner
+	SafeOwnerSigner
 }
 
 // DigestSignerAdapter preserves software/cloud compatibility while the engine
@@ -199,5 +225,22 @@ func (adapter *DigestSignerAdapter) SignEIP712(ctx context.Context, handle walle
 		AccountID: intent.AccountID, Purpose: wallet.SigningPurposeMessage,
 		MessageScheme: wallet.MessageSigningEIP712, ChainID: intent.ChainID,
 		Digest: intent.Digest, IntentHash: intent.IntentHash, ApprovalID: intent.ApprovalID,
+	})
+}
+
+// SignSafeOwnerDigest delegates the raw Safe digest with the Safe-owner
+// message scheme so the signer verifies the bound approval and signs the
+// digest directly (no EIP-191/EIP-712 wrapper).
+func (adapter *DigestSignerAdapter) SignSafeOwnerDigest(ctx context.Context, handle wallet.CapabilityHandle, request SafeOwnerDigestRequest) (wallet.SoftwareSigningResult, error) {
+	if adapter == nil || adapter.signer == nil {
+		return wallet.SoftwareSigningResult{}, fmt.Errorf("structured signer: digest adapter unavailable")
+	}
+	if err := request.Validate(); err != nil {
+		return wallet.SoftwareSigningResult{}, err
+	}
+	return adapter.signer.Sign(ctx, handle, wallet.SoftwareSigningRequest{
+		AccountID: request.AccountID, Purpose: wallet.SigningPurposeMessage,
+		MessageScheme: wallet.MessageSigningSafeOwner, ChainID: request.ChainID,
+		Digest: request.Digest, IntentHash: request.IntentHash, ApprovalID: request.ApprovalID,
 	})
 }

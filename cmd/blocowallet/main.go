@@ -12,6 +12,7 @@ import (
 
 	"blocowallet/internal/blockchain"
 	"blocowallet/internal/evm"
+	"blocowallet/internal/safe"
 	"blocowallet/internal/storage"
 	"blocowallet/internal/ui"
 	"blocowallet/internal/wallet"
@@ -60,6 +61,13 @@ func main() {
 
 	if len(os.Args) > 1 && os.Args[1] == "daemon" {
 		runDaemon(cfg)
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "safe" {
+		if err := runSafeCommand(os.Args[2:]); err != nil {
+			fmt.Fprintf(os.Stderr, "safe: %v\n", err)
+			os.Exit(1)
+		}
 		return
 	}
 
@@ -191,6 +199,19 @@ func main() {
 	app.ConfigureTransactionEngineFactory(func(ctx context.Context, network config.Network) (ui.TransactionEngine, error) {
 		return createEngine(ctx, network)
 	})
+	safeService, err := buildSafeService(cfg, repo, rpcGateway, signingBackends.structured)
+	if err != nil {
+		log.Printf("Safe service unavailable: %v", err)
+	} else {
+		app.ConfigureSafeService(&tuiSafeService{
+			service: safeService, repo: repo, chainID: safeChainID(cfg),
+			authorize: func(ctx context.Context, accountID string, password []byte, operation func(wallet.CapabilityHandle) error) error {
+				return transactionAuthorizer.Authorize(ctx, accountID, password, func(handle wallet.CapabilityHandle, _ uint64) error {
+					return operation(handle)
+				})
+			},
+		})
+	}
 	recovery, err := evm.NewRecoverySupervisor(repo, func(ctx context.Context, chainID uint64) (evm.RecoveryTracker, error) {
 		for _, network := range cfg.Networks {
 			if network.IsActive && network.ChainID > 0 && uint64(network.ChainID) == chainID {
@@ -231,6 +252,49 @@ func main() {
 		log.Printf("Application error: %v", err)
 		os.Exit(1)
 	}
+}
+
+// buildSafeService wires the Safe proposal service to the first active
+// network with a positive chain ID.
+func safeChainID(cfg *config.Config) uint64 {
+	network, exists := firstActiveNetwork(cfg)
+	if !exists {
+		return 0
+	}
+	return uint64(network.ChainID)
+}
+
+func firstActiveNetwork(cfg *config.Config) (config.Network, bool) {
+	for _, candidate := range cfg.Networks {
+		if candidate.IsActive && candidate.ChainID > 0 {
+			return candidate, true
+		}
+	}
+	return config.Network{}, false
+}
+
+func buildSafeService(cfg *config.Config, repo *storage.GORMRepository, gateway *blockchain.RPCGateway, signer evm.StructuredSigner) (*safe.Service, error) {
+	network, exists := firstActiveNetwork(cfg)
+	if !exists {
+		return nil, fmt.Errorf("no active network configured")
+	}
+	endpoint, err := network.ResolveRPCEndpoint(config.EnvironmentCredentialProvider{})
+	if err != nil {
+		return nil, err
+	}
+	session, err := gateway.ValidateChain(context.Background(), endpoint, network.ChainID)
+	if err != nil {
+		return nil, err
+	}
+	rpc, err := safe.NewRPCAdapter(gateway, session)
+	if err != nil {
+		return nil, err
+	}
+	gasPayer, err := safe.NewGasPayerSignerAdapter(signer)
+	if err != nil {
+		return nil, err
+	}
+	return safe.NewWithGasPayer(repo, repo, &safeAccountImporter{repo: repo}, repo, signer, gasPayer, rpc, safe.Options{ApprovalTTL: 30 * time.Minute})
 }
 
 func ensurePrivateDirectory(path, appDir string) error {

@@ -640,6 +640,8 @@ func (m *CLIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateNetworkList(msg)
 	case constants.AddNetworkView:
 		return m.updateAddNetwork(msg)
+	case constants.SafeView:
+		return m.updateSafeView(msg)
 	default:
 		m.currentView = constants.DefaultView
 		return m, nil
@@ -816,6 +818,8 @@ func (m *CLIModel) getContentView() string {
 		return m.viewNetworkList()
 	case constants.AddNetworkView:
 		return m.viewAddNetwork()
+	case constants.SafeView:
+		return m.viewSafe()
 	default:
 		return localization.Labels["unknown_state"]
 	}
@@ -849,6 +853,8 @@ func (m *CLIModel) updateMenu(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.initImportWallet()
 			case localization.Labels["list_wallets"]:
 				m.initListWallets()
+			case "Safe multisig":
+				m.initSafeView()
 			case localization.Labels["configuration"]:
 				m.initConfigMenu()
 			case tea.KeyCtrlX.String(), "q", localization.Labels["exit"]:

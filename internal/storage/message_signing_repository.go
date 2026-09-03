@@ -201,7 +201,7 @@ func messageSigningRecordFromRow(row messageSigningRow) evm.MessageSigningRecord
 }
 
 func validStoredMessageScheme(scheme wallet.MessageSigningScheme, chainID uint64) bool {
-	return (scheme == wallet.MessageSigningEIP191Personal && chainID == 0) || (scheme == wallet.MessageSigningEIP712 && chainID > 0 && chainID <= math.MaxInt64)
+	return (scheme == wallet.MessageSigningEIP191Personal && chainID == 0) || ((scheme == wallet.MessageSigningEIP712 || scheme == wallet.MessageSigningSafeOwner) && chainID > 0 && chainID <= math.MaxInt64)
 }
 
 func equal32(encoded []byte, expected [32]byte) bool {

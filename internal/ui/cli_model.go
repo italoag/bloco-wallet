@@ -55,6 +55,8 @@ type CLIModel struct {
 	walletConnectService            WalletConnectService
 	walletConnectReader             WalletConnectSessionReader
 	walletConnectEvents             chan tea.Msg
+	safeService                     SafeService
+	safeView                        *safeViewState
 	fido2                           *fido2State
 	fido2Generation                 uint64
 	fido2Service                    FIDO2Service

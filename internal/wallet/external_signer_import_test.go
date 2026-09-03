@@ -68,12 +68,12 @@ func TestImportExternalSignerAccountBindsCustodyFreeAccounts(t *testing.T) {
 	multisig, err := wallet.ImportExternalSignerAccount(context.Background(), repository, wallet.ExternalSignerImportRequest{
 		Name: "Safe", Address: "0xCcCCccccCCCCcCCCCCCcCcCccCcCCCcCcccccccC",
 		SignerKind: wallet.SignerKindMultisig, Reference: "safe:v1:0xCcCCccccCCCCcCCCCCCcCcCccCcCCCcCcccccccC",
-		AuthorizationEpoch: 1,
+		Capabilities: wallet.CapabilitySignTransaction | wallet.CapabilitySignMessage, AuthorizationEpoch: 1,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if multisig.SignerKind != wallet.SignerKindMultisig || multisig.Capabilities != 0 || multisig.SecretType != "" {
+	if multisig.SignerKind != wallet.SignerKindMultisig || multisig.Capabilities != wallet.CapabilitySignTransaction|wallet.CapabilitySignMessage || multisig.SecretType != "" {
 		t.Fatalf("multisig account leaked custody material: %+v", multisig)
 	}
 }
