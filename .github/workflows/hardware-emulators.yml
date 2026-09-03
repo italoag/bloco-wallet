@@ -183,7 +183,7 @@ jobs:
       - name: Test Safe service lifecycle against real contracts
         env:
           BLOCO_WALLET_ANVIL_URL: http://127.0.0.1:18545
-        run: go test ./internal/safe -run TestSafeServiceAgainstRealContracts -v -count=1 -timeout=10m
+        run: go test ./internal/safe -run 'TestSafe(ServiceAgainstRealContracts|DeployAgainstRealContracts)$' -v -count=1 -timeout=10m
       - name: Stop Anvil
         if: always()
         run: docker rm --force anvil || true

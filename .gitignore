@@ -40,5 +40,5 @@ bloco_wallet.log
 /wallets.db
 .vscode/
 keystores/
-blocowallet
+/blocowallet
 references/

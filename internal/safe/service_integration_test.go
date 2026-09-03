@@ -129,15 +129,7 @@ func selectorOf(signature string) []byte {
 	return crypto.Keccak256([]byte(signature))[:4]
 }
 
-func mustABIType(kind string) abi.Type {
-	parsed, err := abi.NewType(kind, "", nil)
-	if err != nil {
-		panic(err)
-	}
-	return parsed
-}
-
-func encodeSafeSetup(owners []common.Address, threshold *big.Int, handler common.Address) []byte {
+func encodeSafeSetupWithHandler(owners []common.Address, threshold *big.Int, handler common.Address) []byte {
 	method := abi.NewMethod("setup", "setup", abi.Function, "nonpayable", false, false,
 		abi.Arguments{
 			{Name: "owners", Type: mustABIType("address[]")},
@@ -155,58 +147,6 @@ func encodeSafeSetup(owners []common.Address, threshold *big.Int, handler common
 		panic(err)
 	}
 	return append(append([]byte(nil), method.ID...), packed...)
-}
-
-func encodeCreateProxyWithNonce(singleton common.Address, initializer []byte, nonce uint64) []byte {
-	method := abi.NewMethod("createProxyWithNonce", "createProxyWithNonce", abi.Function, "nonpayable", false, false,
-		abi.Arguments{
-			{Name: "singleton", Type: mustABIType("address")},
-			{Name: "initializer", Type: mustABIType("bytes")},
-			{Name: "saltNonce", Type: mustABIType("uint256")},
-		},
-		abi.Arguments{})
-	packed, err := method.Inputs.Pack(singleton, initializer, new(big.Int).SetUint64(nonce))
-	if err != nil {
-		panic(err)
-	}
-	return append(append([]byte(nil), method.ID...), packed...)
-}
-
-func decodeBytesABI(result []byte) ([]byte, error) {
-	if len(result) < 64 {
-		return nil, fmt.Errorf("short bytes result")
-	}
-	offset := new(big.Int).SetBytes(result[0:32]).Uint64()
-	if offset != 32 {
-		return nil, fmt.Errorf("unexpected bytes offset %d", offset)
-	}
-	length := new(big.Int).SetBytes(result[32:64]).Uint64()
-	if length > uint64(len(result)-64) {
-		return nil, fmt.Errorf("bytes length out of range")
-	}
-	return append([]byte(nil), result[64:64+length]...), nil
-}
-
-func create2Address(factory common.Address, salt []byte, initCode []byte) common.Address {
-	initCodeHash := crypto.Keccak256(initCode)
-	input := make([]byte, 0, 1+20+32+32)
-	input = append(input, 0xff)
-	input = append(input, factory.Bytes()...)
-	input = append(input, salt...)
-	input = append(input, initCodeHash...)
-	hash := crypto.Keccak256(input)
-	return common.BytesToAddress(hash[12:])
-}
-
-func safeProxyAddress(factory, singleton common.Address, creationCode, initializer []byte, nonce *big.Int) common.Address {
-	initCode := append(append([]byte(nil), creationCode...), make([]byte, 12)...)
-	initCode = append(initCode, singleton.Bytes()...)
-	saltBinding := make([]byte, 0, 64)
-	saltBinding = append(saltBinding, crypto.Keccak256(initializer)...)
-	nonceWord := make([]byte, 32)
-	nonce.FillBytes(nonceWord)
-	saltBinding = append(saltBinding, nonceWord...)
-	return create2Address(factory, crypto.Keccak256(saltBinding), initCode)
 }
 
 // TestSafeServiceAgainstRealContracts exercises import, propose, sign, and
@@ -236,6 +176,7 @@ func TestSafeServiceAgainstRealContracts(t *testing.T) {
 	singleton := deployedAddress(ctx, t, rpc, deployer, common.FromHex(signer.SafeBytecode))
 	factory := deployedAddress(ctx, t, rpc, deployer, common.FromHex(signer.SafeProxyFactoryBytecode))
 	handler := deployedAddress(ctx, t, rpc, deployer, common.FromHex(signer.CompatibilityFallbackHandlerBytecode))
+	RegisterTestContracts(31337, singleton, factory)
 
 	ownerKey, err := ecdsa.GenerateKey(crypto.S256(), rand.Reader)
 	if err != nil {
@@ -246,7 +187,7 @@ func TestSafeServiceAgainstRealContracts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	setupData := encodeSafeSetup([]common.Address{owner}, big.NewInt(1), handler)
+	setupData := encodeSafeSetupWithHandler([]common.Address{owner}, big.NewInt(1), handler)
 	creationCodeResult, err := rpc.call(ctx, "eth_call", map[string]any{
 		"to": factory.Hex(), "data": "0x" + hex.EncodeToString(selectorOf("proxyCreationCode()")),
 	}, "latest")
@@ -261,11 +202,15 @@ func TestSafeServiceAgainstRealContracts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	proxyTx, err := rpc.send(ctx, deployer, &factory, nil, encodeCreateProxyWithNonce(singleton, setupData, 1))
+	proxyCall, err := encodeCreateProxyWithNonceData(singleton, setupData, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	safeAddress := safeProxyAddress(factory, singleton, creationCode, setupData, big.NewInt(1))
+	proxyTx, err := rpc.send(ctx, deployer, &factory, nil, proxyCall)
+	if err != nil {
+		t.Fatal(err)
+	}
+	safeAddress := deriveSafeProxyAddress(factory, singleton, creationCode, setupData, big.NewInt(1))
 	if err := rpc.waitReceipt(ctx, proxyTx); err != nil {
 		t.Fatal(err)
 	}

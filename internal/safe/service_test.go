@@ -143,6 +143,10 @@ func (rpc *fakeRPC) CodeAt(context.Context, common.Address) ([]byte, error) {
 	return rpc.code, nil
 }
 
+func (rpc *fakeRPC) ProxyCreationCode(context.Context, common.Address) ([]byte, error) {
+	return []byte{0x60, 0x80}, nil
+}
+
 func (rpc *fakeRPC) PendingNonce(context.Context, common.Address) (uint64, error) {
 	return rpc.pendingNonce, nil
 }

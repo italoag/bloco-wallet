@@ -17,6 +17,7 @@ type OnChainReader interface {
 	Threshold(context.Context, common.Address) (uint64, error)
 	Nonce(context.Context, common.Address) (*big.Int, error)
 	CodeAt(context.Context, common.Address) ([]byte, error)
+	ProxyCreationCode(context.Context, common.Address) ([]byte, error)
 	PendingNonce(context.Context, common.Address) (uint64, error)
 	SuggestGasPrice(context.Context) (*big.Int, error)
 	Broadcast(context.Context, []byte) (common.Hash, error)
@@ -63,6 +64,16 @@ func (adapter *RPCAdapter) Nonce(ctx context.Context, safe common.Address) (*big
 		return nil, err
 	}
 	return decodeBigInt(result)
+}
+
+// ProxyCreationCode reads proxyCreationCode() from the Safe factory so the
+// CREATE2 address can be derived locally.
+func (adapter *RPCAdapter) ProxyCreationCode(ctx context.Context, factory common.Address) ([]byte, error) {
+	result, err := adapter.call(ctx, factory, "proxyCreationCode()")
+	if err != nil {
+		return nil, err
+	}
+	return decodeBytesABI(result)
 }
 
 // PendingNonce reads the pending nonce of the gas-payer account.
@@ -116,6 +127,21 @@ func (adapter *RPCAdapter) call(ctx context.Context, to common.Address, signatur
 		return nil, fmt.Errorf("safe rpc: %s returned no data", signature)
 	}
 	return decoded, nil
+}
+
+func decodeBytesABI(result []byte) ([]byte, error) {
+	if len(result) < 64 {
+		return nil, fmt.Errorf("safe rpc: malformed bytes result")
+	}
+	offset := new(big.Int).SetBytes(result[0:32]).Uint64()
+	if offset != 32 {
+		return nil, fmt.Errorf("safe rpc: unexpected bytes offset %d", offset)
+	}
+	length := new(big.Int).SetBytes(result[32:64]).Uint64()
+	if length > uint64(len(result)-64) {
+		return nil, fmt.Errorf("safe rpc: bytes length out of bounds")
+	}
+	return append([]byte(nil), result[64:64+length]...), nil
 }
 
 func decodeAddressArray(data []byte) ([]common.Address, error) {
