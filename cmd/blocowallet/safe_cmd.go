@@ -216,6 +216,78 @@ func runSafeCommand(args []string) error {
 		}
 		fmt.Printf("deployed %s account=%s tx=%s\n", deployment.SafeAddress.Hex(), imported.AccountID, hash.Hex())
 		return nil
+	case "add-owner":
+		if len(rest) < 4 {
+			return fmt.Errorf("usage: blocowallet safe add-owner <network> <safe-name> <new-owner> <threshold>")
+		}
+		if !common.IsHexAddress(rest[2]) || common.HexToAddress(rest[2]).Hex() != rest[2] {
+			return fmt.Errorf("new owner must be a checksummed address")
+		}
+		threshold, err := strconv.ParseUint(rest[3], 10, 64)
+		if err != nil || threshold == 0 {
+			return fmt.Errorf("threshold must be a positive integer")
+		}
+		safeAccount, err := resolveSafeAccount(ctx, repo, rest[1])
+		if err != nil {
+			return err
+		}
+		proposal, err := service.ProposeOwnerChange(ctx, safe.OwnerProposalRequest{
+			SafeAccountID: safeAccount.AccountID, ChainID: uint64(chainID),
+			Action: safe.OwnerActionAdd, Owner: common.HexToAddress(rest[2]), Threshold: threshold,
+		})
+		if err != nil {
+			return err
+		}
+		fmt.Printf("proposed add owner %s proposal=%s\n", rest[2], proposal.ProposalID)
+		return nil
+	case "remove-owner":
+		if len(rest) < 3 {
+			return fmt.Errorf("usage: blocowallet safe remove-owner <network> <safe-name> <owner> [threshold]")
+		}
+		if !common.IsHexAddress(rest[2]) || common.HexToAddress(rest[2]).Hex() != rest[2] {
+			return fmt.Errorf("owner must be a checksummed address")
+		}
+		var threshold uint64
+		if len(rest) > 3 {
+			threshold, err = strconv.ParseUint(rest[3], 10, 64)
+			if err != nil {
+				return fmt.Errorf("threshold must be a positive integer")
+			}
+		}
+		safeAccount, err := resolveSafeAccount(ctx, repo, rest[1])
+		if err != nil {
+			return err
+		}
+		proposal, err := service.ProposeOwnerChange(ctx, safe.OwnerProposalRequest{
+			SafeAccountID: safeAccount.AccountID, ChainID: uint64(chainID),
+			Action: safe.OwnerActionRemove, Owner: common.HexToAddress(rest[2]), Threshold: threshold,
+		})
+		if err != nil {
+			return err
+		}
+		fmt.Printf("proposed remove owner %s proposal=%s\n", rest[2], proposal.ProposalID)
+		return nil
+	case "change-threshold":
+		if len(rest) < 3 {
+			return fmt.Errorf("usage: blocowallet safe change-threshold <network> <safe-name> <threshold>")
+		}
+		threshold, err := strconv.ParseUint(rest[2], 10, 64)
+		if err != nil || threshold == 0 {
+			return fmt.Errorf("threshold must be a positive integer")
+		}
+		safeAccount, err := resolveSafeAccount(ctx, repo, rest[1])
+		if err != nil {
+			return err
+		}
+		proposal, err := service.ProposeOwnerChange(ctx, safe.OwnerProposalRequest{
+			SafeAccountID: safeAccount.AccountID, ChainID: uint64(chainID),
+			Action: safe.OwnerActionChangeThreshold, Threshold: threshold,
+		})
+		if err != nil {
+			return err
+		}
+		fmt.Printf("proposed change threshold to %d proposal=%s\n", threshold, proposal.ProposalID)
+		return nil
 	case "execute":
 		if len(rest) < 3 {
 			return fmt.Errorf("usage: blocowallet safe execute <network> <proposal-id> <gas-payer-account-id>")

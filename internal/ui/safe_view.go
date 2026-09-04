@@ -54,7 +54,7 @@ type SafeService interface {
 	ImportSafe(ctx context.Context, name, address string, chainID uint64) error
 	PrepareDeploy(ctx context.Context, name string, owners []string, threshold uint64) (*SafeDeploymentSummary, error)
 	BroadcastDeploy(ctx context.Context, deployment *SafeDeploymentSummary, deployerAccountID string, password []byte) (string, error)
-	Propose(ctx context.Context, accountID string, chainID uint64, to string, value *big.Int) (string, error)
+	Propose(ctx context.Context, accountID string, chainID uint64, to string, value *big.Int, data []byte) (string, error)
 	Sign(ctx context.Context, proposalID, ownerAccountID string, chainID uint64, password []byte) error
 	Execute(ctx context.Context, proposalID, gasPayerAccountID string, chainID uint64, password []byte) (string, error)
 }
@@ -103,6 +103,7 @@ type safeViewState struct {
 	// Proposal form
 	proposeToInput    textinput.Model
 	proposeValueInput textinput.Model
+	proposeDataInput  textinput.Model
 }
 
 type safeResultMsg struct {
@@ -192,6 +193,9 @@ func (model *CLIModel) initSafeProposals() {
 	state.proposeValueInput = textinput.New()
 	state.proposeValueInput.Placeholder = "Value in wei"
 	state.proposeValueInput.CharLimit = 96
+	state.proposeDataInput = textinput.New()
+	state.proposeDataInput.Placeholder = "Calldata (hex, optional)"
+	state.proposeDataInput.CharLimit = 4096
 	state.err = ""
 	if err := model.reloadSafeProposals(state); err != nil {
 		state.err = safeError(err)
@@ -487,10 +491,10 @@ func (model *CLIModel) updateSafeImport(message tea.KeyMsg, state *safeViewState
 }
 
 func (model *CLIModel) updateSafeProposals(message tea.KeyMsg, state *safeViewState) tea.Cmd {
-	inputs := []*textinput.Model{&state.proposeToInput, &state.proposeValueInput}
+	inputs := []*textinput.Model{&state.proposeToInput, &state.proposeValueInput, &state.proposeDataInput}
 	switch {
 	case keyIs(message, "enter"):
-		if state.proposeValueInput.Focused() {
+		if state.proposeDataInput.Focused() || state.proposeValueInput.Focused() {
 			to := strings.TrimSpace(state.proposeToInput.Value())
 			value := strings.TrimSpace(state.proposeValueInput.Value())
 			if !common.IsHexAddress(to) {
@@ -502,12 +506,27 @@ func (model *CLIModel) updateSafeProposals(message tea.KeyMsg, state *safeViewSt
 				state.err = "Value must be a non-negative integer in wei."
 				return nil
 			}
+			var calldata []byte
+			dataText := strings.TrimSpace(state.proposeDataInput.Value())
+			if dataText != "" {
+				trimmed := strings.TrimPrefix(dataText, "0x")
+				if len(trimmed)%2 != 0 {
+					state.err = "Calldata must be even-length hex."
+					return nil
+				}
+				decoded := common.FromHex(trimmed)
+				if decoded == nil {
+					state.err = "Calldata must be even-length hex."
+					return nil
+				}
+				calldata = decoded
+			}
 			account := state.accounts[state.selected]
 			state.generation++
 			generation := state.generation
 			service := model.safeService
 			return func() tea.Msg {
-				proposalID, err := service.Propose(context.Background(), account.AccountID, account.ChainID, to, amount)
+				proposalID, err := service.Propose(context.Background(), account.AccountID, account.ChainID, to, amount, calldata)
 				if err != nil {
 					return safeResultMsg{generation: generation, kind: "propose", err: err}
 				}
@@ -519,11 +538,15 @@ func (model *CLIModel) updateSafeProposals(message tea.KeyMsg, state *safeViewSt
 			state.proposeValueInput.Focus()
 		}
 	case keyIs(message, "tab"):
-		if state.proposeToInput.Focused() {
+		switch {
+		case state.proposeToInput.Focused():
 			state.proposeToInput.Blur()
 			state.proposeValueInput.Focus()
-		} else {
+		case state.proposeValueInput.Focused():
 			state.proposeValueInput.Blur()
+			state.proposeDataInput.Focus()
+		default:
+			state.proposeDataInput.Blur()
 			state.proposeToInput.Focus()
 		}
 	case keyIs(message, "down", "j") && !anyFocused(inputs):
@@ -760,6 +783,7 @@ func (model *CLIModel) viewSafe() string {
 		_, _ = fmt.Fprintf(&builder, "\n%s — proposals (enter/a: review, esc: back)\n", safeShort(account.Name))
 		builder.WriteString("New proposal — Recipient:\n" + state.proposeToInput.View() + "\n")
 		builder.WriteString("Value (wei):\n" + state.proposeValueInput.View() + "\n")
+		builder.WriteString("Calldata (hex, optional):\n" + state.proposeDataInput.View() + "\n")
 		builder.WriteString("enter: propose • tab: next • esc: back\n\n")
 		if len(state.proposals) == 0 {
 			builder.WriteString("(no proposals yet)")

@@ -136,12 +136,15 @@ func (adapter *tuiSafeService) BroadcastDeploy(ctx context.Context, deployment *
 	return hash.Hex(), nil
 }
 
-func (adapter *tuiSafeService) Propose(ctx context.Context, accountID string, chainID uint64, to string, value *big.Int) (string, error) {
+func (adapter *tuiSafeService) Propose(ctx context.Context, accountID string, chainID uint64, to string, value *big.Int, data []byte) (string, error) {
 	if !common.IsHexAddress(to) || common.HexToAddress(to).Hex() != to {
 		return "", fmt.Errorf("recipient must be a checksummed address")
 	}
+	if len(data) > 128<<10 {
+		return "", fmt.Errorf("calldata exceeds the 128 KiB policy")
+	}
 	proposal, err := adapter.service.Propose(ctx, safe.SafeProposalRequest{
-		SafeAccountID: accountID, ChainID: chainID, To: common.HexToAddress(to), Value: value,
+		SafeAccountID: accountID, ChainID: chainID, To: common.HexToAddress(to), Value: value, Data: data,
 	})
 	if err != nil {
 		return "", err
