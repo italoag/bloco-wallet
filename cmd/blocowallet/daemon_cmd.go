@@ -78,6 +78,7 @@ func runDaemon(cfg *config.Config) {
 		}
 		return map[string]any{"accounts": summary}, nil
 	})
+	registerSafeDaemonMethods(server, cfg, repo)
 	daemon.SetVersion(version)
 	if err := server.Start(); err != nil {
 		log.Printf("Failed to start daemon: %v", err)
