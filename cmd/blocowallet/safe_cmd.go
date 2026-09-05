@@ -288,6 +288,48 @@ func runSafeCommand(args []string) error {
 		}
 		fmt.Printf("proposed change threshold to %d proposal=%s\n", threshold, proposal.ProposalID)
 		return nil
+	case "sign-message":
+		if len(rest) < 3 {
+			return fmt.Errorf("usage: blocowallet safe sign-message <network> <safe-name> <owner-account-id> <message>")
+		}
+		safeAccount, err := resolveSafeAccount(ctx, repo, rest[1])
+		if err != nil {
+			return err
+		}
+		message := []byte(rest[3])
+		proposed, err := service.ProposeMessage(ctx, safe.SafeMessageProposalRequest{
+			SafeAccountID: safeAccount.AccountID, ChainID: uint64(chainID), Message: message,
+		})
+		if err != nil {
+			return err
+		}
+		if err := service.SignMessage(ctx, proposed, rest[2], authorize); err != nil {
+			return err
+		}
+		fmt.Printf("signed message %s digest=0x%x signatures=%d/%d\n", proposed.MessageID, proposed.Digest, len(proposed.Signatures), proposed.Threshold)
+		return nil
+	case "verify-message":
+		if len(rest) < 3 {
+			return fmt.Errorf("usage: blocowallet safe verify-message <network> <safe-name> <message>")
+		}
+		safeAccount, err := resolveSafeAccount(ctx, repo, rest[1])
+		if err != nil {
+			return err
+		}
+		proposed, err := service.ProposeMessage(ctx, safe.SafeMessageProposalRequest{
+			SafeAccountID: safeAccount.AccountID, ChainID: uint64(chainID), Message: []byte(rest[2]),
+		})
+		if err != nil {
+			return err
+		}
+		// Re-sign with all owners so the aggregate can be produced; the
+		// message itself is verifiable off-chain via the EIP-1271 payload.
+		aggregate, err := service.VerifyMessage(proposed)
+		if err != nil {
+			return fmt.Errorf("message not ready: %w", err)
+		}
+		fmt.Printf("message %s digest=0x%x aggregate=0x%x (threshold %d)\n", proposed.MessageID, proposed.Digest, aggregate, proposed.Threshold)
+		return nil
 	case "execute":
 		if len(rest) < 3 {
 			return fmt.Errorf("usage: blocowallet safe execute <network> <proposal-id> <gas-payer-account-id>")

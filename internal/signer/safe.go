@@ -1,9 +1,12 @@
 package signer
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"sort"
+	"sync"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -167,6 +170,195 @@ func encodeSafeTransactionTypedDataJSON(safe common.Address, chainID uint64, tra
 		},
 	}
 	return json.Marshal(payload)
+}
+
+// SafeMessageIntent freezes the Safe, its owner snapshot, and the message
+// digest whose EIP-1271 signature is being collected.
+type SafeMessageIntent struct {
+	SafeAddress common.Address
+	ChainID     uint64
+	Owners      []SafeOwnerSnapshot
+	Threshold   uint64
+	Digest      [32]byte
+	Commitment  [32]byte
+}
+
+// NewSafeMessageIntent builds and validates a message-signing intent.
+func NewSafeMessageIntent(safeAddress common.Address, chainID uint64, owners []SafeOwnerSnapshot, threshold uint64, digest [32]byte) (SafeMessageIntent, error) {
+	intent := SafeMessageIntent{
+		SafeAddress: safeAddress, ChainID: chainID,
+		Owners: append([]SafeOwnerSnapshot(nil), owners...), Threshold: threshold, Digest: digest,
+	}
+	if safeAddress == (common.Address{}) || chainID == 0 || digest == ([32]byte{}) {
+		return SafeMessageIntent{}, fmt.Errorf("safe signer: invalid message binding")
+	}
+	if len(intent.Owners) == 0 || len(intent.Owners) > safeMaximumOwnerSnapshot {
+		return SafeMessageIntent{}, fmt.Errorf("safe signer: owner snapshot bounds")
+	}
+	if intent.Threshold == 0 || intent.Threshold > uint64(len(intent.Owners)) {
+		return SafeMessageIntent{}, fmt.Errorf("safe signer: threshold")
+	}
+	seen := make(map[common.Address]struct{}, len(intent.Owners))
+	for _, owner := range intent.Owners {
+		if owner.Address == (common.Address{}) || owner.Address == safeAddress {
+			return SafeMessageIntent{}, fmt.Errorf("safe signer: zero or self owner")
+		}
+		if _, duplicate := seen[owner.Address]; duplicate {
+			return SafeMessageIntent{}, fmt.Errorf("safe signer: duplicate owner")
+		}
+		seen[owner.Address] = struct{}{}
+	}
+	commitment, err := safeMessageIntentCommitment(intent)
+	if err != nil {
+		return SafeMessageIntent{}, err
+	}
+	intent.Commitment = commitment
+	return intent, nil
+}
+
+func safeMessageIntentCommitment(intent SafeMessageIntent) ([32]byte, error) {
+	owners := append([]SafeOwnerSnapshot(nil), intent.Owners...)
+	sort.Slice(owners, func(i, j int) bool {
+		return bytes.Compare(owners[i].Address[:], owners[j].Address[:]) < 0
+	})
+	typeHash := crypto.Keccak256Hash([]byte("bloco-wallet/SafeMessageIntent/v1"))
+	encoded := make([]byte, 0, (5+2*len(owners))*32)
+	encoded = append(encoded, typeHash[:]...)
+	encoded = append(encoded, safeAddressWord(intent.SafeAddress)...)
+	encoded = append(encoded, safeUint256Word(new(big.Int).SetUint64(intent.ChainID))...)
+	encoded = append(encoded, safeUint256Word(new(big.Int).SetUint64(intent.Threshold))...)
+	encoded = append(encoded, safeUint256Word(new(big.Int).SetUint64(uint64(len(owners))))...)
+	encoded = append(encoded, intent.Digest[:]...)
+	for _, owner := range owners {
+		encoded = append(encoded, safeAddressWord(owner.Address)...)
+		encoded = append(encoded, safeUint256Word(new(big.Int).SetUint64(uint64(owner.Kind)))...)
+	}
+	commitment := crypto.Keccak256Hash(encoded)
+	return [32]byte(commitment), nil
+}
+
+// SafeMessageCoordinator collects and combines owner signatures for one
+// EIP-1271 Safe message. The aggregated payload is verifiable through
+// Safe.isValidSignature with the CompatibilityFallbackHandler.
+type SafeMessageCoordinator struct {
+	mu         sync.RWMutex
+	intent     SafeMessageIntent
+	owners     map[common.Address]SafeOwnerSnapshot
+	signatures map[common.Address]safeCollectedSignature
+}
+
+// NewSafeMessageCoordinator creates a message-signature coordinator.
+func NewSafeMessageCoordinator(intent SafeMessageIntent) (*SafeMessageCoordinator, error) {
+	if intent.SafeAddress == (common.Address{}) || intent.ChainID == 0 || intent.Digest == ([32]byte{}) {
+		return nil, fmt.Errorf("safe signer: invalid message intent")
+	}
+	owners := make(map[common.Address]SafeOwnerSnapshot, len(intent.Owners))
+	for _, owner := range intent.Owners {
+		owners[owner.Address] = owner
+	}
+	return &SafeMessageCoordinator{
+		intent:     intent,
+		owners:     owners,
+		signatures: make(map[common.Address]safeCollectedSignature, int(intent.Threshold)),
+	}, nil
+}
+
+// AddEOASignature validates and stores one owner EOA signature.
+func (coordinator *SafeMessageCoordinator) AddEOASignature(owner common.Address, signature []byte) error {
+	if coordinator == nil {
+		return fmt.Errorf("safe signer: nil message coordinator")
+	}
+	coordinator.mu.Lock()
+	defer coordinator.mu.Unlock()
+	snapshot, known := coordinator.owners[owner]
+	if !known {
+		return fmt.Errorf("%w: unknown owner", ErrSafeUnknownOwner)
+	}
+	if snapshot.Kind != SafeOwnerEOA {
+		return fmt.Errorf("%w: owner is not EOA", ErrSafeInvalidSignature)
+	}
+	if _, duplicate := coordinator.signatures[owner]; duplicate {
+		return fmt.Errorf("%w: duplicate owner signature", ErrSafeDuplicateSignature)
+	}
+	normalized, err := normalizeSafeEOASignature(owner, coordinator.intent.Digest, signature)
+	if err != nil {
+		return err
+	}
+	coordinator.signatures[owner] = safeCollectedSignature{owner: owner, kind: SafeOwnerEOA, signature: normalized}
+	return nil
+}
+
+// SignatureCount returns the number of collected signatures.
+func (coordinator *SafeMessageCoordinator) SignatureCount() int {
+	if coordinator == nil {
+		return 0
+	}
+	coordinator.mu.RLock()
+	defer coordinator.mu.RUnlock()
+	return len(coordinator.signatures)
+}
+
+// Ready reports whether the threshold has been reached.
+func (coordinator *SafeMessageCoordinator) Ready() bool {
+	if coordinator == nil {
+		return false
+	}
+	coordinator.mu.RLock()
+	defer coordinator.mu.RUnlock()
+	return len(coordinator.signatures) >= int(coordinator.intent.Threshold)
+}
+
+// Signatures deterministically combines the collected owner signatures into
+// the EIP-1271 payload expected by Safe.isValidSignature. The encoding is
+// identical to Safe.checkNSignatures, so the same aggregate validates.
+func (coordinator *SafeMessageCoordinator) Signatures() ([]byte, error) {
+	if coordinator == nil {
+		return nil, fmt.Errorf("safe signer: nil message coordinator")
+	}
+	coordinator.mu.RLock()
+	defer coordinator.mu.RUnlock()
+	if len(coordinator.signatures) < int(coordinator.intent.Threshold) {
+		return nil, fmt.Errorf("%w: message signatures below threshold", ErrSafeInsufficientSignatures)
+	}
+	collected := make([]safeCollectedSignature, 0, len(coordinator.signatures))
+	for _, signature := range coordinator.signatures {
+		collected = append(collected, safeCollectedSignature{
+			owner: signature.owner, kind: signature.kind, signature: append([]byte(nil), signature.signature...),
+		})
+	}
+	sort.Slice(collected, func(i, j int) bool {
+		return bytes.Compare(collected[i].owner[:], collected[j].owner[:]) < 0
+	})
+	staticLength := len(collected) * safeStaticSignatureLength
+	staticParts := make([][]byte, 0, len(collected))
+	dynamicParts := make([]byte, 0)
+	for _, signature := range collected {
+		switch signature.kind {
+		case SafeOwnerEOA:
+			staticParts = append(staticParts, append([]byte(nil), signature.signature...))
+		case SafeOwnerContract:
+			composed, err := ComposeSafeContractSignature(signature.owner, signature.signature)
+			if err != nil {
+				return nil, fmt.Errorf("%w: contract composition: %v", ErrSafeInvalidSignature, err)
+			}
+			staticPart := append([]byte(nil), composed[:safeStaticSignatureLength]...)
+			offset := staticLength + len(dynamicParts)
+			copy(staticPart[32:64], safeUint256Word(new(big.Int).SetUint64(uint64(offset))))
+			staticParts = append(staticParts, staticPart)
+			dynamicParts = append(dynamicParts, composed[safeStaticSignatureLength:]...)
+		default:
+			return nil, fmt.Errorf("%w: collected owner kind", ErrSafeInvalidSignature)
+		}
+	}
+	if staticLength+len(dynamicParts) > safeMaximumSignatureBytes {
+		return nil, fmt.Errorf("%w: aggregate signature bounds", ErrSafeInvalidSignature)
+	}
+	aggregate := make([]byte, 0, staticLength+len(dynamicParts))
+	for _, staticPart := range staticParts {
+		aggregate = append(aggregate, staticPart...)
+	}
+	aggregate = append(aggregate, dynamicParts...)
+	return aggregate, nil
 }
 
 func validateSafeTransaction(transaction SafeTransaction) error {
