@@ -199,12 +199,12 @@ func main() {
 	app.ConfigureTransactionEngineFactory(func(ctx context.Context, network config.Network) (ui.TransactionEngine, error) {
 		return createEngine(ctx, network)
 	})
-	safeService, err := buildSafeService(cfg, repo, rpcGateway, signingBackends.structured)
+	safeServices, safeNames, err := buildSafeServices(cfg, repo, rpcGateway, signingBackends.structured)
 	if err != nil {
 		log.Printf("Safe service unavailable: %v", err)
 	} else {
 		app.ConfigureSafeService(&tuiSafeService{
-			service: safeService, repo: repo, chainID: safeChainID(cfg),
+			services: safeServices, networkNames: safeNames, repo: repo,
 			authorize: func(ctx context.Context, accountID string, password []byte, operation func(wallet.CapabilityHandle) error) error {
 				return transactionAuthorizer.Authorize(ctx, accountID, password, func(handle wallet.CapabilityHandle, _ uint64) error {
 					return operation(handle)
@@ -254,30 +254,34 @@ func main() {
 	}
 }
 
-// buildSafeService wires the Safe proposal service to the first active
-// network with a positive chain ID.
-func safeChainID(cfg *config.Config) uint64 {
-	network, exists := firstActiveNetwork(cfg)
-	if !exists {
-		return 0
-	}
-	return uint64(network.ChainID)
-}
-
-func firstActiveNetwork(cfg *config.Config) (config.Network, bool) {
-	for _, candidate := range cfg.Networks {
-		if candidate.IsActive && candidate.ChainID > 0 {
-			return candidate, true
+// buildSafeServices wires one Safe service per active network so the TUI can
+// switch chains. At least one network must validate successfully.
+func buildSafeServices(cfg *config.Config, repo *storage.GORMRepository, gateway *blockchain.RPCGateway, signer evm.StructuredSigner) (map[uint64]*safe.Service, map[uint64]string, error) {
+	services := make(map[uint64]*safe.Service)
+	names := make(map[uint64]string)
+	var lastErr error
+	for key, network := range cfg.Networks {
+		if !network.IsActive || network.ChainID <= 0 {
+			continue
 		}
+		service, err := buildSafeServiceForNetwork(network, repo, gateway, signer)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		services[uint64(network.ChainID)] = service
+		names[uint64(network.ChainID)] = key
 	}
-	return config.Network{}, false
+	if len(services) == 0 {
+		if lastErr == nil {
+			lastErr = fmt.Errorf("no active network configured")
+		}
+		return nil, nil, lastErr
+	}
+	return services, names, nil
 }
 
-func buildSafeService(cfg *config.Config, repo *storage.GORMRepository, gateway *blockchain.RPCGateway, signer evm.StructuredSigner) (*safe.Service, error) {
-	network, exists := firstActiveNetwork(cfg)
-	if !exists {
-		return nil, fmt.Errorf("no active network configured")
-	}
+func buildSafeServiceForNetwork(network config.Network, repo *storage.GORMRepository, gateway *blockchain.RPCGateway, signer evm.StructuredSigner) (*safe.Service, error) {
 	endpoint, err := network.ResolveRPCEndpoint(config.EnvironmentCredentialProvider{})
 	if err != nil {
 		return nil, err

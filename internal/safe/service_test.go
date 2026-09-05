@@ -160,6 +160,10 @@ func (rpc *fakeRPC) Broadcast(_ context.Context, raw []byte) (common.Hash, error
 	return rpc.broadcastHash, nil
 }
 
+func (rpc *fakeRPC) TransactionStatus(_ context.Context, _ common.Hash) (uint64, bool, error) {
+	return 1, true, nil
+}
+
 func TestSafeServiceFullLifecycle(t *testing.T) {
 	ownerKey, err := crypto.HexToECDSA("4646464646464646464646464646464646464646464646464646464646464646")
 	if err != nil {

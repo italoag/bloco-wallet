@@ -21,6 +21,7 @@ type OnChainReader interface {
 	PendingNonce(context.Context, common.Address) (uint64, error)
 	SuggestGasPrice(context.Context) (*big.Int, error)
 	Broadcast(context.Context, []byte) (common.Hash, error)
+	TransactionStatus(context.Context, common.Hash) (uint64, bool, error)
 }
 
 // RPCAdapter exposes Safe contract queries and execution broadcast over the
@@ -74,6 +75,20 @@ func (adapter *RPCAdapter) ProxyCreationCode(ctx context.Context, factory common
 		return nil, err
 	}
 	return decodeBytesABI(result)
+}
+
+// TransactionStatus returns the on-chain status of a broadcast transaction
+// (1 = success, 0 = reverted) once it is mined.
+func (adapter *RPCAdapter) TransactionStatus(ctx context.Context, hash common.Hash) (uint64, bool, error) {
+	client, err := blockchain.NewEVMRPC(adapter.gateway, adapter.session)
+	if err != nil {
+		return 0, false, err
+	}
+	receipt, found, err := client.TransactionReceipt(ctx, hash)
+	if err != nil || !found {
+		return 0, found, err
+	}
+	return receipt.Status, true, nil
 }
 
 // PendingNonce reads the pending nonce of the gas-payer account.

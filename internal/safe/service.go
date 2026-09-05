@@ -410,6 +410,30 @@ func (service *Service) Execute(ctx context.Context, proposalID, gasPayerAccount
 	if gasPayerAccountID == "" {
 		return common.Hash{}, fmt.Errorf("safe execution: gas payer account is required")
 	}
+	// Revalidate the frozen proposal against the live on-chain state so a
+	// stale nonce or changed owner set cannot be executed.
+	liveNonce, err := service.rpc.Nonce(ctx, proposal.SafeAddress)
+	if err != nil {
+		return common.Hash{}, fmt.Errorf("safe execution: nonce revalidation: %w", err)
+	}
+	if liveNonce.Cmp(proposal.Nonce) != 0 {
+		proposal.Status = ProposalFailed
+		proposal.FailureCode = "stale_nonce"
+		proposal.UpdatedAt = service.now().UTC()
+		_ = service.proposals.UpdateProposal(context.Background(), proposal)
+		return common.Hash{}, fmt.Errorf("safe execution: on-chain nonce %s differs from proposal nonce %s", liveNonce, proposal.Nonce)
+	}
+	liveOwners, err := service.rpc.Owners(ctx, proposal.SafeAddress)
+	if err != nil {
+		return common.Hash{}, fmt.Errorf("safe execution: owners revalidation: %w", err)
+	}
+	if !sameOwnerSet(liveOwners, proposal.Owners) {
+		proposal.Status = ProposalFailed
+		proposal.FailureCode = "owners_changed"
+		proposal.UpdatedAt = service.now().UTC()
+		_ = service.proposals.UpdateProposal(context.Background(), proposal)
+		return common.Hash{}, fmt.Errorf("safe execution: on-chain owners changed since proposal")
+	}
 	coordinator, err := signer.NewSafeCoordinator(intentFromProposal(proposal))
 	if err != nil {
 		return common.Hash{}, err
@@ -473,6 +497,35 @@ func (service *Service) Execute(ctx context.Context, proposalID, gasPayerAccount
 	return hash, nil
 }
 
+// CheckExecution confirms the outcome of an executed proposal on-chain.
+// A reverted execTransaction marks the proposal as failed.
+func (service *Service) CheckExecution(ctx context.Context, proposalID string) (string, error) {
+	proposal, err := service.proposals.GetProposal(ctx, proposalID)
+	if err != nil {
+		return "", err
+	}
+	if proposal.Status != ProposalExecuted || proposal.TxHash == (common.Hash{}) {
+		return string(proposal.Status), nil
+	}
+	status, found, err := service.rpc.TransactionStatus(ctx, proposal.TxHash)
+	if err != nil {
+		return string(proposal.Status), err
+	}
+	if !found {
+		return string(proposal.Status), nil
+	}
+	if status == 0 {
+		proposal.Status = ProposalFailed
+		proposal.FailureCode = "execution_reverted"
+		proposal.UpdatedAt = service.now().UTC()
+		if err := service.proposals.UpdateProposal(ctx, proposal); err != nil {
+			return string(proposal.Status), err
+		}
+		return string(proposal.Status), nil
+	}
+	return string(proposal.Status), nil
+}
+
 // ListProposals returns the pending and recent proposals of one Safe.
 func (service *Service) ListProposals(ctx context.Context, safeAccountID string, chainID uint64, limit int) ([]*Proposal, error) {
 	if limit <= 0 || limit > 100 {
@@ -484,6 +537,70 @@ func (service *Service) ListProposals(ctx context.Context, safeAccountID string,
 // GetProposal loads one proposal by ID.
 func (service *Service) GetProposal(ctx context.Context, proposalID string) (*Proposal, error) {
 	return service.proposals.GetProposal(ctx, proposalID)
+}
+
+// SafeSummary is the live on-chain state of one Safe account.
+type SafeSummary struct {
+	Address   common.Address
+	ChainID   uint64
+	Owners    []common.Address
+	Threshold uint64
+	Nonce     *big.Int
+	Deployed  bool
+	HasCode   bool
+}
+
+// SummarizeSafe reads the live on-chain state of a Safe account.
+func (service *Service) SummarizeSafe(ctx context.Context, safeAccountID string, chainID uint64) (*SafeSummary, error) {
+	account, err := service.accounts.GetAccount(ctx, safeAccountID)
+	if err != nil {
+		return nil, err
+	}
+	if account.SignerKind != wallet.SignerKindMultisig {
+		return nil, fmt.Errorf("safe summary: account is not a Safe")
+	}
+	safeAddress := common.HexToAddress(account.Address)
+	code, err := service.rpc.CodeAt(ctx, safeAddress)
+	if err != nil {
+		return nil, err
+	}
+	deployed := len(code) > 0
+	summary := &SafeSummary{Address: safeAddress, ChainID: chainID, Deployed: deployed, HasCode: deployed}
+	if !deployed {
+		return summary, nil
+	}
+	owners, err := service.rpc.Owners(ctx, safeAddress)
+	if err != nil {
+		return nil, err
+	}
+	threshold, err := service.rpc.Threshold(ctx, safeAddress)
+	if err != nil {
+		return nil, err
+	}
+	nonce, err := service.rpc.Nonce(ctx, safeAddress)
+	if err != nil {
+		return nil, err
+	}
+	summary.Owners = owners
+	summary.Threshold = threshold
+	summary.Nonce = nonce
+	return summary, nil
+}
+
+func sameOwnerSet(live []common.Address, frozen []OwnerSnapshot) bool {
+	if len(live) != len(frozen) {
+		return false
+	}
+	liveSet := make(map[common.Address]struct{}, len(live))
+	for _, owner := range live {
+		liveSet[owner] = struct{}{}
+	}
+	for _, owner := range frozen {
+		if _, exists := liveSet[owner.Address]; !exists {
+			return false
+		}
+	}
+	return true
 }
 
 func safeTransactionFromIntent(intent signer.SafeTransaction) SafeTransaction {

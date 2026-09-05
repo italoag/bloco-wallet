@@ -45,14 +45,32 @@ type SafeDeploymentSummary struct {
 	Singleton   common.Address
 }
 
+// SafeSummary is the live on-chain state shown for a Safe account.
+type SafeSummary struct {
+	Address   common.Address
+	ChainID   uint64
+	Owners    []common.Address
+	Threshold uint64
+	Nonce     *big.Int
+	Deployed  bool
+}
+
+// SafeNetwork is one active network a Safe proposal can run on.
+type SafeNetwork struct {
+	ChainID uint64
+	Name    string
+}
+
 // SafeService is the TUI-facing view over the Safe service.
 type SafeService interface {
+	ListNetworks(ctx context.Context) ([]SafeNetwork, error)
 	ListSafeAccounts(ctx context.Context) ([]SafeAccountSummary, error)
+	SummarizeSafe(ctx context.Context, accountID string, chainID uint64) (*SafeSummary, error)
 	ListProposals(ctx context.Context, accountID string, chainID uint64, limit int) ([]SafeProposalSummary, error)
 	ListOwnerAccounts(ctx context.Context) ([]wallet.Account, error)
 	GetProposalOwners(ctx context.Context, proposalID string) ([]common.Address, error)
 	ImportSafe(ctx context.Context, name, address string, chainID uint64) error
-	PrepareDeploy(ctx context.Context, name string, owners []string, threshold uint64) (*SafeDeploymentSummary, error)
+	PrepareDeploy(ctx context.Context, chainID uint64, name string, owners []string, threshold uint64) (*SafeDeploymentSummary, error)
 	BroadcastDeploy(ctx context.Context, deployment *SafeDeploymentSummary, deployerAccountID string, password []byte) (string, error)
 	Propose(ctx context.Context, accountID string, chainID uint64, to string, value *big.Int, data []byte) (string, error)
 	Sign(ctx context.Context, proposalID, ownerAccountID string, chainID uint64, password []byte) error
@@ -73,21 +91,23 @@ const (
 )
 
 type safeViewState struct {
-	phase      safeViewPhase
-	accounts   []SafeAccountSummary
-	selected   int
-	proposals  []SafeProposalSummary
-	proposal   *SafeProposalSummary
-	chainID    uint64
-	ownerIndex int
-	owners     []wallet.Account
-	gasPayers  []wallet.Account
-	gasIndex   int
-	password   string
-	err        string
-	done       string
-	generation uint64
-	deployment *SafeDeploymentSummary
+	phase        safeViewPhase
+	accounts     []SafeAccountSummary
+	selected     int
+	proposals    []SafeProposalSummary
+	proposal     *SafeProposalSummary
+	chainID      uint64
+	networks     []SafeNetwork
+	networkIndex int
+	ownerIndex   int
+	owners       []wallet.Account
+	gasPayers    []wallet.Account
+	gasIndex     int
+	password     string
+	err          string
+	done         string
+	generation   uint64
+	deployment   *SafeDeploymentSummary
 
 	// Deploy form
 	nameInput      textinput.Model
@@ -131,6 +151,24 @@ func (model *CLIModel) refreshSafeAccounts() error {
 	if state == nil || model.safeService == nil {
 		return fmt.Errorf("safe service is unavailable")
 	}
+	networks, err := model.safeService.ListNetworks(context.Background())
+	if err != nil {
+		return err
+	}
+	state.networks = networks
+	if len(networks) == 0 {
+		return fmt.Errorf("no active network with a Safe service")
+	}
+	if state.chainID == 0 {
+		state.chainID = networks[0].ChainID
+	}
+	state.networkIndex = 0
+	for index, network := range networks {
+		if network.ChainID == state.chainID {
+			state.networkIndex = index
+			break
+		}
+	}
 	accounts, err := model.safeService.ListSafeAccounts(context.Background())
 	if err != nil {
 		return err
@@ -138,12 +176,26 @@ func (model *CLIModel) refreshSafeAccounts() error {
 	state.accounts = accounts
 	state.selected = 0
 	if len(accounts) > 0 {
-		state.chainID = accounts[0].ChainID
-		proposals, err := model.safeService.ListProposals(context.Background(), accounts[0].AccountID, accounts[0].ChainID, 20)
+		proposals, err := model.safeService.ListProposals(context.Background(), accounts[0].AccountID, state.chainID, 20)
 		if err != nil {
 			return err
 		}
 		state.proposals = proposals
+	}
+	return nil
+}
+
+func (model *CLIModel) cycleSafeNetwork(state *safeViewState) error {
+	if len(state.networks) < 2 {
+		return nil
+	}
+	state.networkIndex = (state.networkIndex + 1) % len(state.networks)
+	state.chainID = state.networks[state.networkIndex].ChainID
+	state.err = ""
+	if len(state.accounts) > 0 {
+		if err := model.reloadSafeProposals(state); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -286,7 +338,6 @@ func (model *CLIModel) updateSafeList(message tea.KeyMsg, state *safeViewState) 
 	case keyIs(message, "down", "j"):
 		if len(state.accounts) > 0 && state.selected < len(state.accounts)-1 {
 			state.selected++
-			state.chainID = state.accounts[state.selected].ChainID
 			if err := model.reloadSafeProposals(state); err != nil {
 				state.err = safeError(err)
 			}
@@ -294,10 +345,13 @@ func (model *CLIModel) updateSafeList(message tea.KeyMsg, state *safeViewState) 
 	case keyIs(message, "up", "k"):
 		if len(state.accounts) > 0 && state.selected > 0 {
 			state.selected--
-			state.chainID = state.accounts[state.selected].ChainID
 			if err := model.reloadSafeProposals(state); err != nil {
 				state.err = safeError(err)
 			}
+		}
+	case keyIs(message, "r"):
+		if err := model.cycleSafeNetwork(state); err != nil {
+			state.err = safeError(err)
 		}
 	case keyIs(message, "enter"):
 		if len(state.accounts) == 0 {
@@ -395,10 +449,11 @@ func (model *CLIModel) runSafeDeploy(state *safeViewState) tea.Cmd {
 	state.generation++
 	generation := state.generation
 	service := model.safeService
+	chainID := state.chainID
 	state.phase = safeViewDeployRun
 	state.err = ""
 	return func() tea.Msg {
-		deployment, err := service.PrepareDeploy(context.Background(), name, owners, threshold)
+		deployment, err := service.PrepareDeploy(context.Background(), chainID, name, owners, threshold)
 		if err != nil {
 			return safeResultMsg{generation: generation, kind: "deploy", err: err}
 		}
@@ -743,7 +798,12 @@ func (model *CLIModel) viewSafe() string {
 	builder.WriteString("Safe multisig\n")
 	switch state.phase {
 	case safeViewList:
-		builder.WriteString("\nActions: n/c: deploy new Safe • i: import Safe • enter: open proposals • esc: back\n\n")
+		networkName := ""
+		if state.networkIndex < len(state.networks) {
+			networkName = state.networks[state.networkIndex].Name
+		}
+		_, _ = fmt.Fprintf(&builder, "\nNetwork: %s (r: switch)\n", safeShort(networkName))
+		builder.WriteString("Actions: n/c: deploy new Safe • i: import Safe • enter: open proposals • esc: back\n\n")
 		if len(state.accounts) == 0 {
 			builder.WriteString("No Safe accounts yet. Press n to deploy one or i to import.")
 		} else {
@@ -753,6 +813,15 @@ func (model *CLIModel) viewSafe() string {
 					marker = ">"
 				}
 				_, _ = fmt.Fprintf(&builder, "%s %s %s\n", marker, safeShort(account.Name), safeShort(account.Address.Hex()))
+			}
+			selected := state.accounts[state.selected]
+			if summary, err := model.safeService.SummarizeSafe(context.Background(), selected.AccountID, selected.ChainID); err == nil {
+				_, _ = fmt.Fprintf(&builder, "\n%s\n", safeShort(selected.Address.Hex()))
+				if summary.Deployed {
+					_, _ = fmt.Fprintf(&builder, "Deployed: yes • owners: %d • threshold: %d • nonce: %s\n", len(summary.Owners), summary.Threshold, summary.Nonce.String())
+				} else {
+					builder.WriteString("Deployed: no (pending deployment)\n")
+				}
 			}
 		}
 	case safeViewDeploy:
