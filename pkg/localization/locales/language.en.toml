@@ -58,7 +58,7 @@ other = "Import using a KeyStoreV3 file"
 other = "Watch-only Address"
 
 [import_watch_only_desc]
-other = "Track an address without signing secrets"
+other = "Track an address without storing"
 
 [import_batch_keystore]
 other = "Batch Keystore Import"

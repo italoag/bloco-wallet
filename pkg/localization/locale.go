@@ -42,6 +42,7 @@ func InitLocalization(cfg *config.Config) error {
 
 	// Create a localizer with the configured language
 	localizer = i18n.NewLocalizer(bundle, cfg.Language)
+	SetCurrentLanguage(cfg.Language)
 
 	// Populate the Labels map for backward compatibility
 	if err := populateLabelsMap(); err != nil {
@@ -230,7 +231,7 @@ func getEnglishMessages() map[string]string {
 		"import_keystore":              "Keystore File",
 		"import_keystore_desc":         "Import using a KeyStoreV3 file",
 		"import_watch_only":            "Watch-only Address",
-		"import_watch_only_desc":       "Track an address without signing secrets",
+		"import_watch_only_desc":       "Track an address without storing",
 		"import_batch_keystore":        "Batch Keystore Import",
 		"import_batch_keystore_desc":   "Import several KeystoreV3 files at once",
 		"import_encrypted_backup":      "Encrypted Backup",
@@ -313,7 +314,7 @@ func getPortugueseMessages() map[string]string {
 		"import_keystore":              "Arquivo KeyStore",
 		"import_keystore_desc":         "Importar arquivo KeyStore V3",
 		"import_watch_only":            "Endereço somente leitura",
-		"import_watch_only_desc":       "Acompanhar endereço sem segredos de assinatura",
+		"import_watch_only_desc":       "Acompanhar endereço sem segredos de firma",
 		"import_batch_keystore":        "Importação em Lote",
 		"import_batch_keystore_desc":   "Importar vários arquivos KeystoreV3",
 		"import_encrypted_backup":      "Backup Criptografado",
@@ -452,12 +453,21 @@ func populateLabelsMap() error {
 		Labels = make(map[string]string)
 	}
 
+	// Mensagens embutidas servem de fallback para runtimes com arquivos de
+	// locale antigos que ainda não conhecem chaves novas.
+	embedded := embeddedMessagesFor(currentLanguage)
+
 	// Obtém todas as mensagens disponíveis usando o localizer
 	messageKeys := getAllMessageKeys()
 
 	// Adiciona cada mensagem ao mapa Labels
 	for _, key := range messageKeys {
 		localizedString := Get(key)
+		if localizedString == key {
+			if fallback, ok := embedded[key]; ok {
+				localizedString = fallback
+			}
+		}
 		Labels[key] = terminal.SanitizeInline(localizedString, 2048)
 	}
 
@@ -469,6 +479,19 @@ func populateLabelsMap() error {
 	AddPasswordFileMessages()
 
 	return nil
+}
+
+// embeddedMessagesFor returns the built-in messages for a language code,
+// falling back to English for unknown codes.
+func embeddedMessagesFor(lang string) map[string]string {
+	switch lang {
+	case "pt":
+		return getPortugueseMessages()
+	case "es":
+		return getSpanishMessages()
+	default:
+		return getEnglishMessages()
+	}
 }
 
 // getAllMessageKeys retorna todas as chaves de mensagem conhecidas

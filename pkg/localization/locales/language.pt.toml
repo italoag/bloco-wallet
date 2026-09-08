@@ -318,7 +318,7 @@ other = "Importar arquivo KeyStore V3"
 other = "Endereço somente leitura"
 
 [import_watch_only_desc]
-other = "Acompanhar endereço sem segredos de assinatura"
+other = "Acompanhar endereço sem segredos de firma"
 
 [import_batch_keystore]
 other = "Importação em Lote"
