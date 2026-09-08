@@ -37,7 +37,7 @@ const (
 	NetworkListView           = "network_list"
 	AddNetworkView            = "add_network"
 	SafeView                  = "safe"
-	StyleWidth                = 40
+	StyleWidth                = 46
 	StyleMargin               = 1
 	SplashDuration            = 2 * time.Second
 	ErrorFontNotFoundMessage  = "Fonte não encontrada nos diretórios especificados."

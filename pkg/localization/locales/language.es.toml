@@ -192,7 +192,19 @@ other = "Importar usando un archivo KeyStoreV3"
 other = "Dirección de solo lectura"
 
 [import_watch_only_desc]
-other = "Seguir una dirección EVM sin guardar secretos de firma"
+other = "Seguir dirección sin secretos de firma"
+
+[import_batch_keystore]
+other = "Importación por Lote"
+
+[import_batch_keystore_desc]
+other = "Importar varios archivos KeystoreV3"
+
+[import_encrypted_backup]
+other = "Copia Encriptada"
+
+[import_encrypted_backup_desc]
+other = "Restaurar copia encriptada Bloco"
 
 [active]
 other = "Activo"

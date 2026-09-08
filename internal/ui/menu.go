@@ -44,8 +44,8 @@ func NewImportMenu() []menuItem {
 		{title: localization.Labels["import_mnemonic"], description: localization.Labels["import_mnemonic_desc"]},
 		{title: localization.Labels["import_private_key"], description: localization.Labels["import_private_key_desc"]},
 		{title: localization.Labels["import_keystore"], description: localization.Labels["import_keystore_desc"]},
-		{title: "Batch Keystore V3", description: "Import multiple keystores with bounded concurrency"},
-		{title: "Bloco Encrypted Backup", description: "Restore a versioned encrypted account export"},
+		{title: localization.Labels["import_batch_keystore"], description: localization.Labels["import_batch_keystore_desc"]},
+		{title: localization.Labels["import_encrypted_backup"], description: localization.Labels["import_encrypted_backup_desc"]},
 		{title: localization.Labels["import_watch_only"], description: localization.Labels["import_watch_only_desc"]},
 		{title: localization.Labels["back_to_menu"], description: localization.Labels["back_to_menu_desc"]},
 	}

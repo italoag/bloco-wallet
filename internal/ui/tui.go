@@ -732,30 +732,19 @@ func (m *CLIModel) renderListWalletsWithLayout() string {
 }
 
 func (m *CLIModel) renderMenuItems() []string {
-	var menuItems []string
+	menuItems := make([]string, 0, len(m.menuItems))
 	for i, item := range m.menuItems {
-		style := m.styles.MenuItem
-		titleStyle := m.styles.MenuTitle
 		if i == m.selectedMenu {
-			style = m.styles.MenuSelected
-			titleStyle = m.styles.SelectedTitle
+			title := m.styles.SelectedTitle.Render("▸ " + safeInline(item.title))
+			desc := m.styles.MenuDesc.Render(safeInline(item.description))
+			menuItems = append(menuItems, m.styles.MenuSelected.Render(fmt.Sprintf("%s\n%s", title, desc)))
+			continue
 		}
-		menuText := fmt.Sprintf("%s\n%s", titleStyle.Render(safeShort(item.title)), m.styles.MenuDesc.Render(safeInline(item.description)))
-		menuItems = append(menuItems, style.Render(menuText))
+		title := m.styles.MenuTitle.Render("  " + safeShort(item.title))
+		desc := m.styles.MenuDesc.Render(safeInline(item.description))
+		menuItems = append(menuItems, m.styles.MenuItem.Render(fmt.Sprintf("%s\n%s", title, desc)))
 	}
-
-	numRows := (len(menuItems) + 1) / 2
-	var menuRows []string
-	for i := 0; i < numRows; i++ {
-		startIndex := i * 2
-		endIndex := startIndex + 2
-		if endIndex > len(menuItems) {
-			endIndex = len(menuItems)
-		}
-		row := lipgloss.JoinHorizontal(lipgloss.Top, menuItems[startIndex:endIndex]...)
-		menuRows = append(menuRows, row)
-	}
-	return menuRows
+	return menuItems
 }
 
 func (m *CLIModel) getContentView() string {

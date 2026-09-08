@@ -30,6 +30,12 @@ type Styles struct {
 	GreenCheck         lipgloss.Style
 	RedCross           lipgloss.Style
 	SelectedStyle      lipgloss.Style
+	SafePanel          lipgloss.Style
+	SafeHelpBar        lipgloss.Style
+	SafeSectionTitle   lipgloss.Style
+	SafeFieldLabel     lipgloss.Style
+	SafeSelectedRow    lipgloss.Style
+	SafeRow            lipgloss.Style
 }
 
 func createStyles() Styles {
@@ -131,5 +137,30 @@ func createStyles() Styles {
 		SelectedStyle: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("99")).
 			Bold(true),
+		SafePanel: lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("#7D56F4")).
+			Padding(1, 2).
+			MarginTop(1),
+		SafeHelpBar: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("244")).
+			Padding(0, 1).
+			MarginTop(1).
+			Border(lipgloss.NormalBorder(), true, false, false, false).
+			BorderForeground(lipgloss.Color("240")),
+		SafeSectionTitle: lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("#7D56F4")).
+			MarginBottom(1),
+		SafeFieldLabel: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("244")),
+		SafeSelectedRow: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("229")).
+			Background(lipgloss.Color("57")).
+			Bold(true).
+			Padding(0, 1),
+		SafeRow: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("245")).
+			Padding(0, 1),
 	}
 }

@@ -58,7 +58,19 @@ other = "Import using a KeyStoreV3 file"
 other = "Watch-only Address"
 
 [import_watch_only_desc]
-other = "Track an EVM address without storing signing secrets"
+other = "Track an address without signing secrets"
+
+[import_batch_keystore]
+other = "Batch Keystore Import"
+
+[import_batch_keystore_desc]
+other = "Import several KeystoreV3 files at once"
+
+[import_encrypted_backup]
+other = "Encrypted Backup"
+
+[import_encrypted_backup_desc]
+other = "Restore a Bloco encrypted backup"
 
 [invalid_keystore]
 other = "Invalid keystore file. Please check the path and try again."

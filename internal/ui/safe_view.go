@@ -12,6 +12,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -155,10 +156,10 @@ func (model *CLIModel) refreshSafeAccounts() error {
 	if err != nil {
 		return err
 	}
-	state.networks = networks
 	if len(networks) == 0 {
 		return fmt.Errorf("no active network with a Safe service")
 	}
+	state.networks = networks
 	if state.chainID == 0 {
 		state.chainID = networks[0].ChainID
 	}
@@ -569,12 +570,7 @@ func (model *CLIModel) updateSafeProposals(message tea.KeyMsg, state *safeViewSt
 					state.err = "Calldata must be even-length hex."
 					return nil
 				}
-				decoded := common.FromHex(trimmed)
-				if decoded == nil {
-					state.err = "Calldata must be even-length hex."
-					return nil
-				}
-				calldata = decoded
+				calldata = common.FromHex(trimmed)
 			}
 			account := state.accounts[state.selected]
 			state.generation++
@@ -606,27 +602,11 @@ func (model *CLIModel) updateSafeProposals(message tea.KeyMsg, state *safeViewSt
 		}
 	case keyIs(message, "down", "j") && !anyFocused(inputs):
 		if len(state.proposals) > 0 {
-			state.proposal = &SafeProposalSummary{
-				ProposalID: state.proposals[0].ProposalID, SafeAddress: state.proposals[0].SafeAddress,
-				To: state.proposals[0].To, Value: state.proposals[0].Value, Digest: state.proposals[0].Digest,
-				Signatures: state.proposals[0].Signatures, Threshold: state.proposals[0].Threshold, Status: state.proposals[0].Status,
-			}
-			state.ownerIndex = 0
-			state.err = ""
-			state.phase = safeViewDetails
-			model.loadSafeOwners(state)
+			model.selectSafeProposal(state, 0)
 		}
 	case keyIs(message, "a", "e") && !anyFocused(inputs):
 		if len(state.proposals) > 0 {
-			state.proposal = &SafeProposalSummary{
-				ProposalID: state.proposals[0].ProposalID, SafeAddress: state.proposals[0].SafeAddress,
-				To: state.proposals[0].To, Value: state.proposals[0].Value, Digest: state.proposals[0].Digest,
-				Signatures: state.proposals[0].Signatures, Threshold: state.proposals[0].Threshold, Status: state.proposals[0].Status,
-			}
-			state.ownerIndex = 0
-			state.err = ""
-			state.phase = safeViewDetails
-			model.loadSafeOwners(state)
+			model.selectSafeProposal(state, 0)
 		}
 	}
 	for index := range inputs {
@@ -634,6 +614,22 @@ func (model *CLIModel) updateSafeProposals(message tea.KeyMsg, state *safeViewSt
 		*inputs[index] = updated
 	}
 	return nil
+}
+
+func (model *CLIModel) selectSafeProposal(state *safeViewState, index int) {
+	if index < 0 || index >= len(state.proposals) {
+		return
+	}
+	proposal := state.proposals[index]
+	state.proposal = &SafeProposalSummary{
+		ProposalID: proposal.ProposalID, SafeAddress: proposal.SafeAddress,
+		To: proposal.To, Value: proposal.Value, Digest: proposal.Digest,
+		Signatures: proposal.Signatures, Threshold: proposal.Threshold, Status: proposal.Status,
+	}
+	state.ownerIndex = 0
+	state.err = ""
+	state.phase = safeViewDetails
+	model.loadSafeOwners(state)
 }
 
 func (model *CLIModel) updateSafeDetails(message tea.KeyMsg, state *safeViewState) tea.Cmd {
@@ -749,7 +745,7 @@ func (model *CLIModel) reloadSafeProposals(state *safeViewState) error {
 		return nil
 	}
 	account := state.accounts[state.selected]
-	proposals, err := model.safeService.ListProposals(context.Background(), account.AccountID, account.ChainID, 20)
+	proposals, err := model.safeService.ListProposals(context.Background(), account.AccountID, state.chainID, 20)
 	if err != nil {
 		return err
 	}
@@ -794,111 +790,215 @@ func (model *CLIModel) viewSafe() string {
 	if state == nil {
 		return "Safe view unavailable."
 	}
-	var builder strings.Builder
-	builder.WriteString("Safe multisig\n")
+	if state.err != "" {
+		return model.styles.ErrorStyle.Render(safeInline(state.err))
+	}
 	switch state.phase {
 	case safeViewList:
-		networkName := ""
-		if state.networkIndex < len(state.networks) {
-			networkName = state.networks[state.networkIndex].Name
-		}
-		_, _ = fmt.Fprintf(&builder, "\nNetwork: %s (r: switch)\n", safeShort(networkName))
-		builder.WriteString("Actions: n/c: deploy new Safe • i: import Safe • enter: open proposals • esc: back\n\n")
-		if len(state.accounts) == 0 {
-			builder.WriteString("No Safe accounts yet. Press n to deploy one or i to import.")
-		} else {
-			for index, account := range state.accounts {
-				marker := " "
-				if index == state.selected {
-					marker = ">"
-				}
-				_, _ = fmt.Fprintf(&builder, "%s %s %s\n", marker, safeShort(account.Name), safeShort(account.Address.Hex()))
-			}
-			selected := state.accounts[state.selected]
-			if summary, err := model.safeService.SummarizeSafe(context.Background(), selected.AccountID, selected.ChainID); err == nil {
-				_, _ = fmt.Fprintf(&builder, "\n%s\n", safeShort(selected.Address.Hex()))
-				if summary.Deployed {
-					_, _ = fmt.Fprintf(&builder, "Deployed: yes • owners: %d • threshold: %d • nonce: %s\n", len(summary.Owners), summary.Threshold, summary.Nonce.String())
-				} else {
-					builder.WriteString("Deployed: no (pending deployment)\n")
-				}
-			}
-		}
+		return model.viewSafeList(state)
 	case safeViewDeploy:
-		builder.WriteString("\nDeploy a new Safe (official v1.5.0 contracts)\n\n")
-		builder.WriteString("Name:\n" + state.nameInput.View() + "\n\n")
-		builder.WriteString("Owners (checksummed, comma separated):\n" + state.ownersInput.View() + "\n\n")
-		builder.WriteString("Threshold:\n" + state.thresholdInput.View() + "\n\n")
-		builder.WriteString("tab: next field • enter: prepare • esc: back")
+		return model.viewSafeDeploy(state)
 	case safeViewDeployRun:
-		builder.WriteString("\nFund the predicted Safe address first:\n\n")
-		_, _ = fmt.Fprintf(&builder, "Safe: %s\n\n", state.deployment.SafeAddress.Hex())
-		builder.WriteString("Deployer paying the factory call (up/down, enter: broadcast):\n")
-		for index, account := range state.deployAccounts {
-			marker := " "
-			if index == state.deployAccount {
-				marker = ">"
-			}
-			_, _ = fmt.Fprintf(&builder, "%s %s %s\n", marker, safeShort(account.Name), safeShort(account.Address))
-		}
-		builder.WriteString("\nStorage password: " + strings.Repeat("•", len(state.password)) + "\nenter: broadcast • esc: back")
+		return model.viewSafeDeployRun(state)
 	case safeViewImport:
-		builder.WriteString("\nImport an existing Safe\n\n")
-		builder.WriteString("Name:\n" + state.importNameInput.View() + "\n\n")
-		builder.WriteString("Safe address (checksummed):\n" + state.importAddrInput.View() + "\n\n")
-		builder.WriteString("enter: import • esc: back")
+		return model.viewSafeImport(state)
 	case safeViewProposals:
-		account := state.accounts[state.selected]
-		_, _ = fmt.Fprintf(&builder, "\n%s — proposals (enter/a: review, esc: back)\n", safeShort(account.Name))
-		builder.WriteString("New proposal — Recipient:\n" + state.proposeToInput.View() + "\n")
-		builder.WriteString("Value (wei):\n" + state.proposeValueInput.View() + "\n")
-		builder.WriteString("Calldata (hex, optional):\n" + state.proposeDataInput.View() + "\n")
-		builder.WriteString("enter: propose • tab: next • esc: back\n\n")
-		if len(state.proposals) == 0 {
-			builder.WriteString("(no proposals yet)")
-		} else {
-			for _, proposal := range state.proposals {
-				_, _ = fmt.Fprintf(&builder, "  %s to=%s value=%s %d/%d %s\n",
-					safeShort(proposal.ProposalID), safeShort(proposal.To.Hex()), proposal.Value.String(),
-					proposal.Signatures, proposal.Threshold, proposal.Status)
-			}
-		}
+		return model.viewSafeProposals(state)
 	case safeViewDetails:
-		if state.proposal != nil {
-			_, _ = fmt.Fprintf(&builder, "\nProposal %s\nTo: %s\nValue: %s\nDigest: %x\nSignatures: %d/%d\n",
-				safeShort(state.proposal.ProposalID), safeShort(state.proposal.To.Hex()), state.proposal.Value.String(),
-				state.proposal.Digest, state.proposal.Signatures, state.proposal.Threshold)
-			builder.WriteString("\nOwners available to sign (up/down, a: sign, x: execute, esc: back):\n")
-			for index, owner := range state.owners {
-				marker := " "
-				if index == state.ownerIndex {
-					marker = ">"
-				}
-				_, _ = fmt.Fprintf(&builder, "%s %s %s\n", marker, safeShort(owner.Name), safeShort(owner.Address))
-			}
-		}
+		return model.viewSafeDetails(state)
 	case safeViewSigning:
-		owner := state.owners[state.ownerIndex]
-		_, _ = fmt.Fprintf(&builder, "\nSigning as %s %s\n", safeShort(owner.Name), safeShort(owner.Address))
-		builder.WriteString("Storage password: " + strings.Repeat("•", len(state.password)) + "\nenter: sign • esc: back")
+		return model.viewSafeSigning(state)
 	case safeViewExecute:
-		builder.WriteString("\nExecute proposal (gas payer selects the account that pays):\n")
-		for index, account := range state.gasPayers {
-			marker := " "
-			if index == state.gasIndex {
-				marker = ">"
-			}
-			_, _ = fmt.Fprintf(&builder, "%s %s %s\n", marker, safeShort(account.Name), safeShort(account.Address))
+		return model.viewSafeExecute(state)
+	}
+	return ""
+}
+
+func (model *CLIModel) safeHelpBar(keys string) string {
+	return model.styles.SafeHelpBar.Render(safeInline(keys))
+}
+
+func (model *CLIModel) safeRows(rows []string, selected int) string {
+	rendered := make([]string, 0, len(rows))
+	for index, row := range rows {
+		if index == selected {
+			rendered = append(rendered, model.styles.SafeSelectedRow.Render(row))
+			continue
 		}
-		builder.WriteString("\nStorage password: " + strings.Repeat("•", len(state.password)) + "\nenter: execute • esc: back")
+		rendered = append(rendered, model.styles.SafeRow.Render(row))
 	}
-	if state.err != "" {
-		builder.WriteString("\n" + model.styles.ErrorStyle.Render(safeInline(state.err)))
+	return strings.Join(rendered, "\n")
+}
+
+func (model *CLIModel) safeTitle(title string) string {
+	return model.styles.SafeSectionTitle.Render(title)
+}
+
+func (model *CLIModel) viewSafeList(state *safeViewState) string {
+	var body strings.Builder
+	networkName := ""
+	if state.networkIndex < len(state.networks) {
+		networkName = state.networks[state.networkIndex].Name
 	}
-	if state.done != "" {
-		builder.WriteString("\n" + state.done)
+	networkLine := model.styles.SafeFieldLabel.Render("Network: ") +
+		model.styles.SelectedStyle.Render(safeShort(networkName)) +
+		model.styles.SafeFieldLabel.Render("  (r: switch)")
+	body.WriteString(networkLine + "\n\n")
+	if len(state.accounts) == 0 {
+		body.WriteString(model.styles.SafeFieldLabel.Render("No Safe accounts yet. Press n to deploy one or i to import.") + "\n")
+	} else {
+		rows := make([]string, 0, len(state.accounts))
+		for _, account := range state.accounts {
+			rows = append(rows, fmt.Sprintf("%-18s  %s", safeShort(account.Name), safeShort(account.Address.Hex())))
+		}
+		body.WriteString(model.safeRows(rows, state.selected) + "\n")
+		selected := state.accounts[state.selected]
+		if summary, err := model.safeService.SummarizeSafe(context.Background(), selected.AccountID, state.chainID); err == nil {
+			_, _ = fmt.Fprintf(&body, "\n%s\n", safeShort(selected.Address.Hex()))
+			if summary.Deployed {
+				_, _ = fmt.Fprintf(&body, "Deployed: yes • owners: %d • threshold: %d • nonce: %s\n",
+					len(summary.Owners), summary.Threshold, summary.Nonce.String())
+			} else {
+				body.WriteString("Deployed: no (pending deployment)\n")
+			}
+		}
 	}
-	return builder.String()
+	panel := model.styles.SafePanel.Render(body.String())
+	help := model.safeHelpBar("n/c deploy • i import • enter proposals • r network • esc back")
+	return lipgloss.JoinVertical(lipgloss.Left, model.safeTitle("Safe multisig"), panel, state.done, state.err, help)
+}
+
+func (model *CLIModel) viewSafeDeploy(state *safeViewState) string {
+	var body strings.Builder
+	body.WriteString(model.styles.SafeFieldLabel.Render("Name") + "\n")
+	body.WriteString(state.nameInput.View() + "\n\n")
+	body.WriteString(model.styles.SafeFieldLabel.Render("Owners (checksummed, comma separated)") + "\n")
+	body.WriteString(state.ownersInput.View() + "\n\n")
+	body.WriteString(model.styles.SafeFieldLabel.Render("Threshold") + "\n")
+	body.WriteString(state.thresholdInput.View())
+	panel := model.styles.SafePanel.Render(body.String())
+	help := model.safeHelpBar("tab: next field • enter: prepare • esc: back")
+	return lipgloss.JoinVertical(lipgloss.Left, model.safeTitle("Deploy a new Safe — official v1.5.0 contracts"), panel, state.err, help)
+}
+
+func (model *CLIModel) viewSafeDeployRun(state *safeViewState) string {
+	if state.deployment == nil {
+		state.phase = safeViewDeploy
+		return model.viewSafeDeploy(state)
+	}
+	var rows strings.Builder
+	rows.WriteString(model.styles.SafeFieldLabel.Render("Fund the predicted Safe address first:") + "\n")
+	_, _ = fmt.Fprintf(&rows, "%s\n\n", safeShort(state.deployment.SafeAddress.Hex()))
+	rows.WriteString(model.styles.SafeFieldLabel.Render("Deployer paying the factory call:") + "\n")
+	for _, account := range state.deployAccounts {
+		_, _ = fmt.Fprintf(&rows, "%-18s  %s\n", safeShort(account.Name), safeShort(account.Address))
+	}
+	panel := model.styles.SafePanel.Render(model.safeRows(splitLines(rows.String()), state.deployAccount))
+	password := model.styles.SafeFieldLabel.Render("Storage password: " + strings.Repeat("•", len(state.password)))
+	help := model.safeHelpBar("up/down: deployer • enter: broadcast • esc: back")
+	return lipgloss.JoinVertical(lipgloss.Left, model.safeTitle("Deploy Safe"), panel, password, state.err, help)
+}
+
+func splitLines(value string) []string {
+	if value == "" {
+		return nil
+	}
+	lines := strings.Split(value, "\n")
+	return lines
+}
+
+func (model *CLIModel) viewSafeImport(state *safeViewState) string {
+	var body strings.Builder
+	body.WriteString(model.styles.SafeFieldLabel.Render("Name") + "\n")
+	body.WriteString(state.importNameInput.View() + "\n\n")
+	body.WriteString(model.styles.SafeFieldLabel.Render("Safe address (checksummed)") + "\n")
+	body.WriteString(state.importAddrInput.View())
+	panel := model.styles.SafePanel.Render(body.String())
+	help := model.safeHelpBar("enter: import • tab: next field • esc: back")
+	return lipgloss.JoinVertical(lipgloss.Left, model.safeTitle("Import an existing Safe"), panel, state.err, help)
+}
+
+func (model *CLIModel) viewSafeProposals(state *safeViewState) string {
+	account := state.accounts[state.selected]
+	var form strings.Builder
+	form.WriteString(model.styles.SafeFieldLabel.Render("New proposal — Recipient") + "\n")
+	form.WriteString(state.proposeToInput.View() + "\n")
+	form.WriteString(model.styles.SafeFieldLabel.Render("Value (wei)") + "\n")
+	form.WriteString(state.proposeValueInput.View() + "\n")
+	form.WriteString(model.styles.SafeFieldLabel.Render("Calldata (hex, optional)") + "\n")
+	form.WriteString(state.proposeDataInput.View())
+	var list strings.Builder
+	if len(state.proposals) == 0 {
+		list.WriteString(model.styles.SafeFieldLabel.Render("(no proposals yet)"))
+	} else {
+		rows := make([]string, 0, len(state.proposals))
+		for _, proposal := range state.proposals {
+			rows = append(rows, fmt.Sprintf("%s  to=%s  value=%s  %d/%d  %s",
+				safeShort(proposal.ProposalID), safeShort(proposal.To.Hex()), proposal.Value.String(),
+				proposal.Signatures, proposal.Threshold, proposal.Status))
+		}
+		list.WriteString(model.safeRows(rows, 0))
+	}
+	panel := model.styles.SafePanel.Render(
+		lipgloss.JoinVertical(lipgloss.Left,
+			model.styles.SafeSectionTitle.Render("New proposal"),
+			form.String(),
+			"",
+			model.styles.SafeSectionTitle.Render("Proposals"),
+			list.String(),
+		),
+	)
+	help := model.safeHelpBar("enter: propose • tab: next field • enter/a: review proposal • esc: back")
+	return lipgloss.JoinVertical(lipgloss.Left, model.safeTitle(safeShort(account.Name)+" — proposals"), panel, state.done, state.err, help)
+}
+
+func (model *CLIModel) viewSafeDetails(state *safeViewState) string {
+	if state.proposal == nil {
+		return model.safeTitle("No proposal selected")
+	}
+	var body strings.Builder
+	_, _ = fmt.Fprintf(&body, "Proposal: %s\n", safeShort(state.proposal.ProposalID))
+	_, _ = fmt.Fprintf(&body, "To: %s\n", safeShort(state.proposal.To.Hex()))
+	_, _ = fmt.Fprintf(&body, "Value: %s\n", state.proposal.Value.String())
+	_, _ = fmt.Fprintf(&body, "Digest: %x\n", state.proposal.Digest)
+	_, _ = fmt.Fprintf(&body, "Signatures: %d/%d\n", state.proposal.Signatures, state.proposal.Threshold)
+	body.WriteString("\nOwners available to sign:\n")
+	for index, owner := range state.owners {
+		marker := "  "
+		if index == state.ownerIndex {
+			marker = "▸ "
+		}
+		_, _ = fmt.Fprintf(&body, "%s%s  %s\n", marker, safeShort(owner.Name), safeShort(owner.Address))
+	}
+	panel := model.styles.SafePanel.Render(body.String())
+	help := model.safeHelpBar("up/down: owner • a: sign • x: execute • esc: back")
+	return lipgloss.JoinVertical(lipgloss.Left, model.safeTitle("Proposal details"), panel, state.done, state.err, help)
+}
+
+func (model *CLIModel) viewSafeSigning(state *safeViewState) string {
+	owner := state.owners[state.ownerIndex]
+	var body strings.Builder
+	_, _ = fmt.Fprintf(&body, "Signing as %s  %s\n\n", safeShort(owner.Name), safeShort(owner.Address))
+	body.WriteString("Storage password: " + strings.Repeat("•", len(state.password)))
+	panel := model.styles.SafePanel.Render(body.String())
+	help := model.safeHelpBar("enter: sign • esc: back")
+	return lipgloss.JoinVertical(lipgloss.Left, model.safeTitle("Confirm owner signature"), panel, state.err, help)
+}
+
+func (model *CLIModel) viewSafeExecute(state *safeViewState) string {
+	var rows strings.Builder
+	rows.WriteString("Gas payer (pays the execution fee):\n\n")
+	for index, account := range state.gasPayers {
+		marker := "  "
+		if index == state.gasIndex {
+			marker = "▸ "
+		}
+		_, _ = fmt.Fprintf(&rows, "%s%s  %s\n", marker, safeShort(account.Name), safeShort(account.Address))
+	}
+	panel := model.styles.SafePanel.Render(rows.String())
+	password := model.styles.SafeFieldLabel.Render("Storage password: " + strings.Repeat("•", len(state.password)))
+	help := model.safeHelpBar("up/down: gas payer • enter: execute • esc: back")
+	return lipgloss.JoinVertical(lipgloss.Left, model.safeTitle("Execute proposal"), panel, password, state.err, help)
 }
 
 func keyIs(message tea.KeyMsg, keys ...string) bool {
