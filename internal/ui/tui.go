@@ -744,7 +744,19 @@ func (m *CLIModel) renderMenuItems() []string {
 		desc := m.styles.MenuDesc.Render(safeInline(item.description))
 		menuItems = append(menuItems, m.styles.MenuItem.Render(fmt.Sprintf("%s\n%s", title, desc)))
 	}
-	return menuItems
+
+	numRows := (len(menuItems) + 1) / 2
+	var menuRows []string
+	for i := 0; i < numRows; i++ {
+		startIndex := i * 2
+		endIndex := startIndex + 2
+		if endIndex > len(menuItems) {
+			endIndex = len(menuItems)
+		}
+		row := lipgloss.JoinHorizontal(lipgloss.Top, menuItems[startIndex:endIndex]...)
+		menuRows = append(menuRows, row)
+	}
+	return menuRows
 }
 
 func (m *CLIModel) getContentView() string {

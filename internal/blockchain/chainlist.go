@@ -70,7 +70,8 @@ func validateChainCatalog(chains []ChainInfo) error {
 		return fmt.Errorf("ChainList catalog exceeds chain budget")
 	}
 	chainIDs := make(map[int]struct{}, len(chains))
-	for _, chain := range chains {
+	for index := range chains {
+		chain := &chains[index]
 		if chain.ChainID <= 0 || chain.NativeCurrency.Decimals < 0 || chain.NativeCurrency.Decimals > 36 || len(chain.RPC) > 256 || len(chain.Explorers) > 16 {
 			return fmt.Errorf("ChainList entry exceeds shape policy")
 		}
@@ -78,17 +79,22 @@ func validateChainCatalog(chains []ChainInfo) error {
 			return fmt.Errorf("ChainList contains a duplicate chain ID")
 		}
 		chainIDs[chain.ChainID] = struct{}{}
+		// Public registry data routinely repeats RPC URLs; drop exact
+		// duplicates instead of rejecting the whole catalog.
 		endpoints := make(map[string]struct{}, len(chain.RPC))
+		deduplicated := chain.RPC[:0]
 		for _, endpoint := range chain.RPC {
 			tracking := strings.ToLower(strings.TrimSpace(endpoint.Tracking))
 			if len(endpoint.URL) == 0 || len(endpoint.URL) > 4096 || (tracking != "" && tracking != "none" && tracking != "limited" && tracking != "yes" && tracking != "unspecified") {
 				return fmt.Errorf("ChainList RPC metadata exceeds policy")
 			}
 			if _, exists := endpoints[endpoint.URL]; exists {
-				return fmt.Errorf("ChainList contains a duplicate RPC endpoint")
+				continue
 			}
 			endpoints[endpoint.URL] = struct{}{}
+			deduplicated = append(deduplicated, endpoint)
 		}
+		chain.RPC = deduplicated
 		for _, explorer := range chain.Explorers {
 			parsedExplorer, err := url.ParseRequestURI(explorer.URL)
 			if len(explorer.URL) == 0 || len(explorer.URL) > 4096 || strings.ContainsAny(explorer.URL, "\x00\r\n\x1b") || err != nil || parsedExplorer.Scheme != "https" || parsedExplorer.Host == "" || parsedExplorer.User != nil || parsedExplorer.Fragment != "" {
