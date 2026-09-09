@@ -10,6 +10,12 @@ CGO_ENABLED     ?= 1
 GIT_REV         ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 GIT_BRANCH      ?= $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
 
+# Install directory: GOBIN when set (e.g. mise/asdf-managed Go), else GOPATH/bin
+GOBIN_DIR       ?= $(shell $(GO) env GOBIN 2>/dev/null)
+ifeq ($(strip $(GOBIN_DIR)),)
+GOBIN_DIR       := $(shell $(GO) env GOPATH)/bin
+endif
+
 # Container Configuration
 IMG_NAME        := ghcr.io/italoag/${NAME}
 IMAGE           := ${IMG_NAME}:${VERSION}
@@ -283,16 +289,17 @@ deps: ## Install build dependencies
 	@echo "$(GREEN)✓ Dependencies installed$(RESET)"
 
 .PHONY: install
-install: build ## Install the binary to GOPATH/bin
-	@echo "$(CYAN)Installing ${NAME} to GOPATH/bin...$(RESET)"
-	@cp ${OUTPUT_BIN} $$(go env GOPATH)/bin/
-	@echo "$(GREEN)✓ ${NAME} installed to $$(go env GOPATH)/bin/$(RESET)"
+install: build ## Install the binary to GOBIN (or GOPATH/bin)
+	@echo "$(CYAN)Installing ${NAME} to ${GOBIN_DIR}...$(RESET)"
+	@mkdir -p ${GOBIN_DIR}
+	@cp ${OUTPUT_BIN} ${GOBIN_DIR}/${NAME}
+	@echo "$(GREEN)✓ ${NAME} installed to ${GOBIN_DIR}${RESET}"
 
 .PHONY: uninstall
-uninstall: ## Remove the binary from GOPATH/bin
+uninstall: ## Remove the binary from GOBIN (or GOPATH/bin)
 	@echo "$(CYAN)Uninstalling ${NAME}...$(RESET)"
-	@rm -f $$(go env GOPATH)/bin/${NAME}
-	@echo "$(GREEN)✓ ${NAME} uninstalled$(RESET)"
+	@rm -f ${GOBIN_DIR}/${NAME}
+	@echo "$(GREEN)✓ ${NAME} uninstalled${RESET}"
 
 .PHONY: version
 version: ## Show version information

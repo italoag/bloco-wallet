@@ -161,6 +161,18 @@ func initializeFont(model *CLIModel) error {
 		}
 	}
 
+	// Semear o diretório do usuário com as fontes do repositório (arquivos
+	// ausentes apenas, para não sobrescrever fontes modificadas pelo usuário)
+	if customFontDir != "" {
+		if written, err := seedUserFonts(customFontDir); err != nil {
+			if uiLogger != nil {
+				uiLogger.Warn("Failed to seed user fonts directory", logger.Error(err), logger.String("component", "fonts"), logger.String("dir", customFontDir))
+			}
+		} else if written > 0 && uiLogger != nil {
+			uiLogger.Info("Seeded user fonts directory from embedded fonts", logger.String("component", "fonts"), logger.Int("count", written), logger.String("dir", customFontDir))
+		}
+	}
+
 	// Construir a lista de fontes disponíveis (personalizadas + embutidas)
 	availableFonts := buildFontsList(customFontDir)
 

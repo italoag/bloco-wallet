@@ -5,7 +5,7 @@
 - `internal/`: Non-exported app code
   - `wallet/` (keystore, mnemonics), `ui/` (Bubble Tea TUI), `blockchain/`, `storage/` (GORM+SQLite).
 - `pkg/`: Reusable packages — `config/` (TOML + env), `localization/`, `logger/`.
-- `build/`, `dist/` (artifacts), `docs/` (design/testing), `fonts/` (assets).
+- `build/`, `dist/` (artifacts), `docs/` (design/testing), `internal/ui/fonts/` (embedded TDF font assets).
 
 ## Build, Test, and Development Commands
 - `make build`: Build current platform to `build/bloco-wallet`.
