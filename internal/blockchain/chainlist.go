@@ -95,12 +95,23 @@ func validateChainCatalog(chains []ChainInfo) error {
 			deduplicated = append(deduplicated, endpoint)
 		}
 		chain.RPC = deduplicated
+		// Public registry data also contains explorers that violate the
+		// HTTPS-only policy (plain HTTP, fragments, credentials); drop the
+		// offending entries instead of rejecting the whole catalog.
+		validExplorers := chain.Explorers[:0]
+		seenExplorers := make(map[string]struct{}, len(chain.Explorers))
 		for _, explorer := range chain.Explorers {
 			parsedExplorer, err := url.ParseRequestURI(explorer.URL)
-			if len(explorer.URL) == 0 || len(explorer.URL) > 4096 || strings.ContainsAny(explorer.URL, "\x00\r\n\x1b") || err != nil || parsedExplorer.Scheme != "https" || parsedExplorer.Host == "" || parsedExplorer.User != nil || parsedExplorer.Fragment != "" {
-				return fmt.Errorf("ChainList explorer metadata exceeds policy")
+			if len(explorer.URL) == 0 || len(explorer.URL) > 4096 || strings.ContainsAny(explorer.URL, "\x00\r\n\x1b#") || err != nil || parsedExplorer.Scheme != "https" || parsedExplorer.Host == "" || parsedExplorer.User != nil {
+				continue
 			}
+			if _, exists := seenExplorers[explorer.URL]; exists {
+				continue
+			}
+			seenExplorers[explorer.URL] = struct{}{}
+			validExplorers = append(validExplorers, explorer)
 		}
+		chain.Explorers = validExplorers
 	}
 	return nil
 }

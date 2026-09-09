@@ -157,115 +157,99 @@ func TestAddNetworkAcceptsCredentialReferenceWithoutPersistingSecret(t *testing.
 	}
 }
 
-func TestIntegration_AddNetwork_EndToEnd_CrossArch(t *testing.T) {
+func TestIntegration_AddNetwork_EndToEnd(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	cases := []struct {
-		name string
-		arch string
-	}{
-		{"amd64 flow", "amd64"},
-		{"arm64 flow", "arm64"},
-	}
+	t.Run("full flow", func(t *testing.T) {
+		// Logger to temp dir
+		lg, logDir := setupTestLogger(t)
+		defer func() { _ = lg.Sync() }()
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			// Override architecture detector
-			oldArch := archDetector
-			archDetector = func() string { return tc.arch }
-			defer func() { archDetector = oldArch }()
+		// RPC server that always returns chainId 0x1
+		rpcSrv := newRPCServer(t, "0x1", nil)
+		defer rpcSrv.Close()
+		parsedRPC, _ := url.Parse(rpcSrv.URL)
+		ConfigureRPCGateway(blockchain.NewRPCGateway(blockchain.RPCGatewayOptions{AllowedLocalTargets: []string{parsedRPC.Host}}))
+		defer ConfigureRPCGateway(nil)
 
-			// Logger to temp dir
-			lg, logDir := setupTestLogger(t)
-			defer func() { _ = lg.Sync() }()
+		// Build component
+		c := NewAddNetworkComponent()
 
-			// RPC server that always returns chainId 0x1
-			rpcSrv := newRPCServer(t, "0x1", nil)
-			defer rpcSrv.Close()
-			parsedRPC, _ := url.Parse(rpcSrv.URL)
-			ConfigureRPCGateway(blockchain.NewRPCGateway(blockchain.RPCGatewayOptions{AllowedLocalTargets: []string{parsedRPC.Host}}))
-			defer ConfigureRPCGateway(nil)
+		// Start with Init (popular suggestions generated internally)
+		msg := c.Init()()
+		_, _ = c.Update(msg)
 
-			// Build component
-			c := NewAddNetworkComponent()
+		// Simulate typing in search to trigger logging paths
+		drive(t, &c, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
 
-			// Start with Init (popular suggestions generated internally)
-			msg := c.Init()()
-			_, _ = c.Update(msg)
+		// Provide suggestions manually (bypass real ChainList HTTP)
+		sugg := blockchain.NetworkSuggestion{ChainID: 1, Name: "Ethereum Mainnet", Symbol: "ETH"}
+		_, _ = c.Update(networkSuggestionsMsg([]blockchain.NetworkSuggestion{sugg}))
 
-			// Simulate typing in search to trigger logging paths
-			// Use rune input so both arm64/manual and default code paths log
-			drive(t, &c, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+		// Fill network data directly with our test RPC URL
+		c.fillNetworkData(sugg, rpcSrv.URL)
+		c.decimalsInput.SetValue("18")
 
-			// Provide suggestions manually (bypass real ChainList HTTP)
-			sugg := blockchain.NetworkSuggestion{ChainID: 1, Name: "Ethereum Mainnet", Symbol: "ETH"}
-			_, _ = c.Update(networkSuggestionsMsg([]blockchain.NetworkSuggestion{sugg}))
+		// Move focus off search to enable form submission
+		c.isSearchFocused = false
+		c.focusIndex = 1
+		c.updateFocus()
 
-			// Fill network data directly with our test RPC URL
-			c.fillNetworkData(sugg, rpcSrv.URL)
-			c.decimalsInput.SetValue("18")
+		// Force a chain ID mismatch for the first attempt
+		c.chainIDInput.SetValue("2")
 
-			// Move focus off search to enable form submission
-			c.isSearchFocused = false
-			c.focusIndex = 1
-			c.updateFocus()
+		// First submit: should produce an error due to mismatched chain ID
+		_, cmd := c.Update(tea.KeyMsg{Type: tea.KeyEnter})
+		if cmd == nil {
+			t.Fatalf("expected command on submit")
+		}
+		out := cmd()
+		// Feed the error back to component to set c.err
+		_, _ = c.Update(out)
 
-			// Force a chain ID mismatch for the first attempt
-			c.chainIDInput.SetValue("2")
+		if c.err == nil {
+			t.Fatalf("expected an error on first submit (mismatched chain id)")
+		}
 
-			// First submit: should produce an error due to mismatched chain ID
-			_, cmd := c.Update(tea.KeyMsg{Type: tea.KeyEnter})
-			if cmd == nil {
-				t.Fatalf("expected command on submit")
-			}
-			out := cmd()
-			// Feed the error back to component to set c.err
-			_, _ = c.Update(out)
+		// Correct chain ID and submit again
+		c.chainIDInput.SetValue("1")
+		_, cmd2 := c.Update(tea.KeyMsg{Type: tea.KeyEnter})
+		if cmd2 == nil {
+			t.Fatalf("expected command on submit 2")
+		}
+		out2 := cmd2()
 
-			if c.err == nil {
-				t.Fatalf("expected an error on first submit (mismatched chain id)")
-			}
+		// Expect AddNetworkRequestMsg on success
+		req, ok := out2.(AddNetworkRequestMsg)
+		if !ok {
+			t.Fatalf("expected AddNetworkRequestMsg, got %T", out2)
+		}
 
-			// Correct chain ID and submit again
-			c.chainIDInput.SetValue("1")
-			_, cmd2 := c.Update(tea.KeyMsg{Type: tea.KeyEnter})
-			if cmd2 == nil {
-				t.Fatalf("expected command on submit 2")
-			}
-			out2 := cmd2()
+		if req.Name != "Ethereum Mainnet" || req.Symbol != "ETH" || req.ChainID != "1" || req.RPCEndpoint != rpcSrv.URL {
+			t.Fatalf("unexpected AddNetworkRequestMsg values: %+v", req)
+		}
 
-			// Expect AddNetworkRequestMsg on success
-			req, ok := out2.(AddNetworkRequestMsg)
-			if !ok {
-				t.Fatalf("expected AddNetworkRequestMsg, got %T", out2)
-			}
+		// Verify logs were written to files
+		// Allow a tiny delay for file writes
+		_ = lg.Sync()
+		time.Sleep(50 * time.Millisecond)
 
-			if req.Name != "Ethereum Mainnet" || req.Symbol != "ETH" || req.ChainID != "1" || req.RPCEndpoint != rpcSrv.URL {
-				t.Fatalf("unexpected AddNetworkRequestMsg values: %+v", req)
-			}
+		appLog := filepath.Join(logDir, "app.log")
+		errLog := filepath.Join(logDir, "error.log")
 
-			// Verify logs were written to files
-			// Allow a tiny delay for file writes
-			_ = lg.Sync()
-			time.Sleep(50 * time.Millisecond)
+		if _, err := os.Stat(appLog); err != nil {
+			t.Fatalf("app.log not created: %v", err)
+		}
+		// app.log should have some content (debug/info)
+		if fi, _ := os.Stat(appLog); fi.Size() == 0 {
+			t.Fatalf("app.log is empty")
+		}
 
-			appLog := filepath.Join(logDir, "app.log")
-			errLog := filepath.Join(logDir, "error.log")
-
-			if _, err := os.Stat(appLog); err != nil {
-				t.Fatalf("app.log not created: %v", err)
-			}
-			// app.log should have some content (debug/info)
-			if fi, _ := os.Stat(appLog); fi.Size() == 0 {
-				t.Fatalf("app.log is empty")
-			}
-
-			// error.log may or may not be non-empty depending on branches; ensure file exists
-			if _, err := os.Stat(errLog); err != nil {
-				t.Fatalf("error.log not created: %v", err)
-			}
-		})
-	}
+		// error.log may or may not be non-empty depending on branches; ensure file exists
+		if _, err := os.Stat(errLog); err != nil {
+			t.Fatalf("error.log not created: %v", err)
+		}
+	})
 }

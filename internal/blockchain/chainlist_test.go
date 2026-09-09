@@ -92,6 +92,27 @@ func TestChainListCatalogAndFanoutPolicies(t *testing.T) {
 	}
 }
 
+func TestChainListDropsPolicyViolatingExplorers(t *testing.T) {
+	chains := []ChainInfo{{
+		ChainID: 1,
+		RPC:     []RPCEndpoint{{URL: "https://rpc.example.com", Tracking: "none"}},
+		Explorers: []Explorer{
+			{Name: "valid", URL: "https://explorer.example.com"},
+			{Name: "plain http", URL: "http://explorer.example.com"},
+			{Name: "with fragment", URL: "https://explorer.example.com/#/explorer"},
+			{Name: "with credentials", URL: "https://user:pass@explorer.example.com"},
+			{Name: "empty", URL: ""},
+			{Name: "duplicate", URL: "https://explorer.example.com"},
+		},
+	}}
+	if err := validateChainCatalog(chains); err != nil {
+		t.Fatalf("registry explorer metadata rejected the catalog: %v", err)
+	}
+	if len(chains[0].Explorers) != 1 || chains[0].Explorers[0].URL != "https://explorer.example.com" {
+		t.Fatalf("explorer filtering kept wrong entries: %+v", chains[0].Explorers)
+	}
+}
+
 func TestChainListGatewayFailsClosedOnChainMismatch(t *testing.T) {
 	var server *httptest.Server
 	server = httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {

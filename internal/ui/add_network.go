@@ -4,12 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
-	"unicode"
 
 	"blocowallet/internal/blockchain"
 	"blocowallet/pkg/config"
@@ -26,8 +24,6 @@ import (
 var lastAddNetworkID atomic.Uint64
 
 var (
-	// archDetector allows tests to mock architecture; defaults to runtime.GOARCH
-	archDetector = func() string { return runtime.GOARCH }
 	// uiLogger is an optional file-based logger injected from main
 	uiLogger logger.Logger
 )
@@ -582,53 +578,6 @@ func (c *AddNetworkComponent) Update(msg tea.Msg) (*AddNetworkComponent, tea.Cmd
 			switch c.focusIndex {
 			case 0: // Search input
 				oldValue := c.searchInput.Value()
-				// ARM64-specific handling: manually insert printable runes when Bubble Tea fails to echo runes
-				if archDetector() == "arm64" {
-					// Handle backspace manually as a fallback
-					if msg.String() == "backspace" && len(oldValue) > 0 {
-						// remove last rune safely
-						newVal := removeLastRune(oldValue)
-						c.searchInput.SetValue(newVal)
-						if uiLogger != nil {
-							uiLogger.Debug("input_key_arm64_backspace",
-								logger.Int("length", len([]rune(newVal))),
-							)
-						}
-						c.loadingSuggestions = true
-						c.selectedSuggestion = -1
-						cmds = append(cmds, c.scheduleSearch(newVal))
-						break
-					}
-					if msg.Type == tea.KeyRunes && len(msg.Runes) > 0 {
-						var b strings.Builder
-						for _, r := range msg.Runes {
-							if r == '\n' || r == '\r' || r == '\t' {
-								continue
-							}
-							if unicode.IsPrint(r) || unicode.IsSpace(r) {
-								b.WriteRune(r)
-							}
-						}
-						if b.Len() > 0 {
-							newVal := oldValue + b.String()
-							if len([]rune(newVal)) > 120 {
-								newVal = truncateRunes(newVal, 120)
-							}
-							c.searchInput.SetValue(newVal)
-							if uiLogger != nil {
-								uiLogger.Debug("input_key_arm64_runes",
-									logger.Int("runes", len(msg.Runes)),
-									logger.Int("length", len([]rune(newVal))),
-								)
-							}
-							c.loadingSuggestions = true
-							c.selectedSuggestion = -1
-							cmds = append(cmds, c.scheduleSearch(newVal))
-							break
-						}
-					}
-				}
-				// Default handling
 				c.searchInput, cmd = c.searchInput.Update(msg)
 				newValue := c.searchInput.Value()
 				cmds = append(cmds, cmd)
@@ -1040,23 +989,3 @@ type addNetworkErrorMsg struct {
 
 // errorMsg is sent when an error occurs
 type errorMsg string
-
-// --- helpers: rune-safe operations for ARM64 fallback ---
-func removeLastRune(s string) string {
-	r := []rune(s)
-	if len(r) == 0 {
-		return s
-	}
-	return string(r[:len(r)-1])
-}
-
-func truncateRunes(s string, n int) string {
-	r := []rune(s)
-	if n < 0 {
-		return ""
-	}
-	if len(r) <= n {
-		return s
-	}
-	return string(r[:n])
-}
