@@ -93,12 +93,12 @@ jobs:
         id: version
         run: |
           if [ "${{ github.ref_type }}" = "tag" ]; then
-            echo "VERSION=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+            echo "VERSION=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
           else
-            echo "VERSION=$(git describe --tags --always --dirty)" >> $GITHUB_OUTPUT
+            echo "VERSION=$(git describe --tags --always --dirty)" >> "$GITHUB_OUTPUT"
           fi
-          echo "GIT_REV=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
-          echo "BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_OUTPUT
+          echo "GIT_REV=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          echo "BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
       - name: Build and push Docker image
         id: build

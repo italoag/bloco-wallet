@@ -45,7 +45,7 @@ jobs:
             "$SPECULOS_IMAGE" \
             --model nanox --display headless --api-port 5000 \
             /apps/ethereum-nanox.elf
-          for attempt in $(seq 1 60); do
+          for _ in $(seq 1 60); do
             curl --fail --silent http://127.0.0.1:50010/events >/dev/null && exit 0
             sleep 1
           done
@@ -76,7 +76,7 @@ jobs:
             --publish 21328:21328 \
             "$TREZOR_USER_ENV_IMAGE" \
             .venv/bin/python src/main.py
-          for attempt in $(seq 1 90); do
+          for _ in $(seq 1 90); do
             curl --fail --silent http://127.0.0.1:9002/ >/dev/null && exit 0
             sleep 1
           done
@@ -106,7 +106,7 @@ jobs:
                   await send(ws, {"id": 3, "type": "bridge-start", "version": "node-bridge", "output_to_logfile": False})
           asyncio.run(main())
           PY
-          for attempt in $(seq 1 60); do
+          for _ in $(seq 1 60); do
             if configuration=$(curl --fail --silent --request POST http://127.0.0.1:21328/configure \
               --header 'Origin: https://python.trezor.io'); then
               CONFIGURATION="$configuration" python3 -c 'import json,os; c=json.loads(os.environ["CONFIGURATION"]); assert c["version"] == "3.2.1" and c["protocolMessages"] is True'
@@ -168,7 +168,7 @@ jobs:
         run: |
           docker run --detach --name anvil --publish 18545:8545 \
             --entrypoint anvil "$FOUNDRY_IMAGE" --host 0.0.0.0
-          for attempt in $(seq 1 60); do
+          for _ in $(seq 1 60); do
             curl --fail --silent --request POST http://127.0.0.1:18545 \
               --header 'Content-Type: application/json' \
               --data '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}' >/dev/null && exit 0
