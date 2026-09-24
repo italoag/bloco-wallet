@@ -254,7 +254,7 @@ func TestGORMRepository_FileURIPermissions(t *testing.T) {
 		require.NoError(t, os.Chmod(tempDir, 0755))
 	}
 	databasePath := filepath.Join(tempDir, "uri.db")
-	dsn := (&url.URL{Scheme: "file", Path: databasePath}).String()
+	dsn := sqliteFileURL(databasePath).String()
 	cfg := &config.Config{
 		AppDir:       tempDir,
 		DatabasePath: databasePath,
@@ -349,4 +349,46 @@ func TestGORMRepository_FindBySourceHash_And_AddressQueries(t *testing.T) {
 	listPriv, err := repo.FindByAddressAndMethod(addr, string(wallet.ImportMethodPrivateKey))
 	assert.NoError(t, err)
 	assert.Len(t, listPriv, 1)
+}
+
+func TestSQLiteDSNWithPragmasPaths(t *testing.T) {
+	for _, tc := range []struct {
+		name, dsn, want string
+	}{
+		{"windows backslash", `C:\Users\runner\wallet space # 100%.db`, "/C:/Users/runner/wallet space # 100%.db"},
+		{"windows slash", "C:/Users/runner/wallet.db", "/C:/Users/runner/wallet.db"},
+		{"relative", "wallet.db", "wallet.db"},
+		{"posix", "/tmp/wallet space # 100%.db", "/tmp/wallet space # 100%.db"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			parsed, err := url.Parse(sqliteDSNWithPragmas(tc.dsn))
+			require.NoError(t, err)
+			assert.Empty(t, parsed.Host)
+			path := parsed.Path
+			if parsed.Opaque != "" {
+				path, err = url.PathUnescape(parsed.Opaque)
+				require.NoError(t, err)
+			}
+			assert.Equal(t, tc.want, path)
+			assert.Equal(t, "on", parsed.Query().Get("_foreign_keys"))
+			assert.Equal(t, "5000", parsed.Query().Get("_busy_timeout"))
+			assert.Equal(t, "immediate", parsed.Query().Get("_txlock"))
+			assert.Equal(t, "FULL", parsed.Query().Get("_synchronous"))
+		})
+	}
+}
+
+func TestSQLiteFileURIRoundTrip(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "wallet space # 100%.db")
+	dsn := sqliteFileURL(path).String()
+	resolved, disk, err := sqliteDiskPath(dsn)
+	require.NoError(t, err)
+	require.True(t, disk)
+	require.Equal(t, path, resolved)
+	cfg := &config.Config{AppDir: root, DatabasePath: path, Database: config.DatabaseConfig{Type: "sqlite", DSN: dsn}}
+	repo, err := NewVaultRepository(cfg)
+	require.NoError(t, err)
+	require.NoError(t, repo.Close())
+	require.FileExists(t, path)
 }

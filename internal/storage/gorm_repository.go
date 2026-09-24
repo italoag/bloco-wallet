@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"gorm.io/gorm"
@@ -116,6 +117,14 @@ func newRepository(cfg *config.Config, includeLegacy bool) (*GORMRepository, err
 	return &GORMRepository{db: db}, nil
 }
 
+func sqliteFileURL(path string) *url.URL {
+	if len(path) >= 3 && ((path[0] >= 'A' && path[0] <= 'Z') || (path[0] >= 'a' && path[0] <= 'z')) && path[1] == ':' && (path[2] == '\\' || path[2] == '/') {
+		path = "/" + strings.ReplaceAll(path, "\\", "/")
+	}
+	path = filepath.ToSlash(path)
+	return &url.URL{Scheme: "file", Path: path, OmitHost: !strings.HasPrefix(path, "//")}
+}
+
 func sqliteDSNWithPragmas(dsn string) string {
 	var parsed *url.URL
 	if strings.HasPrefix(dsn, "file:") {
@@ -126,7 +135,7 @@ func sqliteDSNWithPragmas(dsn string) string {
 	} else if dsn == "" || dsn == ":memory:" {
 		return ":memory:"
 	} else {
-		parsed = &url.URL{Scheme: "file", Path: dsn}
+		parsed = sqliteFileURL(dsn)
 	}
 	if parsed == nil {
 		return dsn
@@ -152,9 +161,12 @@ func sqliteDiskPath(dsn string) (string, bool, error) {
 		if err != nil {
 			return "", false, err
 		}
-		path := parsed.Opaque
-		if path == "" {
-			path = parsed.Path
+		path := parsed.Path
+		if parsed.Opaque != "" {
+			path, err = url.PathUnescape(parsed.Opaque)
+			if err != nil {
+				return "", false, err
+			}
 		}
 		if path == ":memory:" || parsed.Query().Get("mode") == "memory" {
 			return "", false, nil
@@ -162,11 +174,10 @@ func sqliteDiskPath(dsn string) (string, bool, error) {
 		if path == "" {
 			return "", false, fmt.Errorf("URI SQLite sem caminho")
 		}
-		decoded, err := url.PathUnescape(path)
-		if err != nil {
-			return "", false, err
+		if runtime.GOOS == "windows" && len(path) >= 4 && path[0] == '/' && path[2] == ':' {
+			path = path[1:]
 		}
-		return filepath.Clean(decoded), true, nil
+		return filepath.Clean(path), true, nil
 	}
 	path := strings.SplitN(dsn, "?", 2)[0]
 	if path == "" {
