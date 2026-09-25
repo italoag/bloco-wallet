@@ -35,6 +35,7 @@ go test ./... -v -tags=production         # direct Go
 - Modes: fast (default) vs production (`-tags=production`). See `TESTING.md`.
 - Naming: `TestXxx`, short focused cases; add benches for crypto/IO hotspots.
 - Minimum: ensure `make t`, `make lint` pass before PR; aim to keep/raise coverage.
+- Run `govulncheck` exclusively in GitHub Actions, never locally. Keep its CI job independent of Trivy so scanner failures do not prevent it from running.
 
 ## Commit & Pull Request Guidelines
 - Commits: follow Conventional Commits (e.g., `feat:`, `fix:`, `chore:`) as seen in history.
