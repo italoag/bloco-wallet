@@ -2,7 +2,7 @@ FROM public.ecr.aws/docker/library/golang:1.26.7-alpine@sha256:28d89ee9cc0ff9fec
 
 ARG TARGETOS
 ARG TARGETARCH
-ARG VERSION=dev
+ARG VERSION=dev-SNAPSHOT
 ARG GIT_REV=unknown
 ARG BUILD_DATE=unknown
 ARG GOPROXY=https://proxy.golang.org,direct

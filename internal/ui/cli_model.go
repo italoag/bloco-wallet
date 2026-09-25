@@ -22,6 +22,7 @@ type CLIModel struct {
 	Service                         *wallet.WalletService
 	Vault                           *wallet.WalletVault
 	currentView                     string
+	version                         string
 	menuItems                       []menuItem
 	selectedMenu                    int
 	importWords                     []string

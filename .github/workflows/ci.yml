@@ -159,7 +159,7 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: '0'
         run: |
-          VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "v0.1.0")
+          VERSION=$(bash scripts/build-version.sh)
           GIT_REV=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
           BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           OUTPUT="bloco-wallet-${GOOS}-${GOARCH}${{ matrix.extension }}"

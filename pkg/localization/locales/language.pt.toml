@@ -245,9 +245,6 @@ other = "Chave Privada"
 [enter_keystore_path]
 other = "Digite o caminho para o arquivo KeyStore V3:"
 
-[version]
-other = "0.2.0"
-
 [active]
 other = "Ativo"
 

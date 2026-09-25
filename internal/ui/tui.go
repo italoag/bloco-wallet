@@ -109,6 +109,17 @@ func NewCLIModel(vault *wallet.WalletVault) (*CLIModel, error) {
 	return model, nil
 }
 
+func (m *CLIModel) ConfigureVersion(version string) {
+	m.version = strings.TrimSpace(version)
+}
+
+func (m *CLIModel) displayVersion() string {
+	if m.version == "" {
+		return "dev"
+	}
+	return safeShort(m.version)
+}
+
 func (m *CLIModel) ConfigureBalanceProvider(provider *blockchain.MultiProvider, cfg *config.Config) {
 	m.balanceProvider = provider
 	m.balanceConfig = cfg
@@ -524,6 +535,12 @@ func (m *CLIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateCanonicalImport(msg)
 		}
 		return m, nil
+	case canonicalSourcePasswordMsg:
+		if m.currentView == constants.CanonicalImportView && m.canonicalImport != nil {
+			return m.updateCanonicalImport(msg)
+		}
+		clear(msg.password)
+		return m, nil
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		if m.networkListComponent.id != "" {
@@ -690,7 +707,7 @@ func (m *CLIModel) renderListWalletsWithLayout() string {
 	headerLeft := lipgloss.JoinVertical(
 		lipgloss.Left,
 		renderedLogo,
-		fmt.Sprintf("Version: %s", localization.Labels["version"]),
+		fmt.Sprintf("Version: %s", m.displayVersion()),
 	)
 
 	menuItems := m.renderMenuItems()

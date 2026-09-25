@@ -1,6 +1,6 @@
 # Project Configuration
 NAME            := bloco-wallet
-VERSION         ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "v0.1.0")
+VERSION         ?= $(shell bash scripts/build-version.sh)
 PACKAGE         := blocowallet
 GO              ?= go
 OUTPUT_BIN      ?= build/${NAME}

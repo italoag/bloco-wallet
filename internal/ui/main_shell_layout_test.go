@@ -130,3 +130,72 @@ func TestWalletDetailsRemainBoundedAt120x30(t *testing.T) {
 		t.Fatalf("120x30 wallet details overflowed or lost shell content: %dx%d %q", lipgloss.Width(view), lipgloss.Height(view), view)
 	}
 }
+
+func TestMainShellVersionFallsBackToDev(t *testing.T) {
+	model := newMainShellLayoutModel(t, constants.DefaultView)
+	view := model.View()
+	if !strings.Contains(view, "Version: dev") {
+		t.Fatalf("default view did not render dev version: %q", view)
+	}
+	if strings.Contains(view, "0.2.0") {
+		t.Fatalf("stale locale version leaked into view: %q", view)
+	}
+}
+
+func TestMainShellVersionTable(t *testing.T) {
+	cases := map[string]string{
+		"v0.5.0":                 "v0.5.0",
+		"v0.6.0-rc.1":            "v0.6.0-rc.1",
+		"v0.6.0-2-gabcdef-dirty": "v0.6.0-2-gabcdef-dirty",
+		"0.6.0":                  "0.6.0",
+		"dev":                    "dev",
+		"":                       "dev",
+		"   ":                    "dev",
+	}
+	for input, expected := range cases {
+		model := newMainShellLayoutModel(t, constants.DefaultView)
+		model.ConfigureVersion(input)
+		main := model.View()
+		if !strings.Contains(main, "Version: "+expected) {
+			t.Fatalf("main view for %q missing %q: %q", input, expected, main)
+		}
+		if strings.Contains(main, "0.2.0") || strings.Contains(main, "vv") {
+			t.Fatalf("main view for %q leaked stale or double-prefixed version: %q", input, main)
+		}
+		model.currentView = constants.ListWalletsView
+		list := model.View()
+		if !strings.Contains(list, "Version: "+expected) {
+			t.Fatalf("list view for %q missing %q: %q", input, expected, list)
+		}
+	}
+}
+
+func TestMainShellVersionIgnoresLocaleMutation(t *testing.T) {
+	model := newMainShellLayoutModel(t, constants.DefaultView)
+	model.ConfigureVersion("v0.6.0")
+	_ = model.View()
+	localization.Labels["version"] = "999.999.999"
+	view := model.View()
+	if !strings.Contains(view, "Version: v0.6.0") || strings.Contains(view, "999.999.999") {
+		t.Fatalf("locale mutation changed rendered version: %q", view)
+	}
+}
+
+func TestSplashRendersInjectedVersion(t *testing.T) {
+	model := newMainShellLayoutModel(t, constants.SplashView)
+	model.ConfigureVersion("v0.6.0")
+	fonts := buildFontsList("")
+	if len(fonts) == 0 {
+		t.Fatal("no embedded fonts available")
+	}
+	if err := loadSelectedFont(model, fonts[0]); err != nil {
+		t.Fatalf("embedded font failed to load: %v", err)
+	}
+	view := model.View()
+	if !strings.Contains(view, "BLOCO Wallet v0.6.0") {
+		t.Fatalf("splash missing injected version: %q", view)
+	}
+	if strings.Contains(view, "v0.2.0") || strings.Contains(view, "vv") {
+		t.Fatalf("splash leaked stale or double-prefixed version: %q", view)
+	}
+}

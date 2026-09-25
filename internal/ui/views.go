@@ -210,7 +210,7 @@ func (m *CLIModel) renderSplash() string {
 	renderedLogo := fontString.RenderString("bloco")
 	renderedLogo = terminal.SanitizeStyledBlock(strings.TrimSpace(renderedLogo), 24, 160) // Remove any extra whitespace
 
-	projectInfo := fmt.Sprintf("%s v%s", "BLOCO Wallet", localization.Labels["version"])
+	projectInfo := fmt.Sprintf("%s %s", "BLOCO Wallet", m.displayVersion())
 
 	// Center the projectInfo text
 	projectInfoStyled := lipgloss.NewStyle().
@@ -357,7 +357,7 @@ func (m *CLIModel) renderMainView() string {
 	headerLeft := lipgloss.JoinVertical(
 		lipgloss.Left,
 		renderedLogo,
-		fmt.Sprintf("Version: %s", localization.Labels["version"]),
+		fmt.Sprintf("Version: %s", m.displayVersion()),
 	)
 
 	menuItems := m.renderMenuItems()

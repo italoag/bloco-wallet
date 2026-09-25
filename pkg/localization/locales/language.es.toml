@@ -344,9 +344,6 @@ other = "El ID de cadena se completará automáticamente"
 [imported_keystore]
 other = "Keystore (Clave Privada)"
 
-[version]
-other = "0.2.0"
-
 [error_invalid_password]
 other = "Contraseña inválida: la verificación del hash falló"
 

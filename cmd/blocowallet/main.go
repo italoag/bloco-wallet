@@ -170,6 +170,7 @@ func main() {
 		log.Printf("Failed to initialize TUI: %v", err)
 		os.Exit(1)
 	}
+	app.ConfigureVersion(version)
 	app.ConfigureBalanceProvider(balanceProvider, cfg)
 	app.ConfigureHistoryReader(repo)
 	app.ConfigureTransactionAuthorizer(transactionAuthorizer)

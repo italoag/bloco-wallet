@@ -114,9 +114,6 @@ other = "Keystore (Private Key)"
 [main_menu_title]
 other = "Main Menu"
 
-[version]
-other = "0.2.0"
-
 [delete_network]
 other = "Delete Network"
 

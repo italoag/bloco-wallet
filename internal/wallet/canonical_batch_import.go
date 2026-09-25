@@ -19,7 +19,16 @@ type KeystoreBatchItem struct {
 	Name           string
 	KeystoreJSON   []byte
 	SourcePassword []byte
+	SourcePath     string
 	PreflightErr   error
+}
+
+type KeystoreBatchProgress struct {
+	Total           int
+	Completed       int
+	Imported        int
+	AlreadyImported int
+	Failed          int
 }
 
 type KeystoreBatchImportRequest struct {
@@ -27,6 +36,7 @@ type KeystoreBatchImportRequest struct {
 	StoragePassword        []byte
 	ConfirmStoragePassword []byte
 	MaxConcurrency         int
+	OnProgress             func(KeystoreBatchProgress)
 }
 
 type KeystoreBatchResult struct {
@@ -59,6 +69,30 @@ func (vault *WalletVault) ImportKeystoreBatch(ctx context.Context, request Keyst
 	for index := range results {
 		results[index].Index = index
 	}
+	var progressMu sync.Mutex
+	progress := KeystoreBatchProgress{Total: len(request.Items)}
+	report := func(index int) {
+		if request.OnProgress == nil {
+			return
+		}
+		progressMu.Lock()
+		defer progressMu.Unlock()
+		progress.Completed++
+		switch {
+		case results[index].Err != nil:
+			progress.Failed++
+		case results[index].AlreadyImported:
+			progress.AlreadyImported++
+		default:
+			progress.Imported++
+		}
+		request.OnProgress(progress)
+	}
+	if request.OnProgress != nil {
+		progressMu.Lock()
+		request.OnProgress(progress)
+		progressMu.Unlock()
+	}
 	var validationErr error
 	if len(request.StoragePassword) != len(request.ConfirmStoragePassword) || subtle.ConstantTimeCompare(request.StoragePassword, request.ConfirmStoragePassword) != 1 {
 		validationErr = ErrStoragePasswordConfirmation
@@ -70,6 +104,7 @@ func (vault *WalletVault) ImportKeystoreBatch(ctx context.Context, request Keyst
 	if validationErr != nil {
 		for index := range results {
 			results[index].Err = validationErr
+			report(index)
 		}
 		return results
 	}
@@ -90,31 +125,34 @@ func (vault *WalletVault) ImportKeystoreBatch(ctx context.Context, request Keyst
 		go func() {
 			defer waitGroup.Done()
 			for index := range jobs {
-				if request.Items[index].PreflightErr != nil {
-					results[index].Err = request.Items[index].PreflightErr
-					continue
-				}
-				if err := ctx.Err(); err != nil {
-					results[index].Err = err
-					continue
-				}
-				item := request.Items[index]
-				summary, err := vault.ImportKeystore(ctx, KeystoreImportRequest{
-					Name:                   item.Name,
-					KeystoreJSON:           item.KeystoreJSON,
-					SourcePassword:         item.SourcePassword,
-					StoragePassword:        request.StoragePassword,
-					ConfirmStoragePassword: request.ConfirmStoragePassword,
-				})
-				if errors.Is(err, ErrAccountConflict) {
-					results[index].AlreadyImported = true
-					continue
-				}
-				if err != nil {
-					results[index].Err = fmt.Errorf("batch item %d: %w", index, err)
-					continue
-				}
-				results[index].Summary = &summary
+				func() {
+					defer report(index)
+					if request.Items[index].PreflightErr != nil {
+						results[index].Err = request.Items[index].PreflightErr
+						return
+					}
+					if err := ctx.Err(); err != nil {
+						results[index].Err = err
+						return
+					}
+					item := request.Items[index]
+					summary, err := vault.ImportKeystore(ctx, KeystoreImportRequest{
+						Name:                   item.Name,
+						KeystoreJSON:           item.KeystoreJSON,
+						SourcePassword:         item.SourcePassword,
+						StoragePassword:        request.StoragePassword,
+						ConfirmStoragePassword: request.ConfirmStoragePassword,
+					})
+					if errors.Is(err, ErrAccountConflict) {
+						results[index].AlreadyImported = true
+						return
+					}
+					if err != nil {
+						results[index].Err = fmt.Errorf("batch item %d: %w", index, err)
+						return
+					}
+					results[index].Summary = &summary
+				}()
 			}
 		}()
 	}
@@ -123,6 +161,7 @@ func (vault *WalletVault) ImportKeystoreBatch(ctx context.Context, request Keyst
 		case jobs <- index:
 		case <-ctx.Done():
 			results[index].Err = ctx.Err()
+			report(index)
 		}
 	}
 	close(jobs)
