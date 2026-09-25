@@ -212,7 +212,8 @@ jobs:
           scan-ref: '.'
           format: 'sarif'
           output: 'trivy-results.sarif'
-          exit-code: '0'
+          scanners: 'vuln'
+          exit-code: '1'
           severity: 'CRITICAL,HIGH'
 
       - name: Check if Trivy SARIF exists
