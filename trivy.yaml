@@ -1,0 +1,4 @@
+scan:
+  skip-files:
+    - "**/go.mod"
+    - "**/go.sum"

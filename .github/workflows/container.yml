@@ -27,6 +27,7 @@ jobs:
           version: 'v0.74.0'
           scan-type: 'fs'
           scan-ref: '.'
+          trivy-config: 'trivy.yaml'
           format: 'table'
           exit-code: '1'
           severity: 'CRITICAL,HIGH'
