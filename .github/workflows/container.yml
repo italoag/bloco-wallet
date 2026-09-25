@@ -24,6 +24,7 @@ jobs:
           persist-credentials: false
       - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          version: 'v0.74.0'
           scan-type: 'fs'
           scan-ref: '.'
           format: 'table'
@@ -43,6 +44,7 @@ jobs:
         run: docker run --rm bloco-wallet:candidate release-smoke
       - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          version: 'v0.74.0'
           image-ref: bloco-wallet:candidate
           format: 'table'
           exit-code: '1'
@@ -121,6 +123,7 @@ jobs:
         if: github.event_name != 'pull_request'
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          version: 'v0.74.0'
           image-ref: ${{ env.REGISTRY }}/${{ github.repository_owner }}/bloco-wallet:${{ steps.meta.outputs.version }}
           format: 'sarif'
           output: 'trivy-results.sarif'
@@ -128,7 +131,7 @@ jobs:
           severity: 'CRITICAL,HIGH'
 
       - name: Upload Trivy scan results to GitHub Security tab
-        if: github.event_name != 'pull_request'
+        if: always() && github.event_name != 'pull_request' && hashFiles('trivy-results.sarif') != ''
         uses: github/codeql-action/upload-sarif@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
         with:
           sarif_file: 'trivy-results.sarif'
