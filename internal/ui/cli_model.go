@@ -6,6 +6,7 @@ import (
 	"blocowallet/internal/evm"
 	"blocowallet/internal/wallet"
 	"blocowallet/pkg/config"
+	"blocowallet/pkg/localization"
 	"context"
 	"time"
 
@@ -30,6 +31,7 @@ type CLIModel struct {
 	textInputs                      []textinput.Model
 	wallets                         []wallet.Wallet
 	accounts                        []wallet.AccountSummary
+	accountTableIDs                 []string
 	walletCount                     int
 	selectedWallet                  *wallet.Wallet
 	selectedAccount                 *wallet.AccountSummary
@@ -104,6 +106,10 @@ type CLIModel struct {
 	lastOperationNotice             string
 	canonicalImport                 *canonicalImportState
 	canonicalOperationID            uint64
+	accountDeletion                 *accountDeletionState
+	accountDeletionID               uint64
+	recovery                        *recoveryState
+	recoveryOperationID             uint64
 	pendingImportMethod             wallet.ImportMethod
 	keystorePath                    string
 	mnemonic                        string
@@ -129,6 +135,10 @@ type CLIModel struct {
 
 	// Enhanced import state
 	enhancedImportState *EnhancedImportState
+
+	// localeLanguage tracks the localization language the rendered model was
+	// built with; Update refreshes visible labels when it drifts.
+	localeLanguage string
 }
 
 // GetEnhancedImportState returns the enhanced import state
@@ -147,6 +157,6 @@ func (m *CLIModel) GetContentView() string {
 	case constants.EnhancedImportView:
 		return m.viewEnhancedImport()
 	default:
-		return "Unknown view"
+		return localization.Get("unknown_view")
 	}
 }

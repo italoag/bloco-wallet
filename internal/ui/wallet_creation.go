@@ -3,10 +3,11 @@ package ui
 import (
 	"fmt"
 	"strconv"
-	"strings"
 
 	"blocowallet/internal/wallet"
+	"blocowallet/pkg/localization"
 
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -23,28 +24,27 @@ func (item createOptionItem) FilterValue() string { return item.title + " " + it
 
 func (model *CLIModel) configureCreateOptionList(stage int) {
 	items := make([]list.Item, 0)
-	title := "Select an option"
+	title := localization.Get("create_select_option")
 	switch stage {
 	case 0:
-		title = "Word count"
+		title = localization.Get("create_word_count_title")
 		for _, count := range []int{12, 15, 18, 21, 24} {
 			items = append(items, createOptionItem{
-				title: strconv.Itoa(count) + " words", description: mnemonicStrengthDescription(count), value: strconv.Itoa(count),
+				title: localization.T("create_words_suffix", map[string]interface{}{"Count": count}), description: mnemonicStrengthDescription(count), value: strconv.Itoa(count),
 			})
 		}
 	case 1:
-		title = "BIP39 language"
+		title = localization.Get("create_bip39_language_title")
 		for _, language := range wallet.SupportedBIP39Languages() {
-			name := strings.ReplaceAll(string(language), "_", " ")
-			items = append(items, createOptionItem{title: strings.ToUpper(name[:1]) + name[1:], description: "Official BIP39 word list", value: string(language)})
+			items = append(items, createOptionItem{title: localization.Get("bip39_language_" + string(language)), description: localization.Get("create_bip39_wordlist_desc"), value: string(language)})
 		}
 	case 3:
-		title = "EVM derivation path"
+		title = localization.Get("create_derivation_title")
 		items = append(items,
-			createOptionItem{title: "Standard account 0", description: "Recommended default for the first EVM account", value: "m/44'/60'/0'/0/0"},
-			createOptionItem{title: "Standard account 1", description: "Separate BIP44 account index", value: "m/44'/60'/1'/0/0"},
-			createOptionItem{title: "Next address", description: "Address index 1 under the default account", value: "m/44'/60'/0'/0/1"},
-			createOptionItem{title: "Custom path…", description: "Enter another validated EVM BIP44 path", value: "custom"},
+			createOptionItem{title: localization.Get("create_path_account0"), description: localization.Get("create_path_account0_desc"), value: "m/44'/60'/0'/0/0"},
+			createOptionItem{title: localization.Get("create_path_account1"), description: localization.Get("create_path_account1_desc"), value: "m/44'/60'/1'/0/0"},
+			createOptionItem{title: localization.Get("create_path_next_address"), description: localization.Get("create_path_next_address_desc"), value: "m/44'/60'/0'/0/1"},
+			createOptionItem{title: localization.Get("create_path_custom"), description: localization.Get("create_path_custom_desc"), value: "custom"},
 		)
 	}
 	width := model.width - 8
@@ -65,23 +65,50 @@ func (model *CLIModel) configureCreateOptionList(stage int) {
 	selector.Title = title
 	selector.SetFilteringEnabled(false)
 	selector.SetShowStatusBar(false)
+	localizeListKeyMap(&selector.KeyMap)
 	model.createOptionList = selector
+}
+
+// localizeListKeyMap reapplies localized help descriptions on a bubbles list
+// KeyMap, preserving each binding's key string and enabled state.
+func localizeListKeyMap(km *list.KeyMap) {
+	for _, entry := range []struct {
+		binding *key.Binding
+		label   string
+	}{
+		{&km.CursorUp, "help_up"},
+		{&km.CursorDown, "help_down"},
+		{&km.PrevPage, "list_help_prev_page"},
+		{&km.NextPage, "list_help_next_page"},
+		{&km.GoToStart, "list_help_go_start"},
+		{&km.GoToEnd, "list_help_go_end"},
+		{&km.Filter, "list_help_filter"},
+		{&km.ClearFilter, "list_help_clear_filter"},
+		{&km.CancelWhileFiltering, "list_help_cancel_filter"},
+		{&km.AcceptWhileFiltering, "list_help_accept_filter"},
+		{&km.ShowFullHelp, "list_help_more"},
+		{&km.CloseFullHelp, "list_help_close"},
+		{&km.Quit, "list_help_quit"},
+		{&km.ForceQuit, "list_help_force_quit"},
+	} {
+		entry.binding.SetHelp(entry.binding.Help().Key, localization.Get(entry.label))
+	}
 }
 
 func mnemonicStrengthDescription(wordCount int) string {
 	switch wordCount {
 	case 12:
-		return "128-bit entropy • recommended for most wallets"
+		return localization.Get("create_entropy_12")
 	case 15:
-		return "160-bit entropy"
+		return localization.Get("create_entropy_15")
 	case 18:
-		return "192-bit entropy"
+		return localization.Get("create_entropy_18")
 	case 21:
-		return "224-bit entropy"
+		return localization.Get("create_entropy_21")
 	case 24:
-		return "256-bit entropy • longest backup"
+		return localization.Get("create_entropy_24")
 	default:
-		return "BIP39 mnemonic"
+		return localization.Get("create_entropy_default")
 	}
 }
 

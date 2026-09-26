@@ -9,6 +9,7 @@ import (
 
 	"blocowallet/internal/constants"
 	"blocowallet/internal/evm"
+	"blocowallet/pkg/localization"
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
@@ -34,15 +35,15 @@ type accountHistoryKeyMap struct {
 
 func newAccountHistoryKeyMap() accountHistoryKeyMap {
 	return accountHistoryKeyMap{
-		Up:         key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "scroll up")),
-		Down:       key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "scroll down")),
-		PageUp:     key.NewBinding(key.WithKeys("pgup", "u"), key.WithHelp("pgup/u", "page up")),
-		PageDown:   key.NewBinding(key.WithKeys("pgdown", "d"), key.WithHelp("pgdn/d", "page down")),
-		Next:       key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "next results")),
-		Previous:   key.NewBinding(key.WithKeys("p"), key.WithHelp("p", "previous results")),
-		Refresh:    key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh")),
-		ToggleHelp: key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "more help")),
-		Back:       key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
+		Up:         key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", localization.Get("hist_scroll_up"))),
+		Down:       key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", localization.Get("hist_scroll_down"))),
+		PageUp:     key.NewBinding(key.WithKeys("pgup", "u"), key.WithHelp("pgup/u", localization.Get("hist_page_up"))),
+		PageDown:   key.NewBinding(key.WithKeys("pgdown", "d"), key.WithHelp("pgdn/d", localization.Get("hist_page_down"))),
+		Next:       key.NewBinding(key.WithKeys("n"), key.WithHelp("n", localization.Get("hist_next"))),
+		Previous:   key.NewBinding(key.WithKeys("p"), key.WithHelp("p", localization.Get("hist_previous"))),
+		Refresh:    key.NewBinding(key.WithKeys("r"), key.WithHelp("r", localization.Get("hist_refresh"))),
+		ToggleHelp: key.NewBinding(key.WithKeys("?"), key.WithHelp("?", localization.Get("hist_more_help"))),
+		Back:       key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", localization.Get("hist_back"))),
 	}
 }
 
@@ -223,66 +224,66 @@ func (model *CLIModel) refreshAccountHistoryContent() {
 func (model *CLIModel) accountHistoryContent() string {
 	state := model.accountHistory
 	if state == nil {
-		return "Local history is unavailable."
+		return localization.Get("hist_unavailable")
 	}
 	var content strings.Builder
-	content.WriteString(lipgloss.NewStyle().Bold(true).Render("Local EVM Activity"))
-	content.WriteString("\nOutgoing transactions created by this wallet for the selected address. This is not complete on-chain history.\n")
-	_, _ = fmt.Fprintf(&content, "Address: %s\nPage: %d", state.sender.Hex(), state.pageNumber)
+	content.WriteString(lipgloss.NewStyle().Bold(true).Render(localization.Get("hist_title")))
+	content.WriteString("\n" + localization.Get("hist_subtitle") + "\n")
+	_, _ = content.WriteString(localization.T("hist_address_page", map[string]interface{}{"Address": state.sender.Hex(), "Page": state.pageNumber}))
 	if state.loading {
-		content.WriteString("\n\nLoading local history and analytics...")
+		content.WriteString("\n\n" + localization.Get("hist_loading"))
 		return content.String()
 	}
 	if state.err != "" {
-		content.WriteString("\n\nHistory unavailable: " + safeInline(state.err) + "\nPress r to retry.")
+		content.WriteString("\n\n" + localization.T("hist_unavailable_detail", map[string]interface{}{"Error": safeInline(state.err)}))
 		return content.String()
 	}
-	_, _ = fmt.Fprintf(&content, "\n\nAnalytics\nTransactions: %d | Reorgs observed: %d", state.analytics.TransactionCount, state.analytics.ReorgCount)
+	_, _ = content.WriteString("\n\n" + localization.T("hist_analytics_line", map[string]interface{}{"Tx": state.analytics.TransactionCount, "Reorgs": state.analytics.ReorgCount}))
 	if len(state.analytics.States) > 0 {
-		content.WriteString("\nStates: ")
+		content.WriteString("\n" + localization.Get("hist_states_prefix"))
 		content.WriteString(formatAnalyticsCounts(state.analytics.States))
 	}
 	if len(state.analytics.Operations) > 0 {
-		content.WriteString("\nOperations: ")
+		content.WriteString("\n" + localization.Get("hist_operations_prefix"))
 		content.WriteString(formatAnalyticsCounts(state.analytics.Operations))
 	}
 	for _, fee := range state.analytics.Fees {
-		_, _ = fmt.Fprintf(&content, "\nChain %d receipt fees: %s wei across %d transactions", fee.ChainID, historyAmountString(fee.ActualFee), fee.TransactionCount)
+		_, _ = content.WriteString("\n" + localization.T("hist_fee_line", map[string]interface{}{"Chain": fee.ChainID, "Fee": historyAmountString(fee.ActualFee), "Count": fee.TransactionCount}))
 	}
 	if len(state.analytics.Assets) > 0 {
-		content.WriteString("\nIntent amounts by chain, operation, and asset:")
+		content.WriteString("\n" + localization.Get("hist_assets_header"))
 		for _, asset := range state.analytics.Assets {
 			assetName := asset.AssetContract.Hex()
 			if asset.AssetContract == (common.Address{}) {
-				assetName = "native"
+				assetName = localization.Get("hist_asset_native")
 			}
-			_, _ = fmt.Fprintf(&content, "\n  Chain %d | %s | %s | amount %s | %d records", asset.ChainID, safeShort(string(asset.Operation)), assetName, historyAmountString(asset.Amount), asset.TransactionCount)
+			_, _ = content.WriteString("\n" + localization.T("hist_asset_line", map[string]interface{}{"Chain": asset.ChainID, "Op": safeShort(string(asset.Operation)), "Asset": assetName, "Amount": historyAmountString(asset.Amount), "Count": asset.TransactionCount}))
 		}
 	}
-	content.WriteString("\n\nTransactions")
+	content.WriteString("\n\n" + localization.Get("hist_tx_header"))
 	if len(state.page.Entries) == 0 {
-		content.WriteString("\nNo local outgoing transactions were found for this address.")
+		content.WriteString("\n" + localization.Get("hist_no_transactions"))
 		return content.String()
 	}
 	for _, entry := range state.page.Entries {
-		_, _ = fmt.Fprintf(&content, "\n\n%s | Chain %d | %s | %s", entry.CreatedAt.Format("2006-01-02 15:04:05"), entry.ChainID, safeShort(string(entry.Operation)), safeShort(string(entry.State)))
+		_, _ = fmt.Fprintf(&content, "\n\n%s", localization.T("hist_entry_line", map[string]interface{}{"When": entry.CreatedAt.Format("2006-01-02 15:04:05"), "Chain": entry.ChainID, "Op": safeShort(string(entry.Operation)), "State": safeShort(string(entry.State))}))
 		if entry.Operation == evm.OperationERC721SafeTransfer {
-			_, _ = fmt.Fprintf(&content, "\n  Token ID: %s | Contract: %s", historyAmountString(entry.AssetAmount), historyAssetLabel(entry.AssetContract))
+			_, _ = content.WriteString("\n" + localization.T("hist_token_line", map[string]interface{}{"ID": historyAmountString(entry.AssetAmount), "Contract": historyAssetLabel(entry.AssetContract)}))
 		} else {
-			_, _ = fmt.Fprintf(&content, "\n  Amount: %s | Asset: %s", historyAmountString(entry.AssetAmount), historyAssetLabel(entry.AssetContract))
+			_, _ = content.WriteString("\n" + localization.T("hist_amount_line", map[string]interface{}{"Amount": historyAmountString(entry.AssetAmount), "Asset": historyAssetLabel(entry.AssetContract)}))
 		}
-		_, _ = fmt.Fprintf(&content, "\n  To: %s | Nonce: %d", entry.Counterparty.Hex(), entry.Nonce)
+		_, _ = content.WriteString("\n" + localization.T("hist_to_line", map[string]interface{}{"To": entry.Counterparty.Hex(), "Nonce": entry.Nonce}))
 		if entry.TransactionHash != (common.Hash{}) {
-			content.WriteString("\n  Tx: " + entry.TransactionHash.Hex())
+			content.WriteString("\n" + localization.Get("hist_tx_prefix") + entry.TransactionHash.Hex())
 		}
 		if entry.Receipt != nil {
-			_, _ = fmt.Fprintf(&content, "\n  Receipt: block %d | fee %s wei | confirmations %d/%d", entry.Receipt.BlockNumber, historyAmountString(entry.Receipt.ActualFee), entry.Confirmations, entry.ConfirmationTarget)
+			_, _ = content.WriteString("\n" + localization.T("hist_receipt_line", map[string]interface{}{"Block": entry.Receipt.BlockNumber, "Fee": historyAmountString(entry.Receipt.ActualFee), "Conf": entry.Confirmations, "Target": entry.ConfirmationTarget}))
 		}
 		if entry.LastResultCode != "" {
-			content.WriteString("\n  Result: " + safeInline(entry.LastResultCode))
+			content.WriteString("\n" + localization.Get("hist_result_prefix") + safeInline(entry.LastResultCode))
 		}
 		if entry.ReorgCount > 0 {
-			_, _ = fmt.Fprintf(&content, "\n  Reorg observations: %d", entry.ReorgCount)
+			_, _ = content.WriteString("\n" + localization.T("hist_reorg_line", map[string]interface{}{"Count": entry.ReorgCount}))
 		}
 	}
 	return content.String()
@@ -290,7 +291,7 @@ func (model *CLIModel) accountHistoryContent() string {
 
 func (model *CLIModel) viewAccountHistory() string {
 	if model.accountHistory == nil {
-		return "Local history is unavailable."
+		return localization.Get("hist_unavailable")
 	}
 	return model.accountHistory.viewport.View() + "\n" + model.accountHistory.help.View(model.accountHistory.keys)
 }
@@ -313,14 +314,14 @@ func formatAnalyticsCounts(counts []evm.AnalyticsCount) string {
 
 func historyAmountString(amount *big.Int) string {
 	if amount == nil {
-		return "unavailable"
+		return localization.Get("hist_amount_unavailable")
 	}
 	return amount.String()
 }
 
 func historyAssetLabel(contract common.Address) string {
 	if contract == (common.Address{}) {
-		return "native"
+		return localization.Get("hist_asset_native")
 	}
 	return contract.Hex()
 }

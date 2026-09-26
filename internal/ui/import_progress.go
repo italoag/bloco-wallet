@@ -5,6 +5,8 @@ import (
 	"strings"
 	"time"
 
+	"blocowallet/pkg/localization"
+
 	"github.com/charmbracelet/bubbles/progress"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -157,7 +159,7 @@ func (m ImportProgressModel) View() string {
 	var sections []string
 
 	// Title section
-	title := m.styles.MenuTitle.Render("Import Progress")
+	title := m.styles.MenuTitle.Render(localization.Get("ip_title"))
 	sections = append(sections, title)
 
 	// Progress bar section
@@ -170,15 +172,17 @@ func (m ImportProgressModel) View() string {
 		percentage = float64(m.processedFiles) / float64(m.totalFiles) * 100
 	}
 
-	stats := fmt.Sprintf("Progress: %d/%d files (%.1f%%)",
-		m.processedFiles, m.totalFiles, percentage)
+	stats := localization.T("ip_progress_stats", map[string]interface{}{
+		"Done": m.processedFiles, "Total": m.totalFiles,
+		"Percent": fmt.Sprintf("%.1f", percentage),
+	})
 	sections = append(sections, m.styles.MenuDesc.Render(stats))
 
 	// Current file being processed
 	if m.currentFile != "" && !m.completed {
-		currentFileText := fmt.Sprintf("Processing: %s", safeShort(m.currentFile))
+		currentFileText := localization.T("ip_processing", map[string]interface{}{"File": safeShort(m.currentFile)})
 		if m.paused {
-			currentFileText = fmt.Sprintf("Paused on: %s", safeShort(m.currentFile))
+			currentFileText = localization.T("ip_paused_on", map[string]interface{}{"File": safeShort(m.currentFile)})
 			if m.pauseReason != "" {
 				currentFileText += fmt.Sprintf(" (%s)", safeInline(m.pauseReason))
 			}
@@ -191,28 +195,29 @@ func (m ImportProgressModel) View() string {
 		elapsed := m.elapsed
 		successCount := m.processedFiles - len(m.errors)
 
-		statusText := fmt.Sprintf("✓ Import completed in %v", elapsed.Round(time.Second))
+		statusText := localization.T("ip_completed", map[string]interface{}{"Elapsed": elapsed.Round(time.Second)})
 		sections = append(sections, m.styles.SuccessStyle.Render(statusText))
 
-		summaryText := fmt.Sprintf("Success: %d, Failed: %d, Skipped: %d",
-			successCount, m.getFailedCount(), m.getSkippedCount())
+		summaryText := localization.T("ip_summary", map[string]interface{}{
+			"Success": successCount, "Failed": m.getFailedCount(), "Skipped": m.getSkippedCount(),
+		})
 		sections = append(sections, m.styles.MenuDesc.Render(summaryText))
 	} else if m.paused {
-		statusText := "⏸ Import paused"
+		statusText := localization.Get("ip_paused")
 		if m.pauseReason != "" {
 			statusText += fmt.Sprintf(" - %s", safeInline(m.pauseReason))
 		}
 		sections = append(sections, m.styles.MenuDesc.Render(statusText))
 	} else {
 		elapsed := m.elapsed
-		statusText := fmt.Sprintf("⏳ Importing... (elapsed: %v)", elapsed.Round(time.Second))
+		statusText := localization.T("ip_importing", map[string]interface{}{"Elapsed": elapsed.Round(time.Second)})
 		sections = append(sections, m.styles.MenuDesc.Render(statusText))
 	}
 
 	// Error summary (if any errors occurred)
 	if len(m.errors) > 0 {
 		sections = append(sections, "")
-		errorTitle := m.styles.ErrorStyle.Render("Errors:")
+		errorTitle := m.styles.ErrorStyle.Render(localization.Get("ip_errors_title"))
 		sections = append(sections, errorTitle)
 
 		// Show up to 3 most recent errors
@@ -220,16 +225,16 @@ func (m ImportProgressModel) View() string {
 		startIdx := 0
 		if errorCount > 3 {
 			startIdx = errorCount - 3
-			sections = append(sections, m.styles.MenuDesc.Render(fmt.Sprintf("... and %d more errors", startIdx)))
+			sections = append(sections, m.styles.MenuDesc.Render(localization.T("ip_more_errors", map[string]interface{}{"Count": startIdx})))
 		}
 
 		for i := startIdx; i < errorCount; i++ {
 			err := m.errors[i]
-			errorType := "Failed"
+			errorType := localization.Get("eimp_error_failed")
 			if err.Skipped {
-				errorType = "Skipped"
+				errorType = localization.Get("eimp_error_skipped")
 			}
-			errorText := fmt.Sprintf("• %s: %s - %s", safeShort(errorType), safeShort(err.File), safeError(err.Error))
+			errorText := localization.T("ip_error_line", map[string]interface{}{"Type": safeShort(errorType), "File": safeShort(err.File), "Error": safeError(err.Error)})
 			sections = append(sections, m.styles.MenuDesc.Render(errorText))
 		}
 	}
@@ -237,11 +242,11 @@ func (m ImportProgressModel) View() string {
 	// Instructions
 	if !m.completed {
 		sections = append(sections, "")
-		instructions := "Press ESC to cancel import"
+		instructions := localization.Get("ip_cancel_hint")
 		sections = append(sections, m.styles.MenuDesc.Render(instructions))
 	} else {
 		sections = append(sections, "")
-		instructions := "Press ENTER to continue or R to retry failed imports"
+		instructions := localization.Get("ip_continue_hint")
 		sections = append(sections, m.styles.MenuDesc.Render(instructions))
 	}
 
@@ -379,16 +384,16 @@ func (m ImportProgressModel) GetSummaryText() string {
 	elapsed := m.elapsed
 
 	var parts []string
-	parts = append(parts, fmt.Sprintf("Import completed in %v", elapsed.Round(time.Second)))
-	parts = append(parts, fmt.Sprintf("Total files: %d", m.totalFiles))
-	parts = append(parts, fmt.Sprintf("Successful: %d", successCount))
+	parts = append(parts, localization.T("ip_completed_in", map[string]interface{}{"Elapsed": elapsed.Round(time.Second)}))
+	parts = append(parts, localization.T("ip_total_files", map[string]interface{}{"Count": m.totalFiles}))
+	parts = append(parts, localization.T("ip_successful", map[string]interface{}{"Count": successCount}))
 
 	if failedCount > 0 {
-		parts = append(parts, fmt.Sprintf("Failed: %d", failedCount))
+		parts = append(parts, localization.T("ip_failed_count", map[string]interface{}{"Count": failedCount}))
 	}
 
 	if skippedCount > 0 {
-		parts = append(parts, fmt.Sprintf("Skipped: %d", skippedCount))
+		parts = append(parts, localization.T("ip_skipped_count", map[string]interface{}{"Count": skippedCount}))
 	}
 
 	return strings.Join(parts, "\n")

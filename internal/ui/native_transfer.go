@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"sort"
@@ -13,6 +14,7 @@ import (
 	"blocowallet/internal/evm"
 	"blocowallet/internal/wallet"
 	"blocowallet/pkg/config"
+	"blocowallet/pkg/localization"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -160,23 +162,23 @@ func (model *CLIModel) initERC1155BatchTransfer() {
 func parseERC1155BatchEffects(value string) ([]evm.EffectEntry, error) {
 	var pairs [][]string
 	if err := json.Unmarshal([]byte(value), &pairs); err != nil {
-		return nil, fmt.Errorf("effects must be JSON like [[id,amount],...]")
+		return nil, errors.New(localization.Get("tx_effects_json"))
 	}
 	if len(pairs) == 0 || len(pairs) > 64 {
-		return nil, fmt.Errorf("effects must contain between 1 and 64 pairs")
+		return nil, errors.New(localization.Get("tx_effects_count"))
 	}
 	effects := make([]evm.EffectEntry, 0, len(pairs))
 	for _, pair := range pairs {
 		if len(pair) != 2 {
-			return nil, fmt.Errorf("each effect must be [id, amount]")
+			return nil, errors.New(localization.Get("tx_effect_pair"))
 		}
 		tokenID, ok := new(big.Int).SetString(strings.TrimSpace(pair[0]), 10)
 		if !ok || tokenID.Sign() < 0 || tokenID.BitLen() > 256 {
-			return nil, fmt.Errorf("token ID must be an exact unsigned base-10 integer")
+			return nil, errors.New(localization.Get("tx_token_id_uint"))
 		}
 		amount, ok := new(big.Int).SetString(strings.TrimSpace(pair[1]), 10)
 		if !ok || amount.Sign() <= 0 || amount.BitLen() > 256 {
-			return nil, fmt.Errorf("amount must be an exact positive base-10 integer")
+			return nil, errors.New(localization.Get("tx_amount_positive"))
 		}
 		effects = append(effects, evm.EffectEntry{TokenID: tokenID, Amount: amount})
 	}
@@ -195,28 +197,28 @@ func (model *CLIModel) initTransactionTransfer(operation evm.Operation) {
 	}
 	sort.Slice(choices, func(left, right int) bool { return choices[left].key < choices[right].key })
 	contractInput := textinput.New()
-	contractInput.Placeholder = "0x token contract"
+	contractInput.Placeholder = localization.Get("tx_contract_placeholder")
 	contractInput.CharLimit = 42
 	contractInput.Width = 44
 	recipientInput := textinput.New()
-	recipientInput.Placeholder = "0x recipient address"
+	recipientInput.Placeholder = localization.Get("tx_recipient_placeholder")
 	recipientInput.CharLimit = 42
 	recipientInput.Width = 44
 	amountInput := textinput.New()
-	amountInput.Placeholder = "Amount"
+	amountInput.Placeholder = localization.Get("tx_amount_placeholder")
 	if operation == evm.OperationERC721SafeTransfer {
-		amountInput.Placeholder = "Token ID"
+		amountInput.Placeholder = localization.Get("tx_token_id_placeholder")
 	}
 	amountInput.CharLimit = 96
 	amountInput.Width = 32
 	passwordInput := textinput.New()
-	passwordInput.Placeholder = "Storage password"
+	passwordInput.Placeholder = localization.Get("sign_storage_password_placeholder")
 	passwordInput.EchoMode = textinput.EchoPassword
 	passwordInput.EchoCharacter = '•'
 	passwordInput.CharLimit = constants.PasswordCharLimit
 	passwordInput.Width = constants.PasswordWidth
 	confirmationInput := textinput.New()
-	confirmationInput.Placeholder = "Type APPROVE"
+	confirmationInput.Placeholder = localization.Get("call_approve_placeholder")
 	confirmationInput.CharLimit = 16
 	confirmationInput.Width = 20
 	state := &nativeTransferState{
@@ -226,7 +228,7 @@ func (model *CLIModel) initTransactionTransfer(operation evm.Operation) {
 		passwordInput: passwordInput, confirmationInput: confirmationInput,
 	}
 	if len(choices) == 0 {
-		state.err = "No active network with validated native currency metadata is configured"
+		state.err = localization.Get("tx_no_network")
 	}
 	model.nativeTransfer = state
 }
@@ -368,7 +370,7 @@ func (model *CLIModel) updateNativeTransfer(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if message.String() == "enter" {
 				value := strings.TrimSpace(state.contractInput.Value())
 				if !common.IsHexAddress(value) || len(value) != 42 || common.HexToAddress(value) == (common.Address{}) {
-					state.err = "Token contract must be a non-zero 20-byte EVM address"
+					state.err = localization.Get("tx_err_contract")
 					return model, nil
 				}
 				state.contract = common.HexToAddress(value)
@@ -385,12 +387,12 @@ func (model *CLIModel) updateNativeTransfer(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if message.String() == "enter" {
 				value := strings.TrimSpace(state.recipientInput.Value())
 				if !common.IsHexAddress(value) || len(value) != 42 {
-					state.err = "Recipient must be a 20-byte EVM address"
+					state.err = localization.Get("tx_err_recipient")
 					return model, nil
 				}
 				state.recipient = common.HexToAddress(value)
 				if state.recipient == common.HexToAddress(state.account.Address) {
-					state.err = "Recipient must differ from sender"
+					state.err = localization.Get("tx_err_recipient_same")
 					return model, nil
 				}
 				state.err = ""
@@ -413,7 +415,7 @@ func (model *CLIModel) updateNativeTransfer(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if message.String() == "enter" {
 				tokenID, ok := new(big.Int).SetString(strings.TrimSpace(state.amountInput.Value()), 10)
 				if !ok || tokenID.Sign() < 0 || tokenID.BitLen() > 256 {
-					state.err = "Token ID must be an exact unsigned base-10 integer"
+					state.err = localization.Get("tx_err_token_id")
 					return model, nil
 				}
 				state.tokenID = tokenID
@@ -478,7 +480,7 @@ func (model *CLIModel) updateNativeTransfer(msg tea.Msg) (tea.Model, tea.Cmd) {
 				} else {
 					amount, _ = new(big.Int).SetString(amountText, 10)
 					if amount == nil || amount.Sign() < 0 || amount.BitLen() > 256 || (state.operation == evm.OperationERC20Transfer && amount.Sign() == 0) {
-						err = fmt.Errorf("token amount must be an exact unsigned base-unit integer")
+						err = errors.New(localization.Get("tx_amount_uint"))
 					}
 				}
 				if err != nil {
@@ -487,7 +489,7 @@ func (model *CLIModel) updateNativeTransfer(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				operationID, err := evm.NewOperationID()
 				if err != nil {
-					state.err = "Unable to create transaction operation"
+					state.err = localization.Get("tx_err_create_op")
 					return model, nil
 				}
 				state.err = ""
@@ -535,7 +537,7 @@ func (model *CLIModel) updateNativeTransfer(msg tea.Msg) (tea.Model, tea.Cmd) {
 							ChainID: uint64(choice.network.ChainID), From: from, Contract: contract, To: recipient, TokenID: state.tokenID, Amount: amount,
 						})
 					default:
-						prepareErr = fmt.Errorf("unsupported transaction operation")
+						prepareErr = errors.New(localization.Get("tx_unsupported_op"))
 					}
 					if prepareErr == nil && ctx.Err() != nil && prepared != nil {
 						_ = engine.CancelPrepared(context.Background(), prepared, "user_cancelled")
@@ -560,7 +562,7 @@ func (model *CLIModel) updateNativeTransfer(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case nativeTransferReinforced:
 			if message.String() == "enter" {
 				if state.confirmationInput.Value() != "APPROVE" {
-					state.err = "Type APPROVE exactly to reinforce this spender approval"
+					state.err = localization.Get("tx_err_type_approve_spender")
 					return model, nil
 				}
 				state.confirmationInput.SetValue("")
@@ -579,7 +581,7 @@ func (model *CLIModel) updateNativeTransfer(msg tea.Msg) (tea.Model, tea.Cmd) {
 				authorizer := model.transactionAuthorizer
 				accountID := state.account.AccountID
 				if authorizer == nil || (len(password) == 0 && !authorizer.HasActiveSession(context.Background(), accountID)) {
-					state.err = "Password is required unless a temporary session is active"
+					state.err = localization.Get("call_err_password_session")
 					state.passwordInput.Focus()
 					return model, nil
 				}
@@ -676,21 +678,21 @@ func nativeTrackCommand(state *nativeTransferState) tea.Cmd {
 func (model *CLIModel) viewNativeTransfer() string {
 	state := model.nativeTransfer
 	if state == nil {
-		return "Transaction flow is unavailable"
+		return localization.Get("tx_unavailable")
 	}
 	var builder strings.Builder
-	title := "Send native asset"
+	title := localization.Get("tx_title_native")
 	switch state.operation {
 	case evm.OperationERC20Transfer:
-		title = "Send ERC-20 token"
+		title = localization.Get("tx_title_erc20")
 	case evm.OperationERC20Approve:
-		title = "Approve ERC-20 spender"
+		title = localization.Get("tx_title_approve")
 	case evm.OperationERC721SafeTransfer:
-		title = "Send ERC-721 token"
+		title = localization.Get("tx_title_erc721")
 	case evm.OperationERC1155SafeTransfer:
-		title = "Send ERC-1155 token"
+		title = localization.Get("tx_title_erc1155")
 	case evm.OperationERC1155BatchTransfer:
-		title = "Send ERC-1155 batch"
+		title = localization.Get("tx_title_erc1155_batch")
 	}
 	builder.WriteString(title + "\n\n")
 	if state.err != "" {
@@ -699,110 +701,110 @@ func (model *CLIModel) viewNativeTransfer() string {
 	}
 	switch state.phase {
 	case nativeTransferSelectNetwork:
-		builder.WriteString("Select network:\n")
+		builder.WriteString(localization.Get("call_select_network") + "\n")
 		for index, choice := range state.networks {
 			prefix := "  "
 			if index == state.selected {
 				prefix = "> "
 			}
-			_, _ = fmt.Fprintf(&builder, "%s%s (%d) %s\n", prefix, safeShort(choice.network.Name), choice.network.ChainID, safeShort(choice.network.Symbol))
+			_, _ = builder.WriteString(prefix + safeShort(choice.network.Name) + localization.T("tx_network_line_suffix", map[string]interface{}{"ID": choice.network.ChainID, "Symbol": safeShort(choice.network.Symbol)}) + "\n")
 		}
-		builder.WriteString("\nEnter: select • Esc: back")
+		builder.WriteString("\n" + localization.Get("call_enter_select_esc"))
 	case nativeTransferConnecting:
-		builder.WriteString("Validating provider and chain identity...")
+		builder.WriteString(localization.Get("tx_validating"))
 	case nativeTransferEnterContract:
-		builder.WriteString("Token contract:\n" + state.contractInput.View() + "\n\nEnter: continue • Esc: back")
+		builder.WriteString(localization.Get("tx_token_contract_label") + "\n" + state.contractInput.View() + "\n\n" + localization.Get("call_enter_continue_esc"))
 	case nativeTransferEnterRecipient:
-		label := "Recipient"
+		label := localization.Get("tx_recipient_label")
 		if state.operation == evm.OperationERC20Approve {
-			label = "Spender"
+			label = localization.Get("tx_spender_label")
 		}
-		builder.WriteString(label + ":\n" + state.recipientInput.View() + "\n\nEnter: continue • Esc: back")
+		builder.WriteString(label + ":\n" + state.recipientInput.View() + "\n\n" + localization.Get("call_enter_continue_esc"))
 	case nativeTransferEnterTokenID:
-		builder.WriteString("Token ID (exact base-10 identifier):\n" + state.amountInput.View() + "\n\nEnter: continue • Esc: back")
+		builder.WriteString(localization.Get("tx_token_id_label") + "\n" + state.amountInput.View() + "\n\n" + localization.Get("call_enter_continue_esc"))
 	case nativeTransferEnterEffects:
-		builder.WriteString("Effects as JSON pairs [[id,amount],...] (max 64):\n" + state.amountInput.View() + "\n\nEnter: prepare and simulate • Esc: back")
+		builder.WriteString(localization.Get("tx_effects_label") + "\n" + state.amountInput.View() + "\n\n" + localization.Get("tx_enter_prepare_esc"))
 	case nativeTransferEnterAmount:
 		switch state.operation {
 		case evm.OperationNativeTransfer:
 			choice := state.networks[state.selected]
-			builder.WriteString("Amount (" + safeShort(choice.network.Symbol) + "):\n" + state.amountInput.View() + "\n\nEnter: prepare and simulate • Esc: back")
+			builder.WriteString(localization.T("tx_amount_symbol", map[string]interface{}{"Symbol": safeShort(choice.network.Symbol)}) + "\n" + state.amountInput.View() + "\n\n" + localization.Get("tx_enter_prepare_esc"))
 		case evm.OperationERC721SafeTransfer:
-			builder.WriteString("Token ID (exact base-10 identifier):\n" + state.amountInput.View() + "\n\nEnter: prepare and simulate • Esc: back")
+			builder.WriteString(localization.Get("tx_token_id_label") + "\n" + state.amountInput.View() + "\n\n" + localization.Get("tx_enter_prepare_esc"))
 		case evm.OperationERC1155SafeTransfer:
-			builder.WriteString("Amount in exact base units:\n" + state.amountInput.View() + "\n\nEnter: prepare and simulate • Esc: back")
+			builder.WriteString(localization.Get("tx_amount_base") + "\n" + state.amountInput.View() + "\n\n" + localization.Get("tx_enter_prepare_esc"))
 		default:
-			builder.WriteString("Token amount in exact base units:\n" + state.amountInput.View() + "\n\nEnter: prepare and simulate • Esc: back")
+			builder.WriteString(localization.Get("tx_token_amount_base") + "\n" + state.amountInput.View() + "\n\n" + localization.Get("tx_enter_prepare_esc"))
 		}
 	case nativeTransferPreparing:
-		builder.WriteString("Reserving nonce, estimating fees, and simulating...")
+		builder.WriteString(localization.Get("tx_preparing"))
 	case nativeTransferPreview:
 		plan := state.prepared.Plan()
 		transaction := plan.Transaction()
 		blockNumber, blockHash := plan.SimulationBlock()
-		builder.WriteString("Review exact transaction\n")
-		_, _ = fmt.Fprintf(&builder, "Network: %s (chain %s)\n", safeShort(state.networks[state.selected].network.Name), plan.ChainID())
-		_, _ = fmt.Fprintf(&builder, "Operation: %s\nFrom: %s\n", safeShort(string(plan.Operation())), safeShort(plan.From().Hex()))
+		builder.WriteString(localization.Get("tx_review") + "\n")
+		_, _ = builder.WriteString(localization.T("tx_network_line", map[string]interface{}{"Name": safeShort(state.networks[state.selected].network.Name), "Chain": plan.ChainID()}) + "\n")
+		_, _ = builder.WriteString(localization.T("tx_op_from", map[string]interface{}{"Op": safeShort(string(plan.Operation())), "From": safeShort(plan.From().Hex())}) + "\n")
 		switch state.operation {
 		case evm.OperationNativeTransfer:
 			decimals := uint8(state.networks[state.selected].network.NativeDecimals)
-			_, _ = fmt.Fprintf(&builder, "To: %s\nAmount: %s wei (%s %s)\n", safeShort(transaction.To().Hex()), plan.Amount(), evm.FormatUnits(plan.Amount(), decimals), safeShort(state.networks[state.selected].network.Symbol))
+			_, _ = builder.WriteString(localization.T("tx_native_line", map[string]interface{}{"To": safeShort(transaction.To().Hex()), "Wei": plan.Amount(), "Amount": evm.FormatUnits(plan.Amount(), decimals), "Symbol": safeShort(state.networks[state.selected].network.Symbol)}) + "\n")
 		case evm.OperationERC721SafeTransfer:
 			asset := plan.Asset()
-			_, _ = fmt.Fprintf(&builder, "Contract: %s\nRecipient: %s\nToken ID: %s\nCalldata: 0x%x\n", safeShort(asset.Contract.Hex()), safeShort(plan.Counterparty().Hex()), plan.TokenID(), transaction.Data())
+			_, _ = builder.WriteString(localization.T("tx_erc721_line", map[string]interface{}{"Contract": safeShort(asset.Contract.Hex()), "Recipient": safeShort(plan.Counterparty().Hex()), "TokenID": plan.TokenID()}) + "\n" + renderCalldataLine(transaction.Data()) + "\n")
 		case evm.OperationERC1155SafeTransfer:
 			asset := plan.Asset()
-			_, _ = fmt.Fprintf(&builder, "Contract: %s\nRecipient: %s\nToken ID: %s\nAmount: %s\nCalldata: 0x%x\n", safeShort(asset.Contract.Hex()), safeShort(plan.Counterparty().Hex()), plan.TokenID(), plan.Amount(), transaction.Data())
+			_, _ = builder.WriteString(localization.T("tx_erc1155_line", map[string]interface{}{"Contract": safeShort(asset.Contract.Hex()), "Recipient": safeShort(plan.Counterparty().Hex()), "TokenID": plan.TokenID(), "Amount": plan.Amount()}) + "\n" + renderCalldataLine(transaction.Data()) + "\n")
 		case evm.OperationERC1155BatchTransfer:
 			asset := plan.Asset()
-			_, _ = fmt.Fprintf(&builder, "Contract: %s\nRecipient: %s\nEffects:\n", safeShort(asset.Contract.Hex()), safeShort(plan.Counterparty().Hex()))
+			_, _ = builder.WriteString(localization.T("tx_effects_header", map[string]interface{}{"Contract": safeShort(asset.Contract.Hex()), "Recipient": safeShort(plan.Counterparty().Hex())}) + "\n")
 			for _, effect := range plan.Effects() {
-				_, _ = fmt.Fprintf(&builder, "  Token ID %s × %s\n", effect.TokenID, effect.Amount)
+				_, _ = builder.WriteString(localization.T("tx_effect_line", map[string]interface{}{"ID": effect.TokenID, "Amount": effect.Amount}) + "\n")
 			}
-			_, _ = fmt.Fprintf(&builder, "Calldata: 0x%x\n", transaction.Data())
+			_, _ = builder.WriteString(renderCalldataLine(transaction.Data()) + "\n")
 		default:
 			asset := plan.Asset()
-			counterpartyLabel := "Recipient"
+			counterpartyLabel := localization.Get("tx_recipient_label")
 			if state.operation == evm.OperationERC20Approve {
-				counterpartyLabel = "Spender"
+				counterpartyLabel = localization.Get("tx_spender_label")
 			}
-			_, _ = fmt.Fprintf(&builder, "Contract: %s\n%s: %s\nToken: %s (%s), decimals %d\nRaw amount: %s\nCalldata: 0x%x\n", safeShort(asset.Contract.Hex()), counterpartyLabel, safeShort(plan.Counterparty().Hex()), safeShort(asset.Name), safeShort(asset.Symbol), asset.Decimals, plan.Amount(), transaction.Data())
+			_, _ = builder.WriteString(localization.T("tx_default_line", map[string]interface{}{"Contract": safeShort(asset.Contract.Hex()), "Label": counterpartyLabel, "To": safeShort(plan.Counterparty().Hex()), "Name": safeShort(asset.Name), "Symbol": safeShort(asset.Symbol), "Decimals": asset.Decimals, "Amount": plan.Amount()}) + "\n" + renderCalldataLine(transaction.Data()) + "\n")
 		}
-		_, _ = fmt.Fprintf(&builder, "Nonce: %d\nGas limit: %d\n", transaction.Nonce(), transaction.Gas())
+		_, _ = builder.WriteString(localization.T("call_nonce_gas", map[string]interface{}{"Nonce": transaction.Nonce(), "Gas": transaction.Gas()}))
 		if transaction.Type() == 2 {
-			_, _ = fmt.Fprintf(&builder, "Max fee per gas: %s wei\nPriority fee per gas: %s wei\n", transaction.GasFeeCap(), transaction.GasTipCap())
+			_, _ = builder.WriteString(localization.T("tx_fee_eip1559", map[string]interface{}{"Fee": transaction.GasFeeCap(), "Tip": transaction.GasTipCap()}) + "\n")
 		} else {
-			_, _ = fmt.Fprintf(&builder, "Gas price: %s wei\n", transaction.GasPrice())
+			_, _ = builder.WriteString(localization.T("tx_fee_legacy", map[string]interface{}{"Price": transaction.GasPrice()}) + "\n")
 		}
 		maximumGasCost := plan.MaximumGasCost()
 		maximumDebit := new(big.Int).Add(transaction.Value(), maximumGasCost)
 		nativeDecimals := uint8(state.networks[state.selected].network.NativeDecimals)
 		nativeSymbol := safeShort(state.networks[state.selected].network.Symbol)
-		_, _ = fmt.Fprintf(&builder, "Maximum gas cost: %s wei (%s %s)\nMaximum total debit: %s wei (%s %s)\n", maximumGasCost, evm.FormatUnits(maximumGasCost, nativeDecimals), nativeSymbol, maximumDebit, evm.FormatUnits(maximumDebit, nativeDecimals), nativeSymbol)
-		_, _ = fmt.Fprintf(&builder, "Confirmation target: %d blocks\n", state.confirmationTarget)
-		_, _ = fmt.Fprintf(&builder, "Simulation block: %d (%s)\nSimulation/policy commitment: %s\nPlan: 0x%x\nDigest: 0x%x\n", blockNumber, safeShort(blockHash.Hex()), safeShort(plan.SimulationResultHash().Hex()), plan.PlanHash(), plan.TransactionDigest())
+		_, _ = builder.WriteString(localization.T("tx_max_lines", map[string]interface{}{"Gas": maximumGasCost, "GasFmt": evm.FormatUnits(maximumGasCost, nativeDecimals), "Debit": maximumDebit, "DebitFmt": evm.FormatUnits(maximumDebit, nativeDecimals), "Symbol": nativeSymbol}) + "\n")
+		_, _ = builder.WriteString(localization.T("tx_conf_target", map[string]interface{}{"Blocks": state.confirmationTarget}) + "\n")
+		_, _ = builder.WriteString(localization.T("tx_simulation", map[string]interface{}{"Block": blockNumber, "Hash": safeShort(blockHash.Hex()), "Commit": safeShort(plan.SimulationResultHash().Hex()), "Plan": fmt.Sprintf("%x", plan.PlanHash()), "Digest": fmt.Sprintf("%x", plan.TransactionDigest())}) + "\n")
 		for _, finding := range state.prepared.Findings() {
-			_, _ = fmt.Fprintf(&builder, "Risk [%s]: %s (%s)\n", safeShort(string(finding.Severity)), safeShort(string(finding.ID)), safeShort(finding.Subject.Hex()))
+			_, _ = builder.WriteString(localization.T("call_risk_line", map[string]interface{}{"Severity": safeShort(string(finding.Severity)), "ID": safeShort(string(finding.ID)), "Subject": safeShort(finding.Subject.Hex())}))
 		}
-		builder.WriteString("\nEnter: approve exact structured intent • Esc: cancel")
+		builder.WriteString("\n" + localization.Get("call_approve_intent"))
 	case nativeTransferReinforced:
-		builder.WriteString("Critical warning: this grants a contract permission to spend token units. Verify the spender independently.\n\nType APPROVE to perform the second confirmation:\n" + state.confirmationInput.View() + "\n\nEnter: continue • Esc: cancel")
+		builder.WriteString(localization.Get("tx_critical_approve") + "\n" + state.confirmationInput.View() + "\n\n" + localization.Get("call_enter_continue_esc"))
 	case nativeTransferPassword:
 		if state.account.SignerKind == wallet.SignerKindSoftware {
-			builder.WriteString("Enter storage password to sign this approved transaction:\n" + state.passwordInput.View() + "\n\nEnter: sign and broadcast • Esc: cancel")
+			builder.WriteString(localization.Get("call_enter_password") + "\n" + state.passwordInput.View() + "\n\n" + localization.Get("call_enter_sign_broadcast"))
 		} else {
-			builder.WriteString("Press Enter, then review and confirm the exact transaction on the external signer.\n\nEnter: continue • Esc: cancel")
+			builder.WriteString(localization.Get("call_external_review"))
 		}
 	case nativeTransferSubmitting:
-		builder.WriteString("Signing approved structured intent and broadcasting exact bytes...")
+		builder.WriteString(localization.Get("call_submitting"))
 	case nativeTransferTracking:
-		_, _ = fmt.Fprintf(&builder, "Transaction: %s\nTracking receipt and confirmations", safeShort(state.result.Hash.Hex()))
+		_, _ = builder.WriteString(localization.T("call_tracking_line", map[string]interface{}{"Hash": safeShort(state.result.Hash.Hex())}))
 		if state.tracking != nil {
-			_, _ = fmt.Fprintf(&builder, "\nState: %s\nConfirmations: %d/%d", safeShort(string(state.tracking.State)), state.tracking.Confirmations, state.confirmationTarget)
+			_, _ = builder.WriteString("\n" + localization.T("tx_tracking_state", map[string]interface{}{"State": safeShort(string(state.tracking.State)), "Conf": state.tracking.Confirmations, "Target": state.confirmationTarget}))
 		}
-		builder.WriteString("\n\nB: rebroadcast persisted bytes • Esc: return; tracking resumes after restart")
+		builder.WriteString("\n\n" + localization.Get("call_rebroadcast_hint"))
 	case nativeTransferComplete:
-		_, _ = fmt.Fprintf(&builder, "Transaction %s\nTransaction hash: %s\n\nEnter or Esc: return", safeShort(string(state.tracking.State)), safeShort(state.result.Hash.Hex()))
+		_, _ = builder.WriteString(localization.T("call_final_line", map[string]interface{}{"State": safeShort(string(state.tracking.State)), "Hash": safeShort(state.result.Hash.Hex())}))
 	}
 	return builder.String()
 }

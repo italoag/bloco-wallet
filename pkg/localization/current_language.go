@@ -1,14 +1,19 @@
 package localization
 
-// currentLanguage stores the current language code
-var currentLanguage string = "en" // Default to English
-
 // GetCurrentLanguage returns the current language code
 func GetCurrentLanguage() string {
-	return currentLanguage
+	st := ensureLocale()
+	if st == nil {
+		return "en"
+	}
+	return st.language
 }
 
 // SetCurrentLanguage sets the current language code
 func SetCurrentLanguage(lang string) {
-	currentLanguage = lang
+	cat, err := ensureCatalog()
+	if err != nil {
+		return
+	}
+	currentLocale.Store(stateForLanguage(cat, NormalizeLanguage(lang)))
 }

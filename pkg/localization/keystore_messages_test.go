@@ -61,7 +61,12 @@ func TestGetKeystoreErrorMessage(t *testing.T) {
 		{
 			name:     "Unknown error key",
 			key:      "unknown_error",
-			expected: "unknown_error", // Should return the key itself if not found
+			expected: "Unknown error",
+		},
+		{
+			name:     "Absent key",
+			key:      "definitely_absent_key",
+			expected: "definitely_absent_key", // Should return the key itself if not found
 		},
 	}
 

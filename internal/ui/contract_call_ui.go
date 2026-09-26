@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 	"sort"
@@ -11,6 +12,7 @@ import (
 	"blocowallet/internal/constants"
 	"blocowallet/internal/evm"
 	"blocowallet/internal/wallet"
+	"blocowallet/pkg/localization"
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
@@ -48,12 +50,12 @@ type contractCallKeyMap struct {
 
 func newContractCallKeyMap() contractCallKeyMap {
 	return contractCallKeyMap{
-		Up:      key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "previous network")),
-		Down:    key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "next network")),
-		Prev:    key.NewBinding(key.WithKeys("p"), key.WithHelp("p", "previous step")),
-		Next:    key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "next step")),
-		Approve: key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "approve and send")),
-		Back:    key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
+		Up:      key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", localization.Get("eip712_prev_network"))),
+		Down:    key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", localization.Get("eip712_next_network"))),
+		Prev:    key.NewBinding(key.WithKeys("p"), key.WithHelp("p", localization.Get("sign_prev_step"))),
+		Next:    key.NewBinding(key.WithKeys("n"), key.WithHelp("n", localization.Get("sign_next_step"))),
+		Approve: key.NewBinding(key.WithKeys("a"), key.WithHelp("a", localization.Get("call_approve_send"))),
+		Back:    key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", localization.Get("hist_back"))),
 	}
 }
 
@@ -129,23 +131,23 @@ func (model *CLIModel) initContractCall() {
 		input := textinput.New()
 		switch field {
 		case "contract":
-			input.Placeholder = "0x contract address"
+			input.Placeholder = localization.Get("call_addr_placeholder")
 			input.CharLimit = 42
 			input.Width = 44
 		case "abi":
-			input.Placeholder = "ABI JSON array"
+			input.Placeholder = localization.Get("call_abi_placeholder")
 			input.CharLimit = evm.MaxCallABIBytes
 			input.Width = 110
 		case "method":
-			input.Placeholder = "method name (e.g. deposit)"
+			input.Placeholder = localization.Get("call_method_placeholder")
 			input.CharLimit = 128
 			input.Width = 40
 		case "args":
-			input.Placeholder = "arguments JSON array (e.g. [\"0x…\",\"7\"])"
+			input.Placeholder = localization.Get("call_args_placeholder")
 			input.CharLimit = evm.MaxCallArgsJSON
 			input.Width = 110
 		case "value":
-			input.Placeholder = "Native value in base units (0 allowed)"
+			input.Placeholder = localization.Get("call_value_placeholder")
 			input.CharLimit = 96
 			input.Width = 32
 		}
@@ -153,7 +155,7 @@ func (model *CLIModel) initContractCall() {
 	}
 	state.help.Width = max(40, model.width-6)
 	if len(choices) == 0 {
-		state.err = "No active network with chain ID is configured"
+		state.err = localization.Get("eip712_no_network")
 	}
 	model.contractCall = state
 	model.currentView = constants.ContractCallView
@@ -261,7 +263,7 @@ func (model *CLIModel) updateContractCall(message tea.Msg) (tea.Model, tea.Cmd) 
 						if finding.Severity == evm.RiskSeverityCritical {
 							state.phase = contractCallReinforced
 							confirm := textinput.New()
-							confirm.Placeholder = "Type APPROVE"
+							confirm.Placeholder = localization.Get("call_approve_placeholder")
 							confirm.CharLimit = 16
 							confirm.Width = 20
 							state.inputs["confirm"] = &confirm
@@ -272,7 +274,7 @@ func (model *CLIModel) updateContractCall(message tea.Msg) (tea.Model, tea.Cmd) 
 				}
 				state.phase = contractCallPassword
 				password := textinput.New()
-				password.Placeholder = "Storage password"
+				password.Placeholder = localization.Get("sign_storage_password_placeholder")
 				password.EchoMode = textinput.EchoPassword
 				password.EchoCharacter = '•'
 				password.CharLimit = constants.PasswordCharLimit
@@ -284,13 +286,13 @@ func (model *CLIModel) updateContractCall(message tea.Msg) (tea.Model, tea.Cmd) 
 		case contractCallReinforced:
 			if message.String() == "enter" {
 				if state.inputs["confirm"].Value() != "APPROVE" {
-					state.err = "Type APPROVE exactly to reinforce this contract call"
+					state.err = localization.Get("call_err_type_approve")
 					return model, nil
 				}
 				state.inputs["confirm"].SetValue("")
 				state.phase = contractCallPassword
 				password := textinput.New()
-				password.Placeholder = "Storage password"
+				password.Placeholder = localization.Get("sign_storage_password_placeholder")
 				password.EchoMode = textinput.EchoPassword
 				password.EchoCharacter = '•'
 				password.CharLimit = constants.PasswordCharLimit
@@ -308,7 +310,7 @@ func (model *CLIModel) updateContractCall(message tea.Msg) (tea.Model, tea.Cmd) 
 				authorizer := model.transactionAuthorizer
 				accountID := state.account.AccountID
 				if authorizer == nil || (len(password) == 0 && !authorizer.HasActiveSession(context.Background(), accountID)) {
-					state.err = "Password is required unless a temporary session is active"
+					state.err = localization.Get("call_err_password_session")
 					state.inputs["password"].Focus()
 					return model, nil
 				}
@@ -428,7 +430,7 @@ func (model *CLIModel) commitContractCallField(state *contractCallState, field s
 	case "contract":
 		value = strings.TrimSpace(value)
 		if !common.IsHexAddress(value) || len(value) != 42 || common.HexToAddress(value) == (common.Address{}) {
-			return fmt.Errorf("contract must be a non-zero 20-byte EVM address")
+			return errors.New(localization.Get("call_validate_address"))
 		}
 		state.contract = common.HexToAddress(value)
 	case "abi":
@@ -436,7 +438,7 @@ func (model *CLIModel) commitContractCallField(state *contractCallState, field s
 	case "method":
 		state.method = strings.TrimSpace(value)
 		if state.method == "" {
-			return fmt.Errorf("method name is required")
+			return errors.New(localization.Get("call_validate_method"))
 		}
 	case "args":
 		state.args = value
@@ -447,7 +449,7 @@ func (model *CLIModel) commitContractCallField(state *contractCallState, field s
 		}
 		amount, ok := new(big.Int).SetString(value, 10)
 		if !ok || amount.Sign() < 0 || amount.BitLen() > 256 {
-			return fmt.Errorf("value must be an exact unsigned base-10 integer")
+			return errors.New(localization.Get("call_validate_value"))
 		}
 		state.value = amount
 	}
@@ -527,9 +529,9 @@ func (model *CLIModel) contractCallTrackCommand(state *contractCallState) tea.Cm
 func (model *CLIModel) viewContractCall() string {
 	state := model.contractCall
 	if state == nil {
-		return "Contract call is unavailable."
+		return localization.Get("call_unavailable")
 	}
-	title := lipgloss.NewStyle().Bold(true).Render("Contract Call (known ABI)")
+	title := lipgloss.NewStyle().Bold(true).Render(localization.Get("call_title"))
 	var builder strings.Builder
 	builder.WriteString(title + "\n\n")
 	if state.err != "" {
@@ -538,51 +540,55 @@ func (model *CLIModel) viewContractCall() string {
 	}
 	switch state.phase {
 	case contractCallSelectNetwork:
-		builder.WriteString("Select network:\n")
+		builder.WriteString(localization.Get("call_select_network") + "\n")
 		for index, choice := range state.networks {
 			prefix := "  "
 			if index == state.selected {
 				prefix = "> "
 			}
-			_, _ = fmt.Fprintf(&builder, "%s%s (chain %d)\n", prefix, safeShort(choice.network.Name), choice.network.ChainID)
+			_, _ = builder.WriteString(prefix + safeShort(choice.network.Name) + localization.T("call_choice_chain", map[string]interface{}{"ID": choice.network.ChainID}) + "\n")
 		}
-		builder.WriteString("\nEnter: select • Esc: back")
+		builder.WriteString("\n" + localization.Get("call_enter_select_esc"))
 	case contractCallContract, contractCallABI, contractCallMethod, contractCallArgs, contractCallValue:
 		field := contractCallFieldForPhase(state.phase)
-		_, _ = fmt.Fprintf(&builder, "%s:\n%s\n\nEnter: continue • Esc: back", state.inputs[field].Placeholder, state.inputs[field].View())
+		_, _ = fmt.Fprintf(&builder, "%s:\n%s\n\n%s", state.inputs[field].Placeholder, state.inputs[field].View(), localization.Get("call_enter_continue_esc"))
 	case contractCallPreview:
 		if state.prepared == nil {
-			builder.WriteString("Preparing contract call...")
+			builder.WriteString(localization.Get("call_preparing"))
 			break
 		}
 		plan := state.prepared.Plan()
 		preview := plan.ContractCallPreview()
-		_, _ = fmt.Fprintf(&builder, "Contract: %s\nMethod: %s\nABI source: %s\nABI hash: %s\nValue: %s\nSimulated output: %s\nCalldata: 0x%x\n",
-			safeShort(preview.Contract.Hex()), safeShort(preview.Method), safeShort(string(preview.ABISource)), safeShort(preview.ABIHash.Hex()), preview.Value, safeInline(preview.Output), preview.Calldata)
-		_, _ = fmt.Fprintf(&builder, "Nonce: %d\nGas limit: %d\n", plan.Transaction().Nonce(), plan.Transaction().Gas())
+		builder.WriteString(localization.T("call_preview_body", map[string]interface{}{
+			"Contract": safeShort(preview.Contract.Hex()), "Method": safeShort(preview.Method),
+			"Source": safeShort(string(preview.ABISource)), "Hash": safeShort(preview.ABIHash.Hex()),
+			"Value": preview.Value, "Output": safeInline(preview.Output),
+		}))
+		builder.WriteString(renderCalldataLine(preview.Calldata) + "\n")
+		_, _ = builder.WriteString(localization.T("call_nonce_gas", map[string]interface{}{"Nonce": plan.Transaction().Nonce(), "Gas": plan.Transaction().Gas()}))
 		for _, finding := range state.prepared.Findings() {
-			_, _ = fmt.Fprintf(&builder, "Risk [%s]: %s (%s)\n", safeShort(string(finding.Severity)), safeShort(string(finding.ID)), safeShort(finding.Subject.Hex()))
+			_, _ = builder.WriteString(localization.T("call_risk_line", map[string]interface{}{"Severity": safeShort(string(finding.Severity)), "ID": safeShort(string(finding.ID)), "Subject": safeShort(finding.Subject.Hex())}))
 		}
-		_, _ = fmt.Fprintf(&builder, "\nPlan: 0x%x\nDigest: 0x%x\n", plan.PlanHash(), plan.TransactionDigest())
-		builder.WriteString("\nEnter: approve exact structured intent • Esc: cancel")
+		_, _ = builder.WriteString("\n" + localization.T("call_plan_digest", map[string]interface{}{"Plan": fmt.Sprintf("%x", plan.PlanHash()), "Digest": fmt.Sprintf("%x", plan.TransactionDigest())}))
+		builder.WriteString("\n" + localization.Get("call_approve_intent"))
 	case contractCallReinforced:
-		builder.WriteString("Critical: this call moves native value or grants broad control. Verify the contract independently.\n\nType APPROVE to perform the second confirmation:\n" + state.inputs["confirm"].View() + "\n\nEnter: continue • Esc: cancel")
+		builder.WriteString(localization.Get("call_critical_approve") + "\n" + state.inputs["confirm"].View() + "\n\n" + localization.Get("call_enter_continue_esc"))
 	case contractCallPassword:
 		if state.account.SignerKind == wallet.SignerKindSoftware {
-			builder.WriteString("Enter storage password to sign this approved transaction:\n" + state.inputs["password"].View() + "\n\nEnter: sign and broadcast • Esc: cancel")
+			builder.WriteString(localization.Get("call_enter_password") + "\n" + state.inputs["password"].View() + "\n\n" + localization.Get("call_enter_sign_broadcast"))
 		} else {
-			builder.WriteString("Press Enter, then review and confirm the exact transaction on the external signer.\n\nEnter: continue • Esc: cancel")
+			builder.WriteString(localization.Get("call_external_review"))
 		}
 	case contractCallSubmitting:
-		builder.WriteString("Signing approved structured intent and broadcasting exact bytes...")
+		builder.WriteString(localization.Get("call_submitting"))
 	case contractCallTracking:
-		_, _ = fmt.Fprintf(&builder, "Transaction: %s\nTracking receipt and confirmations", safeShort(state.result.Hash.Hex()))
+		_, _ = builder.WriteString(localization.T("call_tracking_line", map[string]interface{}{"Hash": safeShort(state.result.Hash.Hex())}))
 		if state.tracking != nil {
-			_, _ = fmt.Fprintf(&builder, "\nState: %s\nConfirmations: %d", safeShort(string(state.tracking.State)), state.tracking.Confirmations)
+			_, _ = builder.WriteString("\n" + localization.T("call_tracking_state", map[string]interface{}{"State": safeShort(string(state.tracking.State)), "Count": state.tracking.Confirmations}))
 		}
-		builder.WriteString("\n\nB: rebroadcast persisted bytes • Esc: return; tracking resumes after restart")
+		builder.WriteString("\n\n" + localization.Get("call_rebroadcast_hint"))
 	case contractCallComplete:
-		_, _ = fmt.Fprintf(&builder, "Transaction %s\nTransaction hash: %s\n\nEnter or Esc: return", safeShort(string(state.tracking.State)), safeShort(state.result.Hash.Hex()))
+		_, _ = builder.WriteString(localization.T("call_final_line", map[string]interface{}{"State": safeShort(string(state.tracking.State)), "Hash": safeShort(state.result.Hash.Hex())}))
 	}
 	return builder.String()
 }

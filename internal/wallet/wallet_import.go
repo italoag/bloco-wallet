@@ -152,6 +152,9 @@ func (vault *WalletVault) ImportWatchOnly(ctx context.Context, request WatchOnly
 		if existing, findErr := transaction.FindAccountBySourceIdentity(ctx, sourceIdentity); findErr != nil && !errors.Is(findErr, ErrAccountNotFound) {
 			return findErr
 		} else if findErr == nil && existing != nil {
+			if existing.State == AccountStateTombstoned {
+				return ErrAccountDeleted
+			}
 			return ErrAccountConflict
 		}
 		related, err := transaction.FindAccountsByAddress(ctx, account.Address)
@@ -239,6 +242,9 @@ func (vault *WalletVault) importCanonicalSecret(ctx context.Context, name string
 	if existing, err := vault.repository.FindAccountBySourceIdentity(ctx, sourceIdentity); err != nil && !errors.Is(err, ErrAccountNotFound) {
 		return AccountSummary{}, err
 	} else if err == nil && existing != nil {
+		if existing.State == AccountStateTombstoned {
+			return AccountSummary{}, ErrAccountDeleted
+		}
 		return AccountSummary{}, ErrAccountConflict
 	}
 	accountID, err := newUUID(vault.options.Random)
@@ -284,6 +290,9 @@ func (vault *WalletVault) importCanonicalSecret(ctx context.Context, name string
 		if existing, err := transaction.FindAccountBySourceIdentity(ctx, sourceIdentity); err != nil && !errors.Is(err, ErrAccountNotFound) {
 			return err
 		} else if err == nil && existing != nil {
+			if existing.State == AccountStateTombstoned {
+				return ErrAccountDeleted
+			}
 			return ErrAccountConflict
 		}
 		related, err := transaction.FindAccountsByAddress(ctx, account.Address)

@@ -13,6 +13,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"blocowallet/internal/wallet"
+	"blocowallet/pkg/localization"
 	"blocowallet/pkg/logger"
 )
 
@@ -33,17 +34,17 @@ var nextImportOperationID atomic.Uint64
 func (p ImportPhase) String() string {
 	switch p {
 	case PhaseFileSelection:
-		return "File Selection"
+		return localization.Get("eimp_phase_files")
 	case PhaseImporting:
-		return "Importing"
+		return localization.Get("eimp_phase_importing")
 	case PhasePasswordInput:
-		return "Password Input"
+		return localization.Get("eimp_phase_password")
 	case PhaseComplete:
-		return "Complete"
+		return localization.Get("eimp_phase_complete")
 	case PhaseCancelled:
-		return "Cancelled"
+		return localization.Get("eimp_phase_cancelled")
 	default:
-		return "Unknown"
+		return localization.Get("eimp_phase_unknown")
 	}
 }
 
@@ -565,7 +566,7 @@ func (s *EnhancedImportState) UpdateProgress(progress wallet.ImportProgress) {
 			TotalFiles:     progress.TotalFiles,
 			Completed:      progress.ProcessedFiles >= progress.TotalFiles,
 			Paused:         progress.PendingPassword,
-			PauseReason:    "Waiting for password input",
+			PauseReason:    localization.Get("eimp_pause_password"),
 		}
 
 		// Add the most recent error if any
@@ -1035,13 +1036,13 @@ func (s *EnhancedImportState) View() string {
 		if s.FilePicker != nil {
 			return s.FilePicker.View()
 		}
-		return "File picker not initialized"
+		return localization.Get("eimp_no_picker")
 
 	case PhaseImporting:
 		if s.ProgressBar != nil {
 			return s.ProgressBar.View()
 		}
-		return "Progress bar not initialized"
+		return localization.Get("eimp_no_progress")
 
 	case PhasePasswordInput:
 		if s.ShowingPopup && s.PasswordPopup != nil {
@@ -1051,7 +1052,7 @@ func (s *EnhancedImportState) View() string {
 			// Overlay popup on background
 			return lipgloss.Place(80, 24, lipgloss.Center, lipgloss.Center, popup)
 		}
-		return "Password popup not initialized"
+		return localization.Get("eimp_no_popup")
 
 	case PhaseComplete:
 		if s.Completion != nil {
@@ -1063,7 +1064,7 @@ func (s *EnhancedImportState) View() string {
 		return s.renderCancellationView()
 
 	default:
-		return fmt.Sprintf("Unknown phase: %s", s.Phase)
+		return localization.T("eimp_unknown_phase", map[string]interface{}{"Phase": int(s.Phase)})
 	}
 }
 
@@ -1074,22 +1075,24 @@ func (s *EnhancedImportState) renderCompletionView() string {
 	var sections []string
 
 	// Title
-	title := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("70")).Render("✓ Import Complete")
+	title := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("70")).Render(localization.Get("eimp_complete_title"))
 	sections = append(sections, title)
 
 	// Summary statistics
-	stats := fmt.Sprintf("Total: %d | Success: %d | Failed: %d | Skipped: %d",
-		summary.TotalFiles, summary.SuccessfulImports, summary.FailedImports, summary.SkippedImports)
+	stats := localization.T("eimp_stats", map[string]interface{}{
+		"Total": summary.TotalFiles, "Success": summary.SuccessfulImports,
+		"Failed": summary.FailedImports, "Skipped": summary.SkippedImports,
+	})
 	sections = append(sections, stats)
 
 	// Show errors if any
 	if len(summary.Errors) > 0 {
 		sections = append(sections, "")
-		sections = append(sections, "Errors:")
+		sections = append(sections, localization.Get("eimp_errors_label"))
 		for _, err := range summary.Errors {
-			errorType := "Failed"
+			errorType := localization.Get("eimp_error_failed")
 			if err.Skipped {
-				errorType = "Skipped"
+				errorType = localization.Get("eimp_error_skipped")
 			}
 			sections = append(sections, fmt.Sprintf("• %s: %s", safeShort(errorType), safeShort(err.File)))
 		}
@@ -1097,7 +1100,7 @@ func (s *EnhancedImportState) renderCompletionView() string {
 
 	// Instructions
 	sections = append(sections, "")
-	sections = append(sections, "Press ENTER to return to menu or R to retry failed imports")
+	sections = append(sections, localization.Get("eimp_return_hint"))
 
 	return lipgloss.JoinVertical(lipgloss.Left, sections...)
 }
@@ -1106,21 +1109,21 @@ func (s *EnhancedImportState) renderCompletionView() string {
 func (s *EnhancedImportState) renderCancellationView() string {
 	var sections []string
 
-	title := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("196")).Render("✗ Import Cancelled")
+	title := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("196")).Render(localization.Get("eimp_cancelled_title"))
 	sections = append(sections, title)
 
 	if len(s.Results) > 0 {
 		summary := s.GetSummary()
-		stats := fmt.Sprintf("Processed: %d/%d files before cancellation", len(s.Results), len(s.ImportJobs))
+		stats := localization.T("eimp_cancelled_stats", map[string]interface{}{"Done": len(s.Results), "Total": len(s.ImportJobs)})
 		sections = append(sections, stats)
 
 		if summary.SuccessfulImports > 0 {
-			sections = append(sections, fmt.Sprintf("Successfully imported: %d wallets", summary.SuccessfulImports))
+			sections = append(sections, localization.T("eimp_cancelled_imported", map[string]interface{}{"Count": summary.SuccessfulImports}))
 		}
 	}
 
 	sections = append(sections, "")
-	sections = append(sections, "Press ENTER to return to menu")
+	sections = append(sections, localization.Get("eimp_enter_menu"))
 
 	return lipgloss.JoinVertical(lipgloss.Left, sections...)
 }

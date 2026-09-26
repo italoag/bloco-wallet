@@ -278,7 +278,7 @@ func (repo *GORMRepository) CreateAccount(ctx context.Context, account *wallet.A
 
 func (repo *GORMRepository) GetAccount(ctx context.Context, accountID string) (*wallet.Account, error) {
 	var account wallet.Account
-	result := repo.db.WithContext(ctx).Where("account_id = ?", accountID).First(&account)
+	result := repo.db.WithContext(ctx).Where("account_id = ? AND state <> ?", accountID, wallet.AccountStateTombstoned).First(&account)
 	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 		return nil, wallet.ErrAccountNotFound
 	}
@@ -302,7 +302,7 @@ func (repo *GORMRepository) FindAccountBySourceIdentity(ctx context.Context, sou
 
 func (repo *GORMRepository) FindAccountsByAddress(ctx context.Context, address string) ([]wallet.Account, error) {
 	var accounts []wallet.Account
-	if err := repo.db.WithContext(ctx).Where("address = ?", address).Order("created_at ASC").Find(&accounts).Error; err != nil {
+	if err := repo.db.WithContext(ctx).Where("address = ? AND state <> ?", address, wallet.AccountStateTombstoned).Order("created_at ASC").Find(&accounts).Error; err != nil {
 		return nil, err
 	}
 	return accounts, nil
@@ -337,7 +337,7 @@ func (repo *GORMRepository) PutVaultMetadata(ctx context.Context, key, value str
 
 func (repo *GORMRepository) ListAccounts(ctx context.Context) ([]wallet.Account, error) {
 	var accounts []wallet.Account
-	result := repo.db.WithContext(ctx).Order("created_at ASC, account_id ASC").Find(&accounts)
+	result := repo.db.WithContext(ctx).Where("state <> ?", wallet.AccountStateTombstoned).Order("created_at ASC, account_id ASC").Find(&accounts)
 	return accounts, result.Error
 }
 

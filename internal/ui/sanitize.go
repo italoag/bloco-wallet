@@ -1,6 +1,11 @@
 package ui
 
-import "blocowallet/internal/terminal"
+import (
+	"encoding/hex"
+
+	"blocowallet/internal/terminal"
+	"blocowallet/pkg/localization"
+)
 
 func safeInline(value string) string {
 	return terminal.SanitizeInline(value, terminal.DefaultInlineLimit)
@@ -12,7 +17,7 @@ func safeShort(value string) string {
 
 func safeError(err error) string {
 	if err == nil {
-		return "Unknown error"
+		return localization.Get("unknown_error")
 	}
 	return safeInline(err.Error())
 }
@@ -23,4 +28,10 @@ func safeLines(values []string) []string {
 		sanitized[index] = safeInline(value)
 	}
 	return sanitized
+}
+
+// renderCalldataLine renders the localized calldata label followed by the raw
+// hex payload — payloads never pass through the translator's sanitizer.
+func renderCalldataLine(data []byte) string {
+	return localization.Get("tx_calldata_line") + " 0x" + hex.EncodeToString(data)
 }

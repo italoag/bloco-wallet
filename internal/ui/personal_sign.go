@@ -2,13 +2,13 @@ package ui
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"time"
 
 	"blocowallet/internal/constants"
 	"blocowallet/internal/evm"
 	"blocowallet/internal/wallet"
+	"blocowallet/pkg/localization"
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
@@ -47,11 +47,11 @@ type personalSignKeyMap struct {
 
 func newPersonalSignKeyMap() personalSignKeyMap {
 	return personalSignKeyMap{
-		Message: key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "edit message")),
-		Prev:    key.NewBinding(key.WithKeys("p"), key.WithHelp("p", "previous step")),
-		Next:    key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "next step")),
-		Approve: key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "approve and sign")),
-		Back:    key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
+		Message: key.NewBinding(key.WithKeys("m"), key.WithHelp("m", localization.Get("sign_edit_message"))),
+		Prev:    key.NewBinding(key.WithKeys("p"), key.WithHelp("p", localization.Get("sign_prev_step"))),
+		Next:    key.NewBinding(key.WithKeys("n"), key.WithHelp("n", localization.Get("sign_next_step"))),
+		Approve: key.NewBinding(key.WithKeys("a"), key.WithHelp("a", localization.Get("sign_approve"))),
+		Back:    key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", localization.Get("hist_back"))),
 	}
 }
 
@@ -97,11 +97,11 @@ func (model *CLIModel) initPersonalSign(service MessageSigningService) {
 		keys:     newPersonalSignKeyMap(),
 		help:     help.New(),
 	}
-	model.personalSign.message.Placeholder = "Message to sign (EIP-191 personal_sign)"
+	model.personalSign.message.Placeholder = localization.Get("sign_message_placeholder")
 	model.personalSign.message.CharLimit = evm.MaxPersonalSignMessageBytes
 	model.personalSign.message.Width = 100
 	model.personalSign.message.Focus()
-	model.personalSign.password.Placeholder = "Storage password"
+	model.personalSign.password.Placeholder = localization.Get("sign_storage_password_placeholder")
 	model.personalSign.password.CharLimit = constants.PasswordCharLimit
 	model.personalSign.password.Width = constants.PasswordWidth
 	model.personalSign.password.EchoMode = textinput.EchoPassword
@@ -153,7 +153,7 @@ func (model *CLIModel) updatePersonalSign(message tea.Msg) (tea.Model, tea.Cmd) 
 			if key.Matches(message, state.keys.Next) {
 				value := state.message.Value()
 				if len(value) > evm.MaxPersonalSignMessageBytes {
-					state.err = "message exceeds the 64 KiB policy limit"
+					state.err = localization.Get("sign_err_message_too_long")
 					return model, nil
 				}
 				prepared, err := evm.PreparePersonalSign(evm.PreparePersonalSignRequest{
@@ -190,7 +190,7 @@ func (model *CLIModel) updatePersonalSign(message tea.Msg) (tea.Model, tea.Cmd) 
 			if message.String() == "enter" {
 				password := []byte(state.password.Value())
 				if len(password) == 0 && (model.transactionAuthorizer == nil || !model.transactionAuthorizer.HasActiveSession(context.Background(), state.account.AccountID)) {
-					state.err = "storage password is required for software accounts"
+					state.err = localization.Get("sign_err_password_required")
 					return model, nil
 				}
 				state.password.SetValue("")
@@ -230,34 +230,36 @@ func (model *CLIModel) updatePersonalSign(message tea.Msg) (tea.Model, tea.Cmd) 
 func (model *CLIModel) viewPersonalSign() string {
 	state := model.personalSign
 	if state == nil {
-		return "Message signing is unavailable."
+		return localization.Get("sign_unavailable")
 	}
-	title := lipgloss.NewStyle().Bold(true).Render("Sign Message (EIP-191 personal_sign)")
+	title := lipgloss.NewStyle().Bold(true).Render(localization.Get("sign_title"))
 	var content strings.Builder
 	content.WriteString(title)
 	switch state.phase {
 	case personalSignEntry:
-		_, _ = fmt.Fprintf(&content, "\n\nAccount: %s\n%s\n\nPress n to preview the exact signed message or esc to cancel.", safeShort(state.account.Address), state.message.View())
+		content.WriteString("\n\n" + localization.T("sign_entry_body", map[string]interface{}{"Account": safeShort(state.account.Address)}) + "\n" + state.message.View() + "\n\n" + localization.Get("sign_entry_hint"))
 	case personalSignPreview:
 		preview := state.prepared.Preview()
-		_, _ = fmt.Fprintf(&content, "\n\nAccount: %s\nMessage length: %d bytes\nUTF-8: %t\nMessage:\n%s\n\nDigest: %s\nIntent: %s\n\nYou are signing exactly these bytes with personal_sign. The signature has no chain binding.\n\nPress a to approve and sign, p to edit the message, or esc to cancel.",
-			safeShort(state.account.Address), preview.MessageLength, preview.UTF8, safeInline(string(preview.Message)), preview.Digest.Hex(), preview.IntentHash.Hex())
+		content.WriteString("\n\n" + localization.T("sign_preview_body", map[string]interface{}{
+			"Account": safeShort(state.account.Address), "Length": preview.MessageLength, "UTF8": preview.UTF8,
+			"Message": safeInline(string(preview.Message)), "Digest": preview.Digest.Hex(), "Intent": preview.IntentHash.Hex(),
+		}))
 	case personalSignPassword:
 		if state.account.SignerKind == wallet.SignerKindSoftware {
 			content.WriteString("\n\n" + state.password.View())
 		} else {
-			content.WriteString("\n\nPress Enter, then confirm this message on the external signer.")
+			content.WriteString("\n\n" + localization.Get("sign_external_prompt"))
 		}
 	case personalSignSubmitting:
-		content.WriteString("\n\nSigning with reinforced confirmation after durable approval...")
+		content.WriteString("\n\n" + localization.Get("sign_submitting"))
 	case personalSignComplete:
 		if state.result == nil {
-			content.WriteString("\n\nMessage signing failed.")
+			content.WriteString("\n\n" + localization.Get("sign_failed"))
 		} else {
-			content.WriteString("\n\nSignature (Ethereum V=27/28):\n" + safeInline("0x"+toHex(state.result.Signature)))
-			content.WriteString("\n\nSigning record: " + safeShort(state.result.SigningID))
-			content.WriteString("\nRecovered account: " + safeShort(state.result.Signer.Hex()))
-			content.WriteString("\n\nPress esc to return to wallet details.")
+			content.WriteString("\n\n" + localization.Get("sign_result_signature") + "\n" + safeInline("0x"+toHex(state.result.Signature)))
+			content.WriteString("\n\n" + localization.Get("sign_result_record") + safeShort(state.result.SigningID))
+			content.WriteString("\n" + localization.Get("sign_result_recovered") + safeShort(state.result.Signer.Hex()))
+			content.WriteString("\n\n" + localization.Get("sign_result_return"))
 		}
 	}
 	if state.err != "" {

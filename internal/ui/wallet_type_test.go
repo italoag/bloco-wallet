@@ -8,12 +8,9 @@ import (
 
 func TestDetermineWalletType(t *testing.T) {
 	// Initialize localization for testing
-	localization.Labels = map[string]string{
-		"imported_mnemonic":    "Mnemonic",
-		"imported_private_key": "Private Key",
-		"imported_keystore":    "Keystore (Private Key)",
-	}
-
+	previousLanguage := localization.GetCurrentLanguage()
+	localization.SetCurrentLanguage("en")
+	t.Cleanup(func() { localization.SetCurrentLanguage(previousLanguage) })
 	tests := []struct {
 		name         string
 		wallet       wallet.Wallet

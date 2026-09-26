@@ -364,7 +364,7 @@ func TestKeystoreImportUsesCanonicalMenu(t *testing.T) {
 	require.NoError(t, localization.InitLocalization(cfg))
 	found := false
 	for _, item := range NewImportMenu() {
-		if item.title == localization.Labels["import_keystore"] {
+		if item.title == localization.Get("import_keystore") {
 			found = true
 		}
 	}

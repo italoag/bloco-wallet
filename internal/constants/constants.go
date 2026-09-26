@@ -36,6 +36,7 @@ const (
 	LanguageSelectionView     = "language_selection"
 	NetworkListView           = "network_list"
 	AddNetworkView            = "add_network"
+	RecoveryView              = "recovery"
 	SafeView                  = "safe"
 	StyleWidth                = 46
 	StyleMargin               = 1

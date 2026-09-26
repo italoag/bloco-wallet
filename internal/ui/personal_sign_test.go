@@ -64,9 +64,9 @@ func (authorizer personalSignAuthorizerStub) HasActiveSession(context.Context, s
 }
 
 func TestPersonalSignFlowShowsPreviewSignatureAndKeepsViewPure(t *testing.T) {
-	previousLabels := localization.Labels
-	localization.Labels = map[string]string{"wallet_details_title": "Wallet Details", "select_wallet_prompt": "Select wallet"}
-	t.Cleanup(func() { localization.Labels = previousLabels })
+	previousLanguage := localization.GetCurrentLanguage()
+	localization.SetCurrentLanguage("en")
+	t.Cleanup(func() { localization.SetCurrentLanguage(previousLanguage) })
 	key, err := crypto.HexToECDSA("4646464646464646464646464646464646464646464646464646464646464646")
 	if err != nil {
 		t.Fatal(err)
@@ -154,9 +154,9 @@ func TestHardwarePersonalSignDoesNotRequestStoragePassword(t *testing.T) {
 }
 
 func TestPersonalSignStaleResultIsIgnoredAfterBack(t *testing.T) {
-	previousLabels := localization.Labels
-	localization.Labels = map[string]string{"wallet_details_title": "Wallet Details", "select_wallet_prompt": "Select wallet"}
-	t.Cleanup(func() { localization.Labels = previousLabels })
+	previousLanguage := localization.GetCurrentLanguage()
+	localization.SetCurrentLanguage("en")
+	t.Cleanup(func() { localization.SetCurrentLanguage(previousLanguage) })
 	model := &CLIModel{width: 120, height: 30, styles: createStyles(), transactionAuthorizer: personalSignAuthorizerStub{}, selectedAccount: &wallet.AccountSummary{
 		AccountID: "11111111-1111-4111-8111-111111111111", Address: "0x1563915e194D8CfBA1943570603F7606A3115508", State: wallet.AccountStateActive,
 	}}

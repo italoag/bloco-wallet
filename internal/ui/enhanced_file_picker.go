@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"blocowallet/pkg/localization"
+
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -83,21 +85,21 @@ type EnhancedFilePickerKeyMap struct {
 // DefaultEnhancedFilePickerKeyMap returns the default key bindings
 func DefaultEnhancedFilePickerKeyMap() EnhancedFilePickerKeyMap {
 	return EnhancedFilePickerKeyMap{
-		Up:        key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "up")),
-		Down:      key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "down")),
-		PageUp:    key.NewBinding(key.WithKeys("pgup", "ctrl+u"), key.WithHelp("pgup", "page up")),
-		PageDown:  key.NewBinding(key.WithKeys("pgdown", "ctrl+d"), key.WithHelp("pgdn", "page down")),
-		GoToTop:   key.NewBinding(key.WithKeys("g"), key.WithHelp("g", "top")),
-		GoToLast:  key.NewBinding(key.WithKeys("G"), key.WithHelp("G", "bottom")),
-		Left:      key.NewBinding(key.WithKeys("left", "h"), key.WithHelp("←/h", "back")),
-		Right:     key.NewBinding(key.WithKeys("right", "l"), key.WithHelp("→/l", "open")),
-		Enter:     key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "open/confirm")),
-		Space:     key.NewBinding(key.WithKeys(" "), key.WithHelp("space", "select")),
-		SelectAll: key.NewBinding(key.WithKeys("ctrl+a"), key.WithHelp("ctrl+a", "select all")),
-		ClearAll:  key.NewBinding(key.WithKeys("ctrl+c"), key.WithHelp("ctrl+c", "clear all")),
-		Back:      key.NewBinding(key.WithKeys("backspace", "esc"), key.WithHelp("esc", "back")),
-		Confirm:   key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "confirm selection")),
-		Cancel:    key.NewBinding(key.WithKeys("ctrl+q"), key.WithHelp("ctrl+q", "cancel")),
+		Up:        key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", localization.Get("fp_up"))),
+		Down:      key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", localization.Get("fp_down"))),
+		PageUp:    key.NewBinding(key.WithKeys("pgup", "ctrl+u"), key.WithHelp("pgup", localization.Get("hist_page_up"))),
+		PageDown:  key.NewBinding(key.WithKeys("pgdown", "ctrl+d"), key.WithHelp("pgdn", localization.Get("hist_page_down"))),
+		GoToTop:   key.NewBinding(key.WithKeys("g"), key.WithHelp("g", localization.Get("fp_top"))),
+		GoToLast:  key.NewBinding(key.WithKeys("G"), key.WithHelp("G", localization.Get("fp_bottom"))),
+		Left:      key.NewBinding(key.WithKeys("left", "h"), key.WithHelp("←/h", localization.Get("fp_back"))),
+		Right:     key.NewBinding(key.WithKeys("right", "l"), key.WithHelp("→/l", localization.Get("fp_open"))),
+		Enter:     key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", localization.Get("fp_open_confirm"))),
+		Space:     key.NewBinding(key.WithKeys(" "), key.WithHelp("space", localization.Get("fp_select"))),
+		SelectAll: key.NewBinding(key.WithKeys("ctrl+a"), key.WithHelp("ctrl+a", localization.Get("fp_select_all"))),
+		ClearAll:  key.NewBinding(key.WithKeys("ctrl+c"), key.WithHelp("ctrl+c", localization.Get("fp_clear_all"))),
+		Back:      key.NewBinding(key.WithKeys("backspace", "esc"), key.WithHelp("esc", localization.Get("fp_back"))),
+		Confirm:   key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", localization.Get("fp_confirm_selection"))),
+		Cancel:    key.NewBinding(key.WithKeys("ctrl+q"), key.WithHelp("ctrl+q", localization.Get("fp_cancel"))),
 	}
 }
 
@@ -486,7 +488,7 @@ func (m EnhancedFilePickerModel) Update(msg tea.Msg) (EnhancedFilePickerModel, t
 // View renders the enhanced file picker
 func (m EnhancedFilePickerModel) View() string {
 	if len(m.files) == 0 {
-		return m.Styles.EmptyDirectory.Render("No files found in this directory")
+		return m.Styles.EmptyDirectory.Render(localization.Get("fp_empty"))
 	}
 
 	var content strings.Builder
@@ -494,7 +496,7 @@ func (m EnhancedFilePickerModel) View() string {
 	// Header
 	header := fmt.Sprintf("📁 %s", safeInline(m.CurrentDirectory))
 	if m.MultiSelect && len(m.SelectedFiles) > 0 {
-		header += fmt.Sprintf(" (%d selected)", len(m.SelectedFiles))
+		header += localization.T("fp_selected_suffix", map[string]interface{}{"Count": len(m.SelectedFiles)})
 	}
 	content.WriteString(m.Styles.Header.Render(header))
 	content.WriteString("\n\n")
@@ -569,9 +571,9 @@ func (m EnhancedFilePickerModel) View() string {
 	content.WriteString("\n")
 	instructions := []string{}
 	if m.MultiSelect {
-		instructions = append(instructions, "Space: select", "Tab: confirm", "Ctrl+A: select all", "Ctrl+C: clear")
+		instructions = append(instructions, localization.Get("fp_hint_select"), localization.Get("fp_hint_confirm"), localization.Get("fp_hint_select_all"), localization.Get("fp_hint_clear"))
 	}
-	instructions = append(instructions, "Enter: open", "Esc: back", "Ctrl+Q: cancel")
+	instructions = append(instructions, localization.Get("fp_hint_open"), localization.Get("fp_hint_back"), localization.Get("fp_hint_cancel"))
 
 	content.WriteString(m.Styles.Instructions.Render(strings.Join(instructions, " • ")))
 

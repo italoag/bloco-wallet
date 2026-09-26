@@ -110,9 +110,12 @@ func (account *Account) Validate() error {
 	default:
 		return fmt.Errorf("invalid account state")
 	}
+	if account.State == AccountStateTombstoned && (len(account.SecretEnvelope) != 0 || account.Capabilities != 0) {
+		return fmt.Errorf("tombstoned account cannot retain secrets or capabilities")
+	}
 	switch account.SignerKind {
 	case SignerKindSoftware:
-		if (account.SecretType != SecretTypeMnemonic && account.SecretType != SecretTypePrivateKey) || len(account.SecretEnvelope) == 0 || account.EnvelopeGeneration == 0 {
+		if (account.SecretType != SecretTypeMnemonic && account.SecretType != SecretTypePrivateKey) || (account.State != AccountStateTombstoned && len(account.SecretEnvelope) == 0) || account.EnvelopeGeneration == 0 {
 			return fmt.Errorf("software account requires an encrypted secret")
 		}
 		if account.SecretType == SecretTypeMnemonic {

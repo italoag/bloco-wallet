@@ -5,11 +5,6 @@ import (
 )
 
 func TestAddKeystoreValidationMessages(t *testing.T) {
-	// Initialize the Labels map
-	if Labels == nil {
-		Labels = make(map[string]string)
-	}
-
 	// Test cases for different languages
 	testCases := []struct {
 		name     string
@@ -21,19 +16,19 @@ func TestAddKeystoreValidationMessages(t *testing.T) {
 			name:     "English message",
 			language: "en",
 			key:      "keystore_file_not_found",
-			expected: "Keystore file not found",
+			expected: "Keystore file not found at the specified path",
 		},
 		{
 			name:     "Portuguese message",
 			language: "pt",
 			key:      "keystore_file_not_found",
-			expected: "Arquivo keystore não encontrado",
+			expected: "Arquivo keystore não encontrado no caminho especificado",
 		},
 		{
 			name:     "Spanish message",
 			language: "es",
 			key:      "keystore_file_not_found",
-			expected: "Archivo keystore no encontrado",
+			expected: "Archivo keystore no encontrado en la ruta especificada",
 		},
 		{
 			name:     "English recovery suggestion",
@@ -59,31 +54,20 @@ func TestAddKeystoreValidationMessages(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Set the language
-			SetCurrentLanguage(tc.language)
-
-			// Clear the Labels map to ensure we're testing the correct language
-			for k := range Labels {
-				delete(Labels, k)
-			}
+			useLang(t, tc.language)
 
 			// Add the keystore validation messages
-			AddKeystoreValidationMessages()
 
 			// Check if the message is correct
-			if Labels[tc.key] != tc.expected {
+			if Get(tc.key) != tc.expected {
 				t.Errorf("Expected message for key %q in language %q to be %q, but got %q",
-					tc.key, tc.language, tc.expected, Labels[tc.key])
+					tc.key, tc.language, tc.expected, Get(tc.key))
 			}
 		})
 	}
 }
 
 func TestKeystoreValidationMessagesConsistency(t *testing.T) {
-	// Initialize the Labels map
-	if Labels == nil {
-		Labels = make(map[string]string)
-	}
-
 	// Define the keys that should be present in all languages
 	requiredKeys := []string{
 		"keystore_file_valid",
@@ -104,21 +88,15 @@ func TestKeystoreValidationMessagesConsistency(t *testing.T) {
 	for _, lang := range languages {
 		t.Run("Consistency check for "+lang, func(t *testing.T) {
 			// Set the language
-			SetCurrentLanguage(lang)
-
-			// Clear the Labels map
-			for k := range Labels {
-				delete(Labels, k)
-			}
+			useLang(t, lang)
 
 			// Add the keystore validation messages
-			AddKeystoreValidationMessages()
 
 			// Check if all required keys are present
 			for _, key := range requiredKeys {
-				if _, ok := Labels[key]; !ok {
+				if got := Get(key); got == key {
 					t.Errorf("Missing key %q in language %q", key, lang)
-				} else if Labels[key] == "" {
+				} else if Get(key) == "" {
 					t.Errorf("Empty message for key %q in language %q", key, lang)
 				}
 			}

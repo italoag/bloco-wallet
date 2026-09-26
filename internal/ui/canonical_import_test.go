@@ -343,26 +343,26 @@ func TestCanonicalBatchFlowImportsAndLogsFailures(t *testing.T) {
 
 	previewProgress := drainCanonicalCmd(model, cmd)
 	require.NotEmpty(t, previewProgress)
-	assert.Equal(t, "Validating", previewProgress[0].stage)
+	assert.Equal(t, "canonical_stage_validating", previewProgress[0].stage)
 	assert.Equal(t, 3, previewProgress[0].progress.Total)
 	require.False(t, state.busy)
 	require.NotNil(t, state.preview)
 	assert.Len(t, state.batchPreviews, 3)
 	view := model.viewCanonicalImport()
 	assert.Contains(t, view, "Authenticated batch preview")
-	assert.Contains(t, view, "keystore validation or decryption failed")
+	assert.Contains(t, view, "Keystore validation or decryption failed")
 
 	_, cmd = model.updateCanonicalImport(tea.KeyMsg{Type: tea.KeyEnter})
 	require.NotNil(t, cmd)
 	commitProgress := drainCanonicalCmd(model, cmd)
 	require.NotEmpty(t, commitProgress)
-	assert.Equal(t, "Importing", commitProgress[0].stage)
+	assert.Equal(t, "canonical_stage_importing", commitProgress[0].stage)
 	assert.Equal(t, 3, commitProgress[len(commitProgress)-1].progress.Completed)
 	require.False(t, state.busy)
 	require.NotEmpty(t, state.resultLines)
 	joined := strings.Join(state.resultLines, "\n")
 	assert.Contains(t, joined, "imported")
-	assert.Contains(t, joined, "keystore validation or decryption failed")
+	assert.Contains(t, joined, "Keystore validation or decryption failed")
 	assert.Contains(t, joined, "Failure log: ")
 	assert.Contains(t, joined, "Summary: 3 found, 3 processed, 2 imported, 0 already imported, 1 failed")
 	assert.NotContains(t, joined, "batch secret")
@@ -399,7 +399,7 @@ func TestCanonicalBatchFlowImportsAndLogsFailures(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(lines[1]), &record))
 	assert.Equal(t, "failure", record["type"])
 	assert.Equal(t, filepath.Join(source, "broken.json"), record["path"])
-	assert.Equal(t, "keystore validation or decryption failed", record["reason"])
+	assert.Equal(t, "Keystore validation or decryption failed", record["reason"])
 }
 
 func TestCanonicalPathSuggestions(t *testing.T) {
@@ -765,14 +765,14 @@ func TestCanonicalBatchCancelledCommitLogsFailures(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, summary.AccountID)
 	joined := strings.Join(lines, "\n")
-	assert.Contains(t, joined, "import cancelled")
+	assert.Contains(t, joined, "Import cancelled")
 	assert.Contains(t, joined, "Failure log: ")
 	matches, globErr := filepath.Glob(filepath.Join(cfg.AppDir, "keystore-import-failures-*.log"))
 	require.NoError(t, globErr)
 	require.Len(t, matches, 1)
 	content, readErr := os.ReadFile(matches[0])
 	require.NoError(t, readErr)
-	assert.Contains(t, string(content), "import cancelled")
+	assert.Contains(t, string(content), "Import cancelled")
 }
 
 func TestCanonicalBatchBusyViewRendersProgress(t *testing.T) {

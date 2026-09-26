@@ -58,6 +58,7 @@ type AccountSummary struct {
 	Name               string
 	Address            string
 	SignerKind         SignerKind
+	SecretType         SecretType
 	DerivationScheme   string
 	DerivationPath     string
 	BIP39Language      string
@@ -842,6 +843,9 @@ func (vault *WalletVault) ListAccounts(ctx context.Context) ([]AccountSummary, e
 	}
 	summaries := make([]AccountSummary, 0, len(accounts))
 	for index := range accounts {
+		if accounts[index].State == AccountStateTombstoned {
+			continue
+		}
 		summaries = append(summaries, summaryFromAccount(&accounts[index]))
 	}
 	return summaries, nil
@@ -965,6 +969,7 @@ func summaryFromAccount(account *Account) AccountSummary {
 		Name:               account.Name,
 		Address:            account.Address,
 		SignerKind:         account.SignerKind,
+		SecretType:         account.SecretType,
 		DerivationScheme:   account.DerivationScheme,
 		DerivationPath:     account.DerivationPath,
 		BIP39Language:      account.BIP39Language,

@@ -77,7 +77,7 @@ func (i networkSuggestionItem) Title() string {
 }
 
 func (i networkSuggestionItem) Description() string {
-	return fmt.Sprintf("Chain ID: %d, Symbol: %s", i.suggestion.ChainID, safeShort(i.suggestion.Symbol))
+	return localization.T("suggestion_item_desc", map[string]interface{}{"ChainID": i.suggestion.ChainID, "Symbol": safeShort(i.suggestion.Symbol)})
 }
 
 func (i networkSuggestionItem) FilterValue() string {
@@ -101,7 +101,7 @@ func NewAddNetworkComponent() AddNetworkComponent {
 func (c *AddNetworkComponent) initInputs() {
 	// Search input for network search
 	c.searchInput = textinput.New()
-	c.searchInput.Placeholder = localization.Labels["search_networks_placeholder"]
+	c.searchInput.Placeholder = localization.Get("search_networks_placeholder")
 	c.searchInput.Width = 60
 	c.searchInput.CharLimit = 128
 	c.searchInput.ShowSuggestions = true
@@ -110,31 +110,31 @@ func (c *AddNetworkComponent) initInputs() {
 
 	// Network name input for display
 	c.nameInput = textinput.New()
-	c.nameInput.Placeholder = localization.Labels["network_name_placeholder"]
+	c.nameInput.Placeholder = localization.Get("network_name_placeholder")
 	c.nameInput.Width = 60
 	c.nameInput.CharLimit = 128
 
 	// Chain ID input
 	c.chainIDInput = textinput.New()
-	c.chainIDInput.Placeholder = localization.Labels["chain_id_placeholder"]
+	c.chainIDInput.Placeholder = localization.Get("chain_id_placeholder")
 	c.chainIDInput.Width = 60
 	c.chainIDInput.CharLimit = 20
 
 	// Symbol input
 	c.symbolInput = textinput.New()
-	c.symbolInput.Placeholder = localization.Labels["symbol_placeholder"]
+	c.symbolInput.Placeholder = localization.Get("symbol_placeholder")
 	c.symbolInput.Width = 60
 	c.symbolInput.CharLimit = 16
 
 	// Native currency decimals input
 	c.decimalsInput = textinput.New()
-	c.decimalsInput.Placeholder = "Native currency decimals (0-36)"
+	c.decimalsInput.Placeholder = localization.Get("decimals_placeholder")
 	c.decimalsInput.Width = 60
 	c.decimalsInput.CharLimit = 2
 
 	// RPC endpoint input
 	c.rpcEndpointInput = textinput.New()
-	c.rpcEndpointInput.Placeholder = localization.Labels["rpc_endpoint_placeholder"] + " or env:VARIABLE_NAME"
+	c.rpcEndpointInput.Placeholder = localization.Get("rpc_endpoint_placeholder_full")
 	c.rpcEndpointInput.Width = 60
 	c.rpcEndpointInput.CharLimit = 4096
 
@@ -154,10 +154,22 @@ func (c *AddNetworkComponent) initInputs() {
 	c.suggestionList.SetShowStatusBar(false)
 	c.suggestionList.SetShowHelp(false)
 	c.suggestionList.SetFilteringEnabled(false)
-	c.suggestionList.Title = localization.Labels["suggestions"]
+	c.suggestionList.Title = localization.Get("suggestions")
 
 	// Initialize other fields
 	c.selectedSuggestion = -1
+}
+
+// refreshLocalizedLabels reapplies localized placeholders and list title after
+// a language change without touching entered values or focus.
+func (c *AddNetworkComponent) refreshLocalizedLabels() {
+	c.searchInput.Placeholder = localization.Get("search_networks_placeholder")
+	c.nameInput.Placeholder = localization.Get("network_name_placeholder")
+	c.chainIDInput.Placeholder = localization.Get("chain_id_placeholder")
+	c.symbolInput.Placeholder = localization.Get("symbol_placeholder")
+	c.decimalsInput.Placeholder = localization.Get("decimals_placeholder")
+	c.rpcEndpointInput.Placeholder = localization.Get("rpc_endpoint_placeholder_full")
+	c.suggestionList.Title = localization.Get("suggestions")
 }
 
 // SetSize updates the component size
@@ -189,7 +201,7 @@ func (c *AddNetworkComponent) GetNetworkName() string {
 func (c *AddNetworkComponent) GetChainID() (int64, error) {
 	chainID, err := strconv.ParseInt(strings.TrimSpace(c.chainIDInput.Value()), 10, 64)
 	if err != nil {
-		return 0, errors.New(localization.Labels["invalid_chain_id"])
+		return 0, errors.New(localization.Get("invalid_chain_id"))
 	}
 	return chainID, nil
 }
@@ -316,7 +328,7 @@ func (c *AddNetworkComponent) fillNetworkData(suggestion blockchain.NetworkSugge
 		c.decimalsInput.SetValue("")
 	}
 	if safeInline(rpcURL) != rpcURL {
-		c.err = fmt.Errorf("RPC endpoint contains unsafe display characters")
+		c.err = errors.New(localization.Get("rpc_unsafe_chars"))
 		c.rpcEndpointInput.SetValue("")
 		return
 	}
@@ -413,7 +425,7 @@ func (c *AddNetworkComponent) Update(msg tea.Msg) (*AddNetworkComponent, tea.Cmd
 		}
 		c.loadingSuggestions = false
 		if msg.Err != nil {
-			c.err = fmt.Errorf("%s: %s", localization.Labels["failed_to_get_network_details"], c.generateErrorMessage(msg.Err, "search"))
+			c.err = fmt.Errorf("%s: %s", localization.Get("failed_to_get_network_details"), c.generateErrorMessage(msg.Err, "search"))
 			// Prefill what we can; leave RPC empty for manual entry
 			c.nameInput.SetValue(safeShort(msg.Suggestion.Name))
 			c.chainIDInput.SetValue(strconv.Itoa(msg.Suggestion.ChainID))
@@ -496,25 +508,25 @@ func (c *AddNetworkComponent) Update(msg tea.Msg) (*AddNetworkComponent, tea.Cmd
 					if strings.HasPrefix(enteredEndpoint, "env:") {
 						resolved, err := (config.EnvironmentCredentialProvider{}).Resolve(enteredEndpoint)
 						if err != nil {
-							return addNetworkErrorMsg{componentID: componentID, operationID: operationID, err: fmt.Errorf("RPC credential reference is unavailable")}
+							return addNetworkErrorMsg{componentID: componentID, operationID: operationID, err: errors.New(localization.Get("rpc_credential_unavailable"))}
 						}
 						rpcURL = resolved
 						rpcReference = enteredEndpoint
 					}
 					if err := c.chainListService.ValidateRPCEndpointContext(operationContext, rpcURL); err != nil {
-						return addNetworkErrorMsg{componentID: componentID, operationID: operationID, err: fmt.Errorf("RPC endpoint validation failed: %w", err)}
+						return addNetworkErrorMsg{componentID: componentID, operationID: operationID, err: fmt.Errorf("%s: %w", localization.Get("rpc_validation_failed"), err)}
 					}
 					chainIDStr := chainIDValue
 					expectedChainID, err := strconv.ParseInt(chainIDStr, 10, 64)
 					if err != nil {
-						return addNetworkErrorMsg{componentID: componentID, operationID: operationID, err: fmt.Errorf("invalid chain ID")}
+						return addNetworkErrorMsg{componentID: componentID, operationID: operationID, err: errors.New(localization.Get("invalid_chain_id"))}
 					}
 					actualChainID, err := c.chainListService.GetChainIDFromRPCContext(operationContext, rpcURL)
 					if err != nil {
-						return addNetworkErrorMsg{componentID: componentID, operationID: operationID, err: fmt.Errorf("RPC endpoint validation failed: %w", err)}
+						return addNetworkErrorMsg{componentID: componentID, operationID: operationID, err: fmt.Errorf("%s: %w", localization.Get("rpc_validation_failed"), err)}
 					}
 					if int64(actualChainID) != expectedChainID {
-						return addNetworkErrorMsg{componentID: componentID, operationID: operationID, err: fmt.Errorf("chain ID mismatch: expected %d, got %d", expectedChainID, actualChainID)}
+						return addNetworkErrorMsg{componentID: componentID, operationID: operationID, err: errors.New(localization.T("chain_id_mismatch", map[string]interface{}{"Expected": expectedChainID, "Actual": actualChainID}))}
 					}
 					persistedEndpoint := enteredEndpoint
 					if rpcReference != "" {
@@ -696,12 +708,12 @@ func (c *AddNetworkComponent) updateFocus() {
 // validateInputs checks if the inputs are valid
 func (c *AddNetworkComponent) validateInputs() bool {
 	if strings.TrimSpace(c.nameInput.Value()) == "" {
-		c.err = errors.New(localization.Labels["network_name_required"])
+		c.err = errors.New(localization.Get("network_name_required"))
 		return false
 	}
 
 	if strings.TrimSpace(c.chainIDInput.Value()) == "" {
-		c.err = errors.New(localization.Labels["chain_id_required"])
+		c.err = errors.New(localization.Get("chain_id_required"))
 		return false
 	}
 
@@ -712,21 +724,21 @@ func (c *AddNetworkComponent) validateInputs() bool {
 	}
 
 	if strings.TrimSpace(c.symbolInput.Value()) == "" {
-		c.err = errors.New(localization.Labels["symbol_required"])
+		c.err = errors.New(localization.Get("symbol_required"))
 		return false
 	}
 
 	decimalsValue := strings.TrimSpace(c.decimalsInput.Value())
 	decimals, err := strconv.Atoi(decimalsValue)
 	if err != nil || decimals < 0 || decimals > 36 {
-		c.err = errors.New("native currency decimals must be between 0 and 36")
+		c.err = errors.New(localization.Get("decimals_range_error"))
 		return false
 	}
 	c.nativeDecimals = decimals
 	c.nativeDecimalsSet = true
 
 	if strings.TrimSpace(c.rpcEndpointInput.Value()) == "" {
-		c.err = errors.New(localization.Labels["rpc_endpoint_required"])
+		c.err = errors.New(localization.Get("rpc_endpoint_required"))
 		return false
 	}
 
@@ -734,11 +746,11 @@ func (c *AddNetworkComponent) validateInputs() bool {
 	rpc := strings.TrimSpace(c.rpcEndpointInput.Value())
 	if strings.HasPrefix(rpc, "env:") {
 		if err := config.ValidateCredentialReference(rpc); err != nil {
-			c.err = errors.New(localization.Labels["invalid_rpc_endpoint"])
+			c.err = errors.New(localization.Get("invalid_rpc_endpoint"))
 			return false
 		}
 	} else if !strings.HasPrefix(rpc, "http://") && !strings.HasPrefix(rpc, "https://") {
-		c.err = errors.New(localization.Labels["invalid_rpc_endpoint"])
+		c.err = errors.New(localization.Get("invalid_rpc_endpoint"))
 		return false
 	}
 
@@ -767,24 +779,24 @@ func (c *AddNetworkComponent) generateErrorMessage(err error, operation string) 
 	switch operation {
 	case "search":
 		if detail == "" {
-			detail = localization.Labels["network_search_failed"]
+			detail = localization.Get("network_search_failed")
 		}
-		return fmt.Sprintf("%s: %s. %s", localization.Labels["network_search_failed"], detail, localization.Labels["network_search_failed_guidance"])
+		return fmt.Sprintf("%s: %s. %s", localization.Get("network_search_failed"), detail, localization.Get("network_search_failed_guidance"))
 	case "validate":
 		if detail == "" {
-			detail = localization.Labels["rpc_validation_failed"]
+			detail = localization.Get("rpc_validation_failed")
 		}
-		return fmt.Sprintf("%s: %s. %s", localization.Labels["rpc_validation_failed"], detail, localization.Labels["rpc_validation_failed_guidance"])
+		return fmt.Sprintf("%s: %s. %s", localization.Get("rpc_validation_failed"), detail, localization.Get("rpc_validation_failed_guidance"))
 	case "select":
 		if detail == "" {
-			detail = localization.Labels["network_selection_failed"]
+			detail = localization.Get("network_selection_failed")
 		}
-		return fmt.Sprintf("%s: %s", localization.Labels["network_selection_failed"], detail)
+		return fmt.Sprintf("%s: %s", localization.Get("network_selection_failed"), detail)
 	default:
 		if detail == "" {
-			detail = localization.Labels["operation_failed_generic"]
+			detail = localization.Get("operation_failed_generic")
 		}
-		return fmt.Sprintf("%s: %s", localization.Labels["operation_failed_generic"], detail)
+		return fmt.Sprintf("%s: %s", localization.Get("operation_failed_generic"), detail)
 	}
 }
 
@@ -798,7 +810,7 @@ func (c *AddNetworkComponent) View() string {
 		Background(lipgloss.Color("#874BFD")).
 		MarginLeft(2).
 		MarginBottom(1)
-	b.WriteString(headerStyle.Render("🌐 " + localization.Labels["add_network"]))
+	b.WriteString(headerStyle.Render("🌐 " + localization.Get("add_network")))
 	b.WriteString("\n\n")
 
 	// Styles
@@ -816,7 +828,7 @@ func (c *AddNetworkComponent) View() string {
 		Foreground(lipgloss.Color("13"))
 
 	// Search field
-	b.WriteString(searchLabelStyle.Render("🔍 " + localization.Labels["search_networks"] + ":"))
+	b.WriteString(searchLabelStyle.Render("🔍 " + localization.Get("search_networks") + ":"))
 	b.WriteString("\n")
 	searchFieldStyle := fieldStyle
 	if c.focusIndex == 0 {
@@ -852,7 +864,7 @@ func (c *AddNetworkComponent) View() string {
 	// Interactive suggestions
 	if c.loadingSuggestions {
 		b.WriteString("\n")
-		b.WriteString(loadingStyle.Render("🔍 " + localization.Labels["searching_networks"] + "..."))
+		b.WriteString(loadingStyle.Render("🔍 " + localization.Get("searching_networks") + "..."))
 	} else if len(c.suggestions) > 0 {
 		b.WriteString("\n")
 		b.WriteString(c.suggestionList.View())
@@ -865,11 +877,11 @@ func (c *AddNetworkComponent) View() string {
 		Background(lipgloss.Color("#874BFD")).
 		MarginLeft(2).
 		MarginBottom(1)
-	b.WriteString(detailHeaderStyle.Render(localization.Labels["network_details"] + ":"))
+	b.WriteString(detailHeaderStyle.Render(localization.Get("network_details") + ":"))
 	b.WriteString("\n\n")
 
 	// Network Name field
-	b.WriteString(labelStyle.Render(localization.Labels["network_name"] + ":"))
+	b.WriteString(labelStyle.Render(localization.Get("network_name") + ":"))
 	b.WriteString("\n")
 	nameFieldStyle := fieldStyle
 	if c.focusIndex == 1 {
@@ -882,7 +894,7 @@ func (c *AddNetworkComponent) View() string {
 	b.WriteString("\n")
 
 	// Chain ID field
-	b.WriteString(labelStyle.Render(localization.Labels["chain_id"] + ":"))
+	b.WriteString(labelStyle.Render(localization.Get("chain_id") + ":"))
 	b.WriteString("\n")
 	chainFieldStyle := fieldStyle
 	if c.focusIndex == 2 {
@@ -895,7 +907,7 @@ func (c *AddNetworkComponent) View() string {
 	b.WriteString("\n")
 
 	// Symbol field
-	b.WriteString(labelStyle.Render(localization.Labels["symbol"] + ":"))
+	b.WriteString(labelStyle.Render(localization.Get("symbol") + ":"))
 	b.WriteString("\n")
 	symbolFieldStyle := fieldStyle
 	if c.focusIndex == 3 {
@@ -908,7 +920,7 @@ func (c *AddNetworkComponent) View() string {
 	b.WriteString("\n")
 
 	// Native decimals field
-	b.WriteString(labelStyle.Render("Native currency decimals:"))
+	b.WriteString(labelStyle.Render(localization.Get("native_decimals_label") + ":"))
 	b.WriteString("\n")
 	decimalsFieldStyle := fieldStyle
 	if c.focusIndex == 4 {
@@ -921,7 +933,7 @@ func (c *AddNetworkComponent) View() string {
 	b.WriteString("\n")
 
 	// RPC Endpoint field
-	b.WriteString(labelStyle.Render(localization.Labels["rpc_endpoint"] + ":"))
+	b.WriteString(labelStyle.Render(localization.Get("rpc_endpoint") + ":"))
 	b.WriteString("\n")
 	rpcFieldStyle := fieldStyle
 	if c.focusIndex == 5 {
@@ -936,25 +948,25 @@ func (c *AddNetworkComponent) View() string {
 	// Status messages
 	if c.adding {
 		b.WriteString("\n")
-		b.WriteString(loadingStyle.Render("⏳ " + localization.Labels["adding_network"] + "..."))
+		b.WriteString(loadingStyle.Render("⏳ " + localization.Get("adding_network") + "..."))
 	} else if c.err != nil {
 		b.WriteString("\n")
-		b.WriteString(errorStyle.Render("❌ " + localization.Labels["error_title"] + ": " + safeInline(c.err.Error())))
+		b.WriteString(errorStyle.Render("❌ " + localization.Get("error_title") + ": " + safeInline(c.err.Error())))
 	}
 
 	// Instructions
 	b.WriteString("\n\n")
-	b.WriteString(warningStyle.Render("💡 " + localization.Labels["tips"] + ":"))
+	b.WriteString(warningStyle.Render("💡 " + localization.Get("tips") + ":"))
 	b.WriteString("\n")
-	b.WriteString(infoStyle.Render("  • " + localization.Labels["search_networks_tip"]))
+	b.WriteString(infoStyle.Render("  • " + localization.Get("search_networks_tip")))
 	b.WriteString("\n")
-	b.WriteString(infoStyle.Render("  • " + localization.Labels["chain_id_tip"]))
+	b.WriteString(infoStyle.Render("  • " + localization.Get("chain_id_tip")))
 	b.WriteString("\n")
-	b.WriteString(infoStyle.Render("  • " + localization.Labels["rpc_endpoint_tip"]))
+	b.WriteString(infoStyle.Render("  • " + localization.Get("rpc_endpoint_tip")))
 	b.WriteString("\n\n")
 
 	// Footer
-	b.WriteString(footerStyle.Render(localization.Labels["add_network_footer"]))
+	b.WriteString(footerStyle.Render(localization.Get("add_network_footer")))
 
 	return b.String()
 }

@@ -7,14 +7,10 @@ import (
 )
 
 func TestAddPasswordFileMessages(t *testing.T) {
-	// Initialize Labels map
-	Labels = make(map[string]string)
-
 	// Set current language to English for testing
-	SetCurrentLanguage("en")
+	useLang(t, "en")
 
 	// Add password file messages
-	AddPasswordFileMessages()
 
 	// Test that English messages are added
 	expectedMessages := []string{
@@ -36,22 +32,18 @@ func TestAddPasswordFileMessages(t *testing.T) {
 
 	for _, key := range expectedMessages {
 		t.Run("should have message for "+key, func(t *testing.T) {
-			message, exists := Labels[key]
-			assert.True(t, exists, "Message key %s should exist", key)
+			message := Get(key)
+			assert.NotEqual(t, key, message)
 			assert.NotEmpty(t, message, "Message for %s should not be empty", key)
 		})
 	}
 }
 
 func TestAddPasswordFileMessages_Portuguese(t *testing.T) {
-	// Initialize Labels map
-	Labels = make(map[string]string)
-
 	// Set current language to Portuguese
-	SetCurrentLanguage("pt")
+	useLang(t, "pt")
 
 	// Add password file messages
-	AddPasswordFileMessages()
 
 	// Test specific Portuguese messages
 	tests := []struct {
@@ -60,27 +52,23 @@ func TestAddPasswordFileMessages_Portuguese(t *testing.T) {
 	}{
 		{"password_file_not_found", "Arquivo de senha não encontrado"},
 		{"password_file_empty", "Arquivo de senha está vazio"},
-		{"password_file_invalid", "Arquivo de senha inválido"},
+		{"password_file_invalid", "Formato de arquivo de senha inválido"},
 	}
 
 	for _, test := range tests {
 		t.Run("should have Portuguese message for "+test.key, func(t *testing.T) {
-			message, exists := Labels[test.key]
-			assert.True(t, exists, "Message key %s should exist", test.key)
+			message := Get(test.key)
+			assert.NotEqual(t, test.key, message)
 			assert.Equal(t, test.expected, message)
 		})
 	}
 }
 
 func TestAddPasswordFileMessages_Spanish(t *testing.T) {
-	// Initialize Labels map
-	Labels = make(map[string]string)
-
 	// Set current language to Spanish
-	SetCurrentLanguage("es")
+	useLang(t, "es")
 
 	// Add password file messages
-	AddPasswordFileMessages()
 
 	// Test specific Spanish messages
 	tests := []struct {
@@ -89,24 +77,20 @@ func TestAddPasswordFileMessages_Spanish(t *testing.T) {
 	}{
 		{"password_file_not_found", "Archivo de contraseña no encontrado"},
 		{"password_file_empty", "El archivo de contraseña está vacío"},
-		{"password_file_invalid", "Archivo de contraseña inválido"},
+		{"password_file_invalid", "Formato de archivo de contraseña inválido"},
 	}
 
 	for _, test := range tests {
 		t.Run("should have Spanish message for "+test.key, func(t *testing.T) {
-			message, exists := Labels[test.key]
-			assert.True(t, exists, "Message key %s should exist", test.key)
+			message := Get(test.key)
+			assert.NotEqual(t, test.key, message)
 			assert.Equal(t, test.expected, message)
 		})
 	}
 }
 
 func TestGetPasswordFileErrorMessage(t *testing.T) {
-	// Initialize Labels map with test data
-	Labels = map[string]string{
-		"password_file_not_found": "Password file not found",
-		"password_file_empty":     "Password file is empty",
-	}
+	useLang(t, "en")
 
 	t.Run("should return message for existing key", func(t *testing.T) {
 		message := GetPasswordFileErrorMessage("password_file_not_found")
@@ -120,10 +104,7 @@ func TestGetPasswordFileErrorMessage(t *testing.T) {
 }
 
 func TestFormatPasswordFileErrorWithFile(t *testing.T) {
-	// Initialize Labels map with test data
-	Labels = map[string]string{
-		"password_file_not_found": "Password file not found",
-	}
+	useLang(t, "en")
 
 	t.Run("should format message with file name", func(t *testing.T) {
 		message := FormatPasswordFileErrorWithFile("password_file_not_found", "wallet.pwd")

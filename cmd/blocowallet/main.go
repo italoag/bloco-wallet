@@ -246,7 +246,7 @@ func main() {
 		cancelRecovery()
 		<-recoveryDone
 	}()
-	p := tea.NewProgram(app, tea.WithAltScreen())
+	p := tea.NewProgram(app, tea.WithAltScreen(), tea.WithReportFocus())
 
 	lgr.Info("Starting application")
 	if _, err := p.Run(); err != nil {

@@ -1,198 +1,241 @@
 # Spanish translations
 
-[imported_private_key]
-other = "Clave Privada"
+[action_export_error_report]
+other = "Exportar Reporte de Error"
 
-[failed_to_get_network_details]
-other = "Error al obtener detalles de la red"
+[action_fix_file_permissions]
+other = "Corregir Permisos de Archivo"
 
-[quit_app]
-other = "Salir de la Aplicación"
+[action_retry_failed_imports]
+other = "Reintentar Importaciones Fallidas"
 
-[password_validation_failed]
-other = "Falló la validación de la contraseña"
+[action_retry_with_manual_passwords]
+other = "Reintentar con Contraseñas Manuales"
 
-[status]
-other = "Estado"
+[action_return_to_menu]
+other = "Regresar al Menú Principal"
 
-[edit_network]
-other = "Editar Red"
+[action_select_different_files]
+other = "Seleccionar Archivos Diferentes"
 
-[rpc_endpoint_placeholder]
-other = "La URL RPC se completará automáticamente"
+[action_view_error_details]
+other = "Ver Detalles del Error"
 
-[import_method_title]
-other = "Seleccione el Método de Importación"
+[active]
+other = "Activo"
 
-[list_wallets_desc]
-other = "Ver y administrar tus carteras"
+[add_network]
+other = "Añadir Red"
 
-[keystore_address_mismatch]
-other = "La dirección en el keystore no corresponde a la clave privada derivada"
-
-[keystore_invalid_json]
-other = "El archivo no contiene un JSON válido"
-
-[delete_network]
-other = "Eliminar Red"
-
-[network_list_desc]
-other = "Ver y administrar redes blockchain"
-
-[import_wallet_title]
-other = "Importar una Cartera existente"
-
-[ethereum_address]
-other = "Dirección de Ethereum:"
-
-[language_desc]
-other = "Cambiar idioma de la aplicación"
-
-[network_list]
-other = "Lista de Redes"
-
-[back_to_menu]
-other = "Volver"
-
-[yes]
-other = "Sí"
-
-[view_wallet]
-other = "Ver Detalles"
-
-[error_generate_salt]
-other = "Error al generar salt criptográfico"
-
-[keystore_missing_fields]
-other = "Al archivo keystore le faltan campos obligatorios"
-
-[network_name_placeholder]
-other = "El nombre de la red se completará automáticamente"
-
-[status_bar_instructions]
-other = "Vista: {{.View}} | Presione 'esc' para volver | 'q' para salir"
-
-[select_wallet_prompt]
-other = "Seleccione una cartera e ingrese la contraseña para ver los detalles."
-
-[networks]
-other = "Redes"
-
-[import_mnemonic]
-other = "Frase Mnemotécnica"
-
-[wallets]
-other = "Carteras"
-
-[enter_password]
-other = "Ingrese una contraseña para cifrar la cartera:"
-
-[keystore_incorrect_password]
-other = "Contraseña incorrecta para el archivo keystore"
-
-[error_empty_password]
-other = "La contraseña no puede estar vacía"
-
-[import_private_key]
-other = "Clave Privada"
-
-[imported_mnemonic]
-other = "Frase Mnemónica"
-
-[network_list_instructions]
-other = "Use las flechas para navegar, 'a' para añadir, 'e' para editar, 'd' para eliminar, 'esc' para volver."
-
-[public_key]
-other = "Clave Pública:"
-
-[import_private_key_desc]
-other = "Importar usando una clave privada"
-
-[wallet_imported]
-other = "¡Cartera importada exitosamente!"
-
-[no_network_selected]
-other = "Ninguna red seleccionada"
-
-[wallet_details_title]
-other = "Detalles de la Cartera"
-
-[import_keystore]
-other = "Archivo Keystore"
-
-[quit_app_desc]
-other = "Cerrar el programa"
-
-[chain_id_tip]
-other = "El ID de cadena debe ser único (consulte chainlist.org para referencia)"
-
-[welcome_message]
-other = """¡Bienvenido al Administrador de Carteras BLOCO!
-
-Seleccione una opción del menú."""
-
-[wallet_deleted]
-other = "Cartera eliminada exitosamente."
-
-[password_no_uppercase]
-other = "La contraseña debe contener al menos una letra mayúscula"
-
-[keystore_invalid_structure]
-other = "El archivo no contiene un keystore v3 válido"
-
-[searching_networks]
-other = "Buscando redes"
-
-[wallet_list_instructions]
-other = "Use las flechas para navegar, Enter para ver detalles y 'esc' para volver al menú."
-
-[network_name]
-other = "Nombre de Red"
-
-[network_name_required]
-other = "El nombre de la red es obligatorio"
-
-[private_key]
-other = "Clave Privada:"
-
-[enter_keystore_path]
-other = "Ingrese la ruta al archivo KeyStoreV3:"
+[add_network_desc]
+other = "Añadir una nueva red blockchain"
 
 [add_network_footer]
 other = "↑/↓: Navegar Sugerencias • Tab: Siguiente Campo • Enter: Seleccionar/Enviar • Esc: Volver"
 
-[exit]
-other = "Salir"
-
-[error_crypto_service_not_initialized]
-other = "Servicio de criptografía no inicializado"
+[adding_network]
+other = "Añadiendo red"
 
 [back]
 other = "Volver"
 
-[list_wallets]
-other = "Mis Carteras"
+[back_to_menu]
+other = "Volver"
+
+[back_to_menu_desc]
+other = "Regresar al menú principal"
+
+[batch_import_failed]
+other = "La operación de importación por lotes falló"
+
+[batch_import_recovery_failed]
+other = "Revise los errores de archivos individuales e intente nuevamente"
+
+[cancel]
+other = "Cancelar"
+
+[chain_id]
+other = "ID de Cadena"
+
+[chain_id_mismatch]
+other = "Chain ID no coincide: se esperaba {{.Expected}}, se obtuvo {{.Actual}}"
+
+[chain_id_placeholder]
+other = "El ID de cadena se completará automáticamente"
+
+[chain_id_required]
+other = "El ID de cadena es obligatorio"
+
+[chain_id_tip]
+other = "El ID de cadena debe ser único (consulte chainlist.org para referencia)"
+
+[chainlist_unavailable_warning]
+other = "ChainList no está disponible. La red se añadirá como personalizada."
+
+[cleanup_failed]
+other = "La operación de limpieza falló"
+
+[configuration]
+other = "Configuración"
+
+[configuration_desc]
+other = "Configurar ajustes de la aplicación"
+
+[confirm_mnemonic]
+other = "Vuelva a ingresar la frase mnemónica completa para confirmar la copia:"
+
+[confirm_title]
+other = "Confirmar"
+
+[create_new_wallet]
+other = "Crear Nueva"
+
+[create_new_wallet_desc]
+other = "Generar una nueva cartera Ethereum"
+
+[created_at]
+other = "Creado En"
+
+[current]
+other = "Actual"
+
+[delete_network]
+other = "Eliminar Red"
+
+[delete_wallet]
+other = "Eliminar Cartera"
+
+[delete_wallet_confirmation]
+other = "¿Está seguro de que desea eliminar esta cartera?"
+
+[directory_scan_failed]
+other = "El escaneo del directorio falló"
+
+[directory_scan_recovery_failed]
+other = "Verifique los permisos del directorio y formatos de archivo"
+
+[duplicate_import_detail]
+other = "{{.Message}} [{{.MethodLabel}}: {{.Method}}]{{if .Address}} ({{.Address}}){{end}}{{if .Guidance}} - {{.Guidance}}{{end}}"
+
+[duplicate_mnemonic]
+other = "Ya existe una cartera con esta frase mnemónica"
+
+[duplicate_private_key]
+other = "Ya existe una cartera con esta clave privada"
+
+[edit_network]
+other = "Editar Red"
+
+[enter_keystore_path]
+other = "Ingrese la ruta al archivo KeyStoreV3:"
+
+[enter_mnemonic]
+other = "Ingrese su frase mnemónica de 12 palabras:"
+
+[enter_password]
+other = "Ingrese una contraseña para cifrar la cartera:"
+
+[enter_private_key]
+other = "Ingrese la clave privada (con o sin prefijo 0x):"
+
+[enter_wallet_password]
+other = "Ingrese la contraseña de la cartera:"
+
+[error]
+other = "Error: {{.Error}}"
+
+[error_category_filesystem]
+other = "Sistema de Archivos"
+
+[error_category_network]
+other = "Red"
+
+[error_category_password]
+other = "Contraseña"
+
+[error_category_system]
+other = "Sistema"
+
+[error_category_unknown]
+other = "Desconocido"
+
+[error_category_user_action]
+other = "Acción del Usuario"
+
+[error_category_validation]
+other = "Validación"
+
+[error_crypto_service_not_initialized]
+other = "Servicio de criptografía no inicializado"
+
+[error_decode_mnemonic]
+other = "Error al decodificar la frase mnemónica cifrada"
+
+[error_empty_encrypted_mnemonic]
+other = "La frase mnemónica cifrada no puede estar vacía"
+
+[error_empty_password]
+other = "La contraseña no puede estar vacía"
+
+[error_generate_salt]
+other = "Error al generar salt criptográfico"
 
 [error_invalid_mnemonic_format]
 other = "Formato de frase mnemónica cifrada inválido: demasiado corta"
 
-[keystore_invalid_address]
-other = "Formato de dirección Ethereum inválido en el keystore"
+[error_invalid_password]
+other = "Contraseña inválida: la verificación del hash falló"
 
-[suggestions]
-other = "Sugerencias"
+[error_title]
+other = "Error"
 
-[wallet_list_status_bar]
-other = "Vista: {{.View}} | Presione 'esc' para volver | 'q' para salir"
+[error_user_friendly_file_access]
+other = "No se puede acceder al archivo seleccionado"
 
-[import_keystore_desc]
-other = "Importar usando un archivo KeyStoreV3"
+[error_user_friendly_generic]
+other = "Ocurrió un error durante la operación"
 
-[import_watch_only]
-other = "Dirección de solo lectura"
+[error_user_friendly_invalid_format]
+other = "El formato del archivo no es compatible"
 
-[import_watch_only_desc]
-other = "Seguir dirección sin secretos de firma"
+[error_user_friendly_operation_failed]
+other = "La operación no se pudo completar"
+
+[error_user_friendly_password_required]
+other = "Se requiere una contraseña para esta operación"
+
+[error_user_friendly_permission_denied]
+other = "Permiso denegado"
+
+[error_user_friendly_timeout]
+other = "La operación expiró"
+
+[error_user_friendly_user_cancelled]
+other = "Operación cancelada por el usuario"
+
+[ethereum_address]
+other = "Dirección de Ethereum:"
+
+[exit]
+other = "Salir"
+
+[exit_desc]
+other = "Salir de la aplicación"
+
+[failed_to_get_chain_id_from_rpc]
+other = "Error al obtener el ID de cadena desde RPC"
+
+[failed_to_get_network_details]
+other = "Error al obtener detalles de la red"
+
+[generic_error_recovery]
+other = "Por favor, verifique el archivo e intente nuevamente"
+
+[guidance_duplicate_mnemonic]
+other = "Ya importaste esta mnemónica. Si buscabas otra cartera, revisa la frase e inténtalo nuevamente."
+
+[guidance_duplicate_private_key]
+other = "Esta clave privada ya está importada. Abre la cartera existente en lugar de volver a importarla."
 
 [import_batch_keystore]
 other = "Importación por Lote"
@@ -200,238 +243,2800 @@ other = "Importación por Lote"
 [import_batch_keystore_desc]
 other = "Importar varios archivos KeystoreV3"
 
+[import_batch_mnemonic]
+other = "Importación de Mnemónicos por Lote"
+
+[import_batch_mnemonic_desc]
+other = "Importar archivos mnemónicos de un directorio"
+
 [import_encrypted_backup]
 other = "Copia Encriptada"
 
 [import_encrypted_backup_desc]
 other = "Restaurar copia encriptada Bloco"
 
-[active]
-other = "Activo"
+[import_interrupted]
+other = "El proceso de importación fue interrumpido"
 
-[chain_id]
-other = "ID de Cadena"
+[import_job_validation_failed]
+other = "La validación del trabajo de importación falló"
 
-[tips]
-other = "Consejos"
+[import_keystore]
+other = "Archivo Keystore"
 
-[main_menu_title]
-other = "Menú Principal"
+[import_keystore_desc]
+other = "Importar usando un archivo KeyStoreV3"
 
-[add_network_desc]
-other = "Añadir una nueva red blockchain"
+[import_method_title]
+other = "Seleccione el Método de Importación"
 
-[symbol_placeholder]
-other = "El símbolo se completará automáticamente"
+[import_mnemonic]
+other = "Frase Mnemotécnica"
 
 [import_mnemonic_desc]
-other = "Importar usando frase de 12 palabras"
+other = "Importar usando frase mnemónica BIP39 (12/15/18/21/24 palabras)"
 
-[back_to_menu_desc]
-other = "Regresar al menú principal"
+[import_private_key]
+other = "Clave Privada"
 
-[network_details]
-other = "Detalles de la Red"
+[import_private_key_desc]
+other = "Importar usando una clave privada"
 
-[adding_network]
-other = "Añadiendo red"
+[import_status_cleaning_up]
+other = "Limpiando recursos..."
 
-[invalid_keystore]
-other = "Archivo keystore inválido. Verifique la ruta e intente nuevamente."
+[import_status_completing]
+other = "Completando operación de importación..."
 
-[invalid_mnemonic]
-other = "Frase mnemotécnica inválida. Debe tener 12 palabras separadas por espacios."
+[import_status_processing_batch]
+other = "Procesando importación por lotes..."
 
-[delete_wallet_confirmation]
-other = "¿Está seguro de que desea eliminar esta cartera?"
+[import_status_scanning_directory]
+other = "Escaneando directorio para archivos keystore..."
 
-[search_networks_placeholder]
-other = "Escriba para buscar redes (ej: Ethereum, Polygon)"
+[import_status_validating_files]
+other = "Validando archivos seleccionados..."
 
-[inactive]
-other = "Inactivo"
+[import_status_waiting_password]
+other = "Esperando entrada de contraseña..."
 
-[configuration]
-other = "Configuración"
+[import_summary_all_failed]
+other = "Todas las importaciones fallaron"
 
-[keystore_title]
-other = "Importar Cartera vía Archivo Keystore"
+[import_summary_all_successful]
+other = "Todas las importaciones se completaron exitosamente"
 
-[wallet_created]
-other = "¡Cartera creada exitosamente!"
+[import_summary_no_recoverable_errors]
+other = "Ningún error puede ser recuperado automáticamente"
 
-[cancel]
-other = "Cancelar"
+[import_summary_partial_success]
+other = "Algunas importaciones se completaron exitosamente"
 
-[password_no_digit_or_special]
-other = "La contraseña debe contener al menos un dígito o carácter especial"
+[import_summary_recoverable_errors]
+other = "Algunos errores pueden ser corregidos y reintentados"
 
-[enter_mnemonic]
-other = "Ingrese su frase mnemónica de 12 palabras:"
-
-[mnemonic_phrase]
-other = "Frase Mnemónica (¡Manténgala Segura!):"
-
-[press_esc]
-other = "Presione ESC para volver a la lista de carteras."
-
-[error]
-other = "Error: {{.Error}}"
-
-[wallet_action_title]
-other = "Acciones de la Cartera"
-
-[delete_wallet]
-other = "Eliminar Cartera"
-
-[error_empty_encrypted_mnemonic]
-other = "La frase mnemónica cifrada no puede estar vacía"
-
-[invalid_rpc_endpoint]
-other = "Endpoint RPC inválido. Debe comenzar con http:// o https://"
-
-[invalid_chain_id]
-other = "ID de cadena inválido. Debe ser un número"
-
-[language]
-other = "Idioma"
-
-[invalid_keystore_password]
-other = "Contraseña inválida para el archivo keystore. Intente nuevamente."
-
-[exit_desc]
-other = "Salir de la aplicación"
-
-[password_too_short]
-other = "La contraseña debe tener al menos 8 caracteres"
-
-[rpc_endpoint]
-other = "Endpoint RPC"
-
-[private_key_title]
-other = "Importar Cartera vía Clave Privada"
-
-[wallet_type]
-other = "Tipo"
-
-[search_networks_tip]
-other = "Busque redes por nombre y seleccione de las sugerencias"
-
-[mnemonic_phrase_label]
-other = "Frase Mnemónica:"
-
-[configuration_desc]
-other = "Configurar ajustes de la aplicación"
-
-[no]
-other = "No"
-
-[keystore_corrupted_file]
-other = "El archivo keystore está corrupto o dañado"
-
-[enter_wallet_password]
-other = "Ingrese la contraseña de la cartera:"
-
-[create_new_wallet_desc]
-other = "Generar una nueva cartera Ethereum"
-
-[keystore_file_not_found]
-other = "Archivo keystore no encontrado en la ruta especificada"
-
-[chain_id_placeholder]
-other = "El ID de cadena se completará automáticamente"
-
-[imported_keystore]
-other = "Keystore (Clave Privada)"
-
-[error_invalid_password]
-other = "Contraseña inválida: la verificación del hash falló"
-
-[symbol]
-other = "Símbolo"
-
-[add_network]
-other = "Añadir Red"
-
-[import_wallet_desc]
-other = "Importar una cartera existente"
-
-[keystore_invalid_version]
-other = "Versión de keystore inválida, se esperaba versión 3"
-
-[chain_id_required]
-other = "El ID de cadena es obligatorio"
-
-[password_no_lowercase]
-other = "La contraseña debe contener al menos una letra minúscula"
-
-[rpc_endpoint_tip]
-other = "Use endpoints RPC confiables para un mejor rendimiento"
-
-[rpc_endpoint_required]
-other = "El endpoint RPC es obligatorio"
-
-[create_new_wallet]
-other = "Crear Nueva"
-
-[loading]
-other = "Cargando..."
-
-[confirm_title]
-other = "Confirmar"
-
-[current]
-other = "Actual"
-
-[press_enter]
-other = "Presione Enter para continuar."
-
-[enter_private_key]
-other = "Ingrese la clave privada (con o sin prefijo 0x):"
-
-[error_decode_mnemonic]
-other = "Error al decodificar la frase mnemónica cifrada"
-
-[symbol_required]
-other = "El símbolo es obligatorio"
-
-[search_networks]
-other = "Buscar Redes"
+[import_summary_user_cancelled]
+other = "Importación cancelada por el usuario"
 
 [import_wallet]
 other = "Importar Cartera"
 
-[networks_desc]
-other = "Configurar redes blockchain"
+[import_wallet_desc]
+other = "Importar una cartera existente"
 
-[created_at]
-other = "Creado En"
+[import_wallet_title]
+other = "Importar una Cartera existente"
 
+[import_watch_only]
+other = "Dirección de solo lectura"
 
+[import_watch_only_desc]
+other = "Seguir una dirección sin almacenar claves privadas"
 
-[error_title]
-other = "Error"
+[imported_keystore]
+other = "Keystore (Clave Privada)"
+
+[imported_mnemonic]
+other = "Frase Mnemónica"
+
+[imported_private_key]
+other = "Clave Privada"
+
+[inactive]
+other = "Inactivo"
+
+[invalid_chain_id]
+other = "ID de cadena inválido. Debe ser un número"
+
+[invalid_keystore]
+other = "Archivo keystore inválido. Verifique la ruta e intente nuevamente."
+
+[invalid_keystore_password]
+other = "Contraseña inválida para el archivo keystore. Intente nuevamente."
+
+[invalid_mnemonic]
+other = "Frase mnemotécnica inválida. Debe tener 12 palabras separadas por espacios."
+
+[invalid_rpc_endpoint]
+other = "Endpoint RPC inválido. Debe comenzar con http:// o https://"
+
+[keystore_access_error]
+other = "✗ Error al acceder al archivo"
+
+[keystore_address_mismatch]
+other = "La dirección en el keystore no corresponde a la clave privada derivada"
+
+[keystore_corrupted_file]
+other = "El archivo keystore está corrupto o dañado"
+
+[keystore_file_not_found]
+other = "Archivo keystore no encontrado en la ruta especificada"
+
+[keystore_file_valid]
+other = "✓ Archivo keystore válido detectado"
+
+[keystore_import_stage_decrypting]
+other = "Descifrando clave privada..."
+
+[keystore_import_stage_parsing]
+other = "Analizando estructura del keystore..."
+
+[keystore_import_stage_saving]
+other = "Guardando cartera..."
+
+[keystore_import_stage_validating]
+other = "Validando archivo keystore..."
+
+[keystore_incorrect_password]
+other = "Contraseña incorrecta para el archivo keystore"
+
+[keystore_invalid_address]
+other = "Formato de dirección Ethereum inválido en el keystore"
+
+[keystore_invalid_json]
+other = "El archivo no contiene un JSON válido"
+
+[keystore_invalid_structure]
+other = "El archivo no contiene un keystore v3 válido"
+
+[keystore_invalid_version]
+other = "Versión de keystore inválida, se esperaba versión 3"
+
+[keystore_is_directory]
+other = "✗ La ruta apunta a un directorio, no a un archivo"
+
+[keystore_missing_fields]
+other = "Al archivo keystore le faltan campos obligatorios"
+
+[keystore_not_json]
+other = "✗ El archivo no contiene un JSON válido"
+
+[keystore_recovery_file_not_found]
+other = "Verifique la ruta del archivo y asegúrese de que existe"
+
+[keystore_recovery_general]
+other = "Por favor, verifique el archivo e intente nuevamente"
+
+[keystore_recovery_incorrect_password]
+other = "Por favor, intente nuevamente con la contraseña correcta"
+
+[keystore_recovery_invalid_json]
+other = "El archivo puede estar dañado o no contener JSON válido. Intente con un archivo keystore diferente"
+
+[keystore_recovery_invalid_structure]
+other = "Asegúrese de que este es un archivo keystore v3 de Ethereum válido"
+
+[keystore_title]
+other = "Importar Cartera vía Archivo Keystore"
+
+[language]
+other = "Idioma"
+
+[language_desc]
+other = "Cambiar idioma de la aplicación"
+
+[language_name]
+other = "Español"
+
+[list_wallets]
+other = "Mis Carteras"
+
+[list_wallets_desc]
+other = "Ver y administrar tus carteras"
+
+[loading]
+other = "Cargando..."
+
+[main_menu_title]
+other = "Menú Principal"
+
+[max_password_attempts_exceeded]
+other = "Máximo de intentos de contraseña excedido"
+
+[message_with_field]
+other = "{{.Message}} ({{.Field}})"
+
+[message_with_file]
+other = "{{.Message}} ({{.File}})"
+
+[method_keystore]
+other = "Archivo Keystore"
+
+[method_label]
+other = "Método"
+
+[method_mnemonic]
+other = "Mnemónico"
+
+[method_private_key]
+other = "Clave Privada"
+
+[mnemonic_mismatch]
+other = "La confirmación no coincide con la frase mnemónica generada."
+
+[mnemonic_phrase]
+other = "Frase Mnemónica (¡Manténgala Segura!):"
+
+[mnemonic_phrase_label]
+other = "Frase Mnemónica:"
+
+[network_details]
+other = "Detalles de la Red"
+
+[network_list]
+other = "Lista de Redes"
+
+[network_list_desc]
+other = "Ver y administrar redes blockchain"
+
+[network_list_instructions]
+other = "Use las flechas para navegar, 'a' para añadir, 'e' para editar, 'd' para eliminar, 'esc' para volver."
+
+[network_name]
+other = "Nombre de Red"
+
+[network_name_placeholder]
+other = "El nombre de la red se completará automáticamente"
+
+[network_name_required]
+other = "El nombre de la red es obligatorio"
 
 [network_search_failed]
 other = "Búsqueda de redes fallida"
 
-[rpc_validation_failed]
-other = "Fallo en la validación de RPC"
-
-[failed_to_get_chain_id_from_rpc]
-other = "Error al obtener el ID de cadena desde RPC"
-
-[chain_id_mismatch]
-other = "El ID de cadena no coincide"
-
 [network_search_failed_guidance]
 other = "Verifique su conexión a Internet e inténtelo de nuevo."
-
-[rpc_validation_failed_guidance]
-other = "Verifique que la URL de RPC sea correcta y accesible."
 
 [network_selection_failed]
 other = "Fallo al seleccionar la red"
 
+[network_validation_failed]
+other = "Falló la validación de la red"
+
+[networks]
+other = "Redes"
+
+[networks_desc]
+other = "Configurar redes blockchain"
+
+[no]
+other = "No"
+
+[no_mnemonic_available]
+other = "Mnemónica no disponible (importada mediante clave privada)"
+
+[no_mnemonic_keystore]
+other = "Mnemónica no disponible - importada desde archivo keystore"
+
+[no_network_selected]
+other = "Ninguna red seleccionada"
+
 [operation_failed_generic]
 other = "Fallo en la operación"
+
+[partial_import_failure]
+other = "Algunas importaciones fallaron"
+
+[password_attempts_recovery_exceeded]
+other = "Reinicie e intente con la contraseña correcta"
+
+[password_file_corrupted]
+other = "El archivo de contraseña está dañado"
+
+[password_file_empty]
+other = "El archivo de contraseña está vacío"
+
+[password_file_invalid]
+other = "Formato de archivo de contraseña inválido"
+
+[password_file_not_found]
+other = "Archivo de contraseña no encontrado"
+
+[password_file_oversized]
+other = "El archivo de contraseña es demasiado grande"
+
+[password_file_recovery_corrupted]
+other = "Asegúrese de que el archivo de contraseña esté guardado con codificación UTF-8"
+
+[password_file_recovery_empty]
+other = "Agregue la contraseña al archivo .pwd o ingrésela manualmente"
+
+[password_file_recovery_general]
+other = "Verifique el archivo de contraseña e intente nuevamente"
+
+[password_file_recovery_invalid]
+other = "Asegúrese de que el archivo de contraseña contenga solo el texto de la contraseña"
+
+[password_file_recovery_not_found]
+other = "Intente ingresar la contraseña manualmente o crear un archivo .pwd"
+
+[password_file_recovery_oversized]
+other = "Los archivos de contraseña deben contener solo la contraseña (máx 256 caracteres)"
+
+[password_file_recovery_unreadable]
+other = "Verifique los permisos del archivo e intente nuevamente"
+
+[password_file_unknown_error]
+other = "Error desconocido en archivo de contraseña"
+
+[password_file_unreadable]
+other = "No se puede leer el archivo de contraseña"
+
+[password_input_cancelled]
+other = "La entrada de contraseña fue cancelada"
+
+[password_input_recovery_timeout]
+other = "Intente nuevamente con un tiempo de respuesta menor"
+
+[password_input_skipped]
+other = "La entrada de contraseña fue omitida"
+
+[password_input_timeout]
+other = "La entrada de contraseña expiró"
+
+[password_no_digit_or_special]
+other = "La contraseña debe contener al menos un dígito o carácter especial"
+
+[password_no_lowercase]
+other = "La contraseña debe contener al menos una letra minúscula"
+
+[password_no_uppercase]
+other = "La contraseña debe contener al menos una letra mayúscula"
+
+[password_too_short]
+other = "La contraseña debe tener al menos 8 caracteres"
+
+[password_validation_failed]
+other = "Falló la validación de la contraseña"
+
+[press_enter]
+other = "Presione Enter para continuar."
+
+[press_esc]
+other = "Presione ESC para volver a la lista de carteras."
+
+[private_key]
+other = "Clave Privada:"
+
+[private_key_title]
+other = "Importar Cartera vía Clave Privada"
+
+[public_key]
+other = "Clave Pública:"
+
+[quit_app]
+other = "Salir de la Aplicación"
+
+[quit_app_desc]
+other = "Cerrar el programa"
+
+[retry_description_directory_scan_failed]
+other = "Elija un directorio diferente o corrija permisos"
+
+[retry_description_file_not_found]
+other = "Seleccione archivos keystore válidos que existan"
+
+[retry_description_generic]
+other = "Revise y corrija los problemas identificados"
+
+[retry_description_incorrect_password]
+other = "Use la contraseña correcta para cada keystore"
+
+[retry_description_password_file_empty]
+other = "Agregue contenido a archivos de contraseña vacíos"
+
+[retry_description_password_file_not_found]
+other = "Ingrese contraseñas manualmente para archivos sin .pwd"
+
+[retry_description_password_file_unreadable]
+other = "Corrija permisos de archivo o recree archivos de contraseña"
+
+[retry_description_password_input_timeout]
+other = "Responda más rápidamente a las solicitudes de contraseña"
+
+[rpc_endpoint]
+other = "Endpoint RPC"
+
+[rpc_endpoint_placeholder]
+other = "La URL RPC se completará automáticamente"
+
+[rpc_endpoint_required]
+other = "El endpoint RPC es obligatorio"
+
+[rpc_endpoint_tip]
+other = "Use endpoints RPC confiables para un mejor rendimiento"
+
+[rpc_validation_failed]
+other = "Fallo en la validación de RPC"
+
+[rpc_validation_failed_guidance]
+other = "Verifique que la URL de RPC sea correcta y accesible."
+
+[search_networks]
+other = "Buscar Redes"
+
+[search_networks_placeholder]
+other = "Escriba para buscar redes (ej: Ethereum, Polygon)"
+
+[search_networks_tip]
+other = "Busque redes por nombre y seleccione de las sugerencias"
+
+[searching_networks]
+other = "Buscando redes"
+
+[select_wallet_prompt]
+other = "Seleccione una cartera e ingrese la contraseña para ver los detalles."
+
+[sensitive_data_hidden]
+other = "Oculto - usa el flujo explícito de exportación"
+
+[status]
+other = "Estado"
+
+[status_bar_instructions]
+other = "Vista: {{.View}} | Presione 'esc' para volver | Ctrl+Q para salir"
+
+[suggestions]
+other = "Sugerencias"
+
+[symbol]
+other = "Símbolo"
+
+[symbol_placeholder]
+other = "El símbolo se completará automáticamente"
+
+[symbol_required]
+other = "El símbolo es obligatorio"
+
+[tips]
+other = "Consejos"
+
+[unknown_error]
+other = "Error desconocido"
+
+[view_wallet]
+other = "Ver Detalles"
+
+[wallet_action_title]
+other = "Acciones de la Cartera"
+
+[wallet_count]
+one = "{{.Count}} cartera"
+other = "{{.Count}} carteras"
+
+
+[wallet_created]
+other = "¡Cartera creada exitosamente!"
+
+[wallet_deleted]
+other = "Cartera eliminada exitosamente."
+
+[wallet_details_title]
+other = "Detalles de la Cartera"
+
+[wallet_imported]
+other = "¡Cartera importada exitosamente!"
+
+[wallet_list_instructions]
+other = "Use las flechas para navegar, Enter para ver detalles y 'esc' para volver al menú."
+
+[wallet_list_status_bar]
+other = "Vista: {{.View}} | Presione 'esc' para volver | Ctrl+Q para salir"
+
+[wallet_type]
+other = "Tipo"
+
+[wallets]
+other = "Carteras"
+
+[welcome_message]
+other = "¡Bienvenido al Administrador de Carteras BLOCO!\n\nSeleccione una opción del menú."
+
+[yes]
+other = "Sí"
+
+[list_wallets_title]
+other = "Mis Carteras"
+
+[no_wallets_message]
+other = "No se encontraron carteras. Cree una nueva cartera para comenzar."
+
+[name]
+other = "Nombre"
+
+[safe_menu_title]
+other = "Multifirma Safe"
+
+[safe_menu_description]
+other = "Revisar y aprobar propuestas Safe"
+
+[language_code_label]
+other = "Idioma: {{.Code}}"
+
+[popup_password_required]
+other = "Contraseña Requerida"
+
+[popup_keystore_password_placeholder]
+other = "Introduce la contraseña del keystore..."
+
+[popup_file_label]
+other = "Archivo: {{.File}}"
+
+[popup_attempts_remaining]
+other = "Intentos restantes: {{.Count}}"
+
+[popup_max_attempts]
+other = "Número máximo de intentos alcanzado"
+
+[popup_error_label]
+other = "Error: {{.Error}}"
+
+[popup_instructions]
+other = "Enter: confirmar • Esc: cancelar • Ctrl+S: omitir archivo"
+
+[detail_name]
+other = "Nombre"
+
+[detail_address]
+other = "Dirección"
+
+[detail_account_id]
+other = "ID de cuenta"
+
+[detail_signer]
+other = "Firmante"
+
+[detail_state]
+other = "Estado"
+
+[detail_derivation_path]
+other = "Ruta de derivación"
+
+[detail_bip39_language]
+other = "Idioma BIP39"
+
+[detail_passphrase_configured]
+other = "Frase de contraseña BIP39 configurada"
+
+[detail_related_account]
+other = "Cuenta relacionada"
+
+[detail_custody_watch_only]
+other = "Custodia: Solo lectura"
+
+[detail_watch_only_note]
+other = "No se almacenan secretos de firma para esta cuenta."
+
+[wallet_details_identity]
+other = "Identidad"
+
+[wallet_details_security]
+other = "Seguridad y derivación"
+
+[wallet_details_balances]
+other = "Saldos"
+
+[wallet_details_loading_balances]
+other = "Cargando tras aprobación explícita..."
+
+[wallet_details_unavailable]
+other = "no disponible"
+
+[wallet_details_provider_warning]
+other = "Advertencia del proveedor"
+
+[wallet_details_privacy_notice]
+other = "Privacidad: consultar saldos envía esta dirección pública a cada proveedor activo."
+
+[transaction_submitted_notice]
+other = "Transacción enviada o resultado pendiente: {{.Hash}}"
+
+[help_scroll_up]
+other = "desplazar arriba"
+
+[help_scroll_down]
+other = "desplazar abajo"
+
+[help_page_up]
+other = "página arriba"
+
+[help_page_down]
+other = "página abajo"
+
+[help_lock]
+other = "Bloquear"
+
+[help_rotate]
+other = "Cambiar contraseña"
+
+[help_export_keystore]
+other = "Exportar keystore"
+
+[help_encrypted_backup]
+other = "Copia cifrada"
+
+[help_recovery]
+other = "Recuperación"
+
+[help_fetch_balances]
+other = "Consultar saldos"
+
+[help_history]
+other = "Historial local"
+
+[help_sign_message]
+other = "Firmar mensaje"
+
+[help_sign_typed_data]
+other = "Firmar datos tipados"
+
+[help_send_native]
+other = "Enviar nativo"
+
+[help_send_erc20]
+other = "Enviar ERC-20"
+
+[help_send_nft]
+other = "Enviar NFT"
+
+[help_send_1155]
+other = "Enviar 1155"
+
+[help_send_1155_batch]
+other = "Enviar lote 1155"
+
+[help_contract_call]
+other = "Llamada de contrato"
+
+[help_wc_sessions]
+other = "Sesiones WC"
+
+[help_security_keys]
+other = "Claves de seguridad"
+
+[help_approve_erc20]
+other = "Aprobar ERC-20"
+
+[help_resume_backup]
+other = "Reanudar copia"
+
+[help_more]
+other = "Más ayuda"
+
+[help_back]
+other = "Volver"
+
+[canonical_import_title]
+other = "Importación canónica de cartera"
+
+[canonical_state_unavailable]
+other = "El estado de importación no está disponible"
+
+[canonical_cancelling]
+other = "Cancelando de forma segura. Esperando a que el trabajo criptográfico en curso se detenga."
+
+[canonical_processing]
+other = "Procesando trabajo criptográfico acotado."
+
+[canonical_stage_processing]
+other = "Procesando"
+
+[canonical_stage_validating]
+other = "Validando"
+
+[canonical_stage_importing]
+other = "Importando"
+
+[canonical_batch_progress]
+other = "Encontradas {{.Found}} | Procesadas {{.Done}}/{{.Total}} | Importadas {{.Imported}} | Ya importadas {{.Already}} | Fallidas {{.Failed}}"
+
+[canonical_batch_preview_title]
+other = "Vista previa autenticada del lote:"
+
+[canonical_preview_error]
+other = "ERROR: {{.Err}}"
+
+[canonical_preview_summary]
+other = "Fuente: {{.Source}}\nDirección: {{.Address}}\nFirmante: {{.Signer}}\nMaterial secreto: {{.Secret}}\nRuta: {{.Path}}\nIdioma: {{.Language}}\nFrase de contraseña presente: {{.Passphrase}}"
+
+[canonical_step]
+other = "Paso {{.Step}}/{{.Total}}"
+
+[field_required]
+other = "{{.Field}} es obligatorio"
+
+[canonical_invalid_keystore_path]
+other = "La ruta debe ser un archivo .json Keystore V3 absoluto"
+
+[canonical_sidecar_read_error]
+other = "No se pudo leer el archivo auxiliar de contraseña del keystore"
+
+[canonical_secret_none]
+other = "ninguno"
+
+[canonical_err_cancelled]
+other = "Importación cancelada"
+
+[canonical_err_source_read]
+other = "No se pudo leer el archivo de origen ni el archivo auxiliar de contraseña"
+
+[canonical_err_keystore_validation]
+other = "La validación o el descifrado del keystore falló"
+
+[canonical_err_mnemonic_validation]
+other = "La validación del mnemotécnico falló"
+
+[canonical_err_import_failed]
+other = "La importación de la cartera falló"
+
+[canonical_result_error]
+other = "{{.Name}} | ERROR: {{.Err}}"
+
+[canonical_result_already]
+other = "{{.Name}} | ya importada"
+
+[canonical_result_imported]
+other = "{{.Name}} | {{.Address}} | importada"
+
+[canonical_result_summary]
+other = "Resumen: {{.Found}} encontrados, {{.Processed}} procesados, {{.Imported}} importadas, {{.Already}} ya importadas, {{.Failed}} fallidas"
+
+[canonical_warn_log_dir]
+other = "AVISO: no se pudo escribir el registro de fallos (directorio de registros no disponible)"
+
+[canonical_warn_log_write]
+other = "AVISO: no se pudo escribir el registro de fallos"
+
+[canonical_failure_log]
+other = "Registro de fallos: {{.Path}}"
+
+[canonical_label_name]
+other = "Nombre de la cuenta"
+
+[canonical_label_mnemonic]
+other = "Mnemotécnico BIP39 (12/15/18/21/24 palabras)"
+
+[canonical_label_language]
+other = "Idioma (vacío = detección automática)"
+
+[canonical_label_passphrase]
+other = "Frase de contraseña BIP39 opcional"
+
+[canonical_label_path]
+other = "Ruta de derivación EVM (vacío = m/44'/60'/0'/0/0)"
+
+[canonical_label_private_key]
+other = "Clave privada"
+
+[canonical_label_keystore_path]
+other = "Ruta absoluta del Keystore V3"
+
+[canonical_label_source_password_keystore]
+other = "Contraseña de origen del keystore (puede estar vacía)"
+
+[canonical_label_directory_keystore]
+other = "Directorio con archivos Keystore V3"
+
+[canonical_label_directory_mnemonic]
+other = "Directorio con archivos .mnemonic/.seedphrase"
+
+[canonical_label_encrypted_path]
+other = "Ruta absoluta de la exportación cifrada Bloco"
+
+[canonical_label_source_password_encrypted]
+other = "Contraseña de la exportación cifrada"
+
+[canonical_label_address]
+other = "Dirección EVM"
+
+[canonical_label_storage_password]
+other = "Nueva contraseña de almacenamiento de la bóveda"
+
+[canonical_label_confirm_password]
+other = "Confirme la contraseña de almacenamiento de la bóveda"
+
+[suggestion_item_desc]
+other = "Chain ID: {{.ChainID}}, Símbolo: {{.Symbol}}"
+
+[decimals_placeholder]
+other = "Decimales de la moneda nativa (0-36)"
+
+[native_decimals_label]
+other = "Decimales de la moneda nativa"
+
+[rpc_endpoint_placeholder_full]
+other = "La URL RPC se completará automáticamente o env:NOMBRE_VARIABLE"
+
+[rpc_unsafe_chars]
+other = "El endpoint RPC contiene caracteres no seguros para mostrar"
+
+[rpc_credential_unavailable]
+other = "La referencia de credencial RPC no está disponible"
+
+[decimals_range_error]
+other = "Los decimales de la moneda nativa deben estar entre 0 y 36"
+
+[network_col_type_identity]
+other = "Tipo / Identidad / Privacidad"
+
+[network_type_custom]
+other = "Personalizada"
+
+[network_identity_unchecked]
+other = "no verificado ahora"
+
+[network_type_registry_claim]
+other = "Afirmación del registro"
+
+[network_identity_observed]
+other = "observado anteriormente"
+
+[network_health_label]
+other = "salud"
+
+[no_networks_found]
+other = "No se encontraron redes. Añade una red para empezar."
+
+[network_op_failed]
+other = "La operación de red falló"
+
+[network_op_hint]
+other = "Pulsa r para recargar, v para revalidar el proveedor seleccionado o e para corregir su configuración."
+
+[network_selected]
+other = "Red seleccionada"
+
+[network_registry_not_listed]
+other = "No listada o no verificada"
+
+[network_registry_claim]
+other = "Afirmación de ChainList almacenada"
+
+[network_registry_listed]
+other = "Listada como {{.Name}}"
+
+[network_identity_not_verified]
+other = "No verificada en esta sesión"
+
+[network_identity_verified]
+other = "Verificada ahora contra el chain ID configurado"
+
+[network_identity_prev]
+other = "Verificada anteriormente; pulse v para verificar de nuevo"
+
+[network_detail_source]
+other = "Fuente"
+
+[network_detail_registry]
+other = "Registro"
+
+[network_detail_chain_identity]
+other = "Identidad de la chain"
+
+[network_detail_health]
+other = "Salud"
+
+[network_detail_privacy]
+other = "Seguimiento de privacidad"
+
+[network_detail_confidence]
+other = "Confianza del proveedor"
+
+[network_revalidate_hint]
+other = "Pulsa v para revalidar o e para corregir la configuración del proveedor."
+
+[help_up]
+other = "arriba"
+
+[help_down]
+other = "abajo"
+
+[help_add_network]
+other = "Añadir red"
+
+[help_edit_network]
+other = "Editar red"
+
+[help_delete_network]
+other = "Eliminar red"
+
+[help_refresh]
+other = "Actualizar"
+
+[help_revalidate]
+other = "Revalidar"
+
+[net_status_refreshed]
+other = "Información de la red actualizada"
+
+[net_health_verified]
+other = "accesible y chain ID verificado ahora"
+
+[net_status_revalidated]
+other = "Proveedor e identidad de la chain revalidados"
+
+[net_err_load_config]
+other = "Error al cargar la configuración: {{.Err}}"
+
+[net_err_load_networks]
+other = "Error al cargar las redes: {{.Err}}"
+
+[net_err_not_found]
+other = "Red no encontrada"
+
+[net_err_remove]
+other = "Error al eliminar la red: {{.Err}}"
+
+[net_err_reload_config]
+other = "Error al recargar la configuración: {{.Err}}"
+
+[net_busy_reload]
+other = "Recargando información de la red almacenada..."
+
+[net_busy_revalidate]
+other = "Revalidando proveedor, identidad de la chain, metadatos de registro e información de privacidad..."
+
+[net_err_no_config_save]
+other = "No hay configuración para guardar"
+
+[net_err_save_config]
+other = "Error al guardar la configuración: {{.Err}}"
+
+[net_err_init_config_mgr]
+other = "Error al inicializar el gestor de configuración: {{.Err}}"
+
+[net_feedback_added]
+other = "Red añadida correctamente"
+
+[net_feedback_updated]
+other = "Red actualizada correctamente"
+
+[net_feedback_added_registry]
+other = "Red añadida como red listada en el registro"
+
+[net_feedback_added_custom]
+other = "Red añadida como red personalizada"
+
+[net_err_name_empty]
+other = "El nombre de la red no puede estar vacío"
+
+[net_err_rpc_empty]
+other = "El endpoint RPC o la referencia de credencial no puede estar vacío"
+
+[net_err_symbol_empty]
+other = "El símbolo no puede estar vacío"
+
+[net_op_failed_wrap]
+other = "La operación de red falló: {{.Err}}"
+
+[net_err_already_exists]
+other = "Ya existe una red con la clave {{.Key}}"
+
+[net_err_key_not_found]
+other = "Red con la clave {{.Key}} no encontrada"
+
+[net_err_update_exists]
+other = "No se puede actualizar la red: ya existe una red con la clave {{.Key}}"
+
+[net_err_resolve_rpc]
+other = "Error al resolver el endpoint RPC: {{.Err}}"
+
+[net_err_classify]
+other = "Error al clasificar la red: {{.Err}}"
+
+[net_err_classify_updated]
+other = "Error al clasificar la red actualizada: {{.Err}}"
+
+[net_err_save_migrated]
+other = "Error al guardar la configuración migrada: {{.Err}}"
+
+[net_tracking_unknown]
+other = "desconocido/no verificado ahora"
+
+[net_tracking_observed]
+other = "observado anteriormente {{.Tracking}}"
+
+[net_health_unchecked]
+other = "no verificado"
+
+[net_confidence_none]
+other = "ninguna (proveedor único)"
+
+[net_source_manual]
+other = "manual"
+
+[net_source_registry]
+other = "stored_registry_claim"
+
+[recovery_show_mnemonic]
+other = "Mostrar frase de recuperación"
+
+[recovery_export_mnemonic]
+other = "Exportar frase de recuperación"
+
+[recovery_show_passphrase]
+other = "Mostrar frase de contraseña BIP39"
+
+[recovery_export_passphrase]
+other = "Exportar frase de contraseña BIP39"
+
+[recovery_show_key]
+other = "Mostrar clave privada"
+
+[recovery_export_key]
+other = "Exportar clave privada"
+
+[recovery_placeholder_password]
+other = "Contraseña de almacenamiento de la bóveda"
+
+[recovery_placeholder_destination]
+other = "Ruta absoluta de destino"
+
+[recovery_placeholder_export]
+other = "Escribe EXPORT para confirmar"
+
+[recovery_placeholder_reveal]
+other = "Escribe REVEAL para confirmar"
+
+[recovery_err_destination_abs]
+other = "El destino debe ser una ruta absoluta"
+
+[recovery_err_password_required]
+other = "La contraseña de la bóveda es obligatoria"
+
+[recovery_err_type_exact]
+other = "Escribe {{.Token}} exactamente para confirmar"
+
+[recovery_err_auth]
+other = "Contraseña incorrecta o el material de recuperación no pudo autenticarse"
+
+[recovery_err_confirm]
+other = "La confirmación de recuperación no coincide con la cuenta"
+
+[recovery_err_unavailable]
+other = "Este material de recuperación no está disponible para la cuenta seleccionada"
+
+[recovery_err_denied]
+other = "La recuperación no está permitida para esta cuenta"
+
+[recovery_err_state_changed]
+other = "El estado de la cuenta cambió; inténtalo de nuevo"
+
+[recovery_err_vault_closed]
+other = "La bóveda de carteras está cerrada"
+
+[recovery_err_account_gone]
+other = "La cuenta ya no está disponible"
+
+[recovery_err_dest_exists]
+other = "El destino ya existe; elige otra ruta"
+
+[recovery_err_cancelled]
+other = "Operación cancelada"
+
+[recovery_err_failed]
+other = "La operación de recuperación falló"
+
+[recovery_kind_mnemonic]
+other = "Frase de recuperación"
+
+[recovery_kind_private_key]
+other = "Clave privada"
+
+[recovery_kind_passphrase]
+other = "Frase de contraseña BIP39"
+
+[recovery_kind_secret]
+other = "Secreto"
+
+[recovery_title]
+other = "Recuperación / exportación de secretos"
+
+[recovery_account_line]
+other = "Cuenta: {{.Name}} | Dirección: {{.Address}} | ID de cuenta: {{.ID}}"
+
+[recovery_no_phrase]
+other = "Esta cuenta se importó desde una clave privada o keystore; no existe frase de recuperación para ella."
+
+[recovery_requires_confirm]
+other = "Cada revelación o exportación requiere la contraseña de la bóveda y una confirmación escrita. Las revelaciones se ocultan tras 60 segundos, al salir o cuando la ventana pierde el foco."
+
+[recovery_destination_warning]
+other = "Destino (extensión recomendada {{.Hint}}). El archivo se escribe SIN CIFRADO y los archivos existentes nunca se sobrescriben."
+
+[recovery_confirm_action]
+other = "Confirmar: {{.Action}}"
+
+[recovery_kind_line]
+other = "Tipo: {{.Kind}} | Ruta de derivación: {{.Path}} | Idioma BIP39: {{.Lang}} | Frase de contraseña BIP39 configurada: {{.Passphrase}}"
+
+[recovery_kind_line_reveal]
+other = "Tipo: {{.Kind}} | Ruta de derivación: {{.Path}} | Idioma: {{.Lang}}"
+
+[recovery_destination_label]
+other = "Destino: {{.Path}}"
+
+[recovery_warn_file_unencrypted]
+other = "AVISO: el archivo contendrá material secreto SIN CIFRAR. Cualquiera que lo lea puede robar fondos."
+
+[recovery_warn_screen_plaintext]
+other = "AVISO: el secreto se mostrará en pantalla en texto plano durante un máximo de 60 segundos."
+
+[recovery_passphrase_also_required]
+other = "También se requiere una frase de contraseña BIP39 para recuperar esta cuenta; la frase por sí sola NO es suficiente y la ruta de derivación debe coincidir."
+
+[recovery_passphrase_account_note]
+other = "Esta cuenta también usa una frase de contraseña BIP39; la frase por sí sola NO es suficiente para recuperarla y la ruta de derivación debe coincidir."
+
+[recovery_key_controls_only]
+other = "Esta clave privada controla solo esta cuenta."
+
+[recovery_key_controls_only_note]
+other = "Esta clave privada controla solo esta cuenta; no recupera otras cuentas derivadas de una frase."
+
+[recovery_passphrase_label]
+other = "Frase de contraseña BIP39:"
+
+[recovery_passphrase_store_exact]
+other = "Guárdala exactamente como se muestra; la frase de recuperación por sí sola NO es suficiente."
+
+[recovery_warn_unencrypted_secret]
+other = "SECRETO SIN CIFRAR — mantén esta pantalla privada"
+
+[recovery_secret_hidden]
+other = "Secreto oculto. Autentícate de nuevo para revelar."
+
+[recovery_cancelling]
+other = "Cancelando de forma segura. Esperando a que termine la operación."
+
+[recovery_working]
+other = "Procesando."
+
+[recovery_notice_export_created]
+other = "Archivo de exportación creado en {{.Path}}"
+
+[recovery_status_export_completed]
+other = "Exportación completada: {{.Path}}"
+
+[recovery_status_export_warning]
+other = "El archivo de exportación se creó en {{.Path}}, pero la limpieza o la confirmación de durabilidad informó una advertencia"
+
+[recovery_status_export_cancelled]
+other = "Exportación cancelada"
+
+[recovery_status_reveal_cancelled]
+other = "Revelación cancelada"
+
+[recovery_status_reveal_discarded]
+other = "Revelación descartada"
+
+[recovery_status_expired]
+other = "La revelación expiró; autentícate de nuevo"
+
+[delete_confirm_placeholder]
+other = "Escribe el ID completo de la cuenta para confirmar"
+
+[vault_storage_password_placeholder]
+other = "Contraseña de almacenamiento de la bóveda"
+
+[delete_account_deleted]
+other = "Cuenta eliminada"
+
+[delete_err_mismatch]
+other = "La confirmación no coincide con el ID de la cuenta"
+
+[delete_err_confirmation]
+other = "La confirmación de eliminación falló"
+
+[delete_err_pending]
+other = "La cuenta tiene operaciones pendientes o dependientes activos"
+
+[delete_err_unsupported]
+other = "El almacenamiento de la cuenta no admite eliminación protegida"
+
+[delete_err_cancelled]
+other = "Eliminación cancelada"
+
+[delete_err_failed]
+other = "La eliminación de la cuenta falló"
+
+[delete_title]
+other = "Eliminar cuenta local"
+
+[delete_body]
+other = "Esto elimina solo la cartera local y su secreto almacenado. Se requiere una copia de seguridad para recuperarla. El historial se conserva cuando existen registros; mientras se conserve ese registro, la reimportación de la misma fuente está bloqueada. Los archivos de origen, los fondos y las claves externas o de hardware no se ven afectados. Esta es una eliminación lógica, no un borrado seguro de copias de seguridad o medios."
+
+[delete_account_lines]
+other = "Cuenta: {{.Name}}\nDirección: {{.Address}}\nID de cuenta: {{.ID}}"
+
+[delete_working]
+other = "Eliminando cuenta."
+
+[delete_confirm_id_label]
+other = "Confirmar ID de cuenta:"
+
+[vault_storage_password_label]
+other = "Contraseña de almacenamiento de la bóveda:"
+
+[create_select_option]
+other = "Selecciona una opción"
+
+[create_word_count_title]
+other = "Número de palabras"
+
+[create_words_suffix]
+other = "{{.Count}} palabras"
+
+[create_bip39_language_title]
+other = "Idioma BIP39"
+
+[create_bip39_wordlist_desc]
+other = "Lista oficial de palabras BIP39"
+
+[create_derivation_title]
+other = "Ruta de derivación EVM"
+
+[create_path_account0]
+other = "Cuenta estándar 0"
+
+[create_path_account0_desc]
+other = "Predeterminado recomendado para la primera cuenta EVM"
+
+[create_path_account1]
+other = "Cuenta estándar 1"
+
+[create_path_account1_desc]
+other = "Índice de cuenta BIP44 separado"
+
+[create_path_next_address]
+other = "Siguiente dirección"
+
+[create_path_next_address_desc]
+other = "Índice de dirección 1 en la cuenta predeterminada"
+
+[create_path_custom]
+other = "Ruta personalizada…"
+
+[create_path_custom_desc]
+other = "Introduce otra ruta BIP44 EVM validada"
+
+[create_entropy_12]
+other = "Entropía de 128 bits • recomendada para la mayoría de las carteras"
+
+[create_entropy_15]
+other = "Entropía de 160 bits"
+
+[create_entropy_18]
+other = "Entropía de 192 bits"
+
+[create_entropy_21]
+other = "Entropía de 224 bits"
+
+[create_entropy_24]
+other = "Entropía de 256 bits • copia de seguridad más larga"
+
+[create_entropy_default]
+other = "Mnemotécnico BIP39"
+
+[hist_scroll_up]
+other = "desplazar arriba"
+
+[hist_scroll_down]
+other = "desplazar abajo"
+
+[hist_page_up]
+other = "página arriba"
+
+[hist_page_down]
+other = "página abajo"
+
+[hist_next]
+other = "siguientes resultados"
+
+[hist_previous]
+other = "resultados anteriores"
+
+[hist_refresh]
+other = "actualizar"
+
+[hist_more_help]
+other = "más ayuda"
+
+[hist_back]
+other = "volver"
+
+[hist_unavailable]
+other = "El historial local no está disponible."
+
+[hist_title]
+other = "Actividad EVM local"
+
+[hist_subtitle]
+other = "Transacciones salientes creadas por esta cartera para la dirección seleccionada. Este no es un historial completo on-chain."
+
+[hist_address_page]
+other = "Dirección: {{.Address}}\nPágina: {{.Page}}"
+
+[hist_loading]
+other = "Cargando historial local y analíticas..."
+
+[hist_unavailable_detail]
+other = "Historial no disponible: {{.Error}}\nPulsa r para reintentar."
+
+[hist_analytics_line]
+other = "Analíticas\nTransacciones: {{.Tx}} | Reorgs observadas: {{.Reorgs}}"
+
+[hist_states_prefix]
+other = "Estados: "
+
+[hist_operations_prefix]
+other = "Operaciones: "
+
+[hist_fee_line]
+other = "Comisiones de recibo de la cadena {{.Chain}}: {{.Fee}} wei en {{.Count}} transacciones"
+
+[hist_assets_header]
+other = "Importes de intent por cadena, operación y activo:"
+
+[hist_asset_line]
+other = "  Cadena {{.Chain}} | {{.Op}} | {{.Asset}} | importe {{.Amount}} | {{.Count}} registros"
+
+[hist_asset_native]
+other = "nativo"
+
+[hist_tx_header]
+other = "Transacciones"
+
+[hist_no_transactions]
+other = "No se encontraron transacciones locales salientes para esta dirección."
+
+[hist_token_line]
+other = "  ID de token: {{.ID}} | Contrato: {{.Contract}}"
+
+[hist_amount_line]
+other = "  Importe: {{.Amount}} | Activo: {{.Asset}}"
+
+[hist_to_line]
+other = "  Para: {{.To}} | Nonce: {{.Nonce}}"
+
+[hist_tx_prefix]
+other = "  Tx: "
+
+[hist_receipt_line]
+other = "  Recibo: bloque {{.Block}} | comisión {{.Fee}} wei | confirmaciones {{.Conf}}/{{.Target}}"
+
+[hist_result_prefix]
+other = "  Resultado: "
+
+[hist_reorg_line]
+other = "  Observaciones de reorg: {{.Count}}"
+
+[hist_amount_unavailable]
+other = "no disponible"
+
+[sign_edit_message]
+other = "editar mensaje"
+
+[sign_prev_step]
+other = "paso anterior"
+
+[sign_next_step]
+other = "siguiente paso"
+
+[sign_approve]
+other = "aprobar y firmar"
+
+[sign_message_placeholder]
+other = "Mensaje a firmar (EIP-191 personal_sign)"
+
+[sign_storage_password_placeholder]
+other = "Contraseña de almacenamiento"
+
+[sign_err_message_too_long]
+other = "el mensaje supera el límite de política de 64 KiB"
+
+[sign_err_password_required]
+other = "la contraseña de almacenamiento es obligatoria para cuentas de software"
+
+[sign_unavailable]
+other = "La firma de mensajes no está disponible."
+
+[sign_title]
+other = "Firmar mensaje (EIP-191 personal_sign)"
+
+[sign_entry_body]
+other = "Cuenta: {{.Account}}"
+
+[sign_preview_body]
+other = "Cuenta: {{.Account}}\nLongitud del mensaje: {{.Length}} bytes\nUTF-8: {{.UTF8}}\nMensaje:\n{{.Message}}\n\nDigest: {{.Digest}}\nIntent: {{.Intent}}\n\nEstás firmando exactamente estos bytes con personal_sign. La firma no tiene vinculación de cadena.\n\nPulsa a para aprobar y firmar, p para editar el mensaje o esc para cancelar."
+
+[sign_external_prompt]
+other = "Pulsa Enter y confirma este mensaje en el firmante externo."
+
+[sign_submitting]
+other = "Firmando con confirmación reforzada tras aprobación duradera..."
+
+[sign_failed]
+other = "La firma del mensaje falló."
+
+[sign_result_signature]
+other = "Firma (Ethereum V=27/28):"
+
+[sign_result_record]
+other = "Registro de firma: "
+
+[sign_result_recovered]
+other = "Cuenta recuperada: "
+
+[sign_result_return]
+other = "Pulsa esc para volver a los detalles de la cartera."
+
+[eip712_prev_network]
+other = "red anterior"
+
+[eip712_next_network]
+other = "siguiente red"
+
+[eip712_placeholder]
+other = "JSON de typed data EIP-712"
+
+[eip712_no_network]
+other = "No hay ninguna red activa con chain ID configurada"
+
+[eip712_err_too_long]
+other = "el typed data supera el límite de política de 64 KiB"
+
+[eip712_unavailable]
+other = "La firma EIP-712 no está disponible."
+
+[eip712_title]
+other = "Firmar typed data EIP-712"
+
+[eip712_select_chain]
+other = "Selecciona la cadena para esta firma:"
+
+[eip712_press_n_continue]
+other = "Pulsa n para continuar o esc para cancelar."
+
+[eip712_press_n_preview]
+other = "Pulsa n para validar y previsualizar o esc para cancelar."
+
+[eip712_chain_prefix]
+other = "Cadena: "
+
+[eip712_preview_body]
+other = "Cadena: {{.Chain}} ({{.ID}})\nDigest: {{.Digest}}\nIntent: {{.Intent}}"
+
+[eip712_external_prompt]
+other = "Pulsa Enter y confirma el typed data o los hashes mostrados por el firmante externo. El hardware de solo hash requiere una política explícita de firma ciega."
+
+[eip712_failed]
+other = "La firma EIP-712 falló."
+
+[account_prefix]
+other = "Cuenta: "
+
+[eip712_choice_line]
+other = " (cadena {{.ID}})"
+
+[call_approve_send]
+other = "aprobar y enviar"
+
+[call_addr_placeholder]
+other = "Dirección de contrato 0x"
+
+[call_abi_placeholder]
+other = "Array JSON del ABI"
+
+[call_method_placeholder]
+other = "nombre del método (p. ej. deposit)"
+
+[call_args_placeholder]
+other = "array JSON de argumentos (p. ej. [\"0x…\",\"7\"])"
+
+[call_value_placeholder]
+other = "Valor nativo en unidades base (0 permitido)"
+
+[call_approve_placeholder]
+other = "Escribe APPROVE"
+
+[call_err_type_approve]
+other = "Escribe APPROVE exactamente para reforzar esta llamada de contrato"
+
+[call_err_password_session]
+other = "La contraseña es obligatoria a menos que haya una sesión temporal activa"
+
+[call_unavailable]
+other = "La llamada de contrato no está disponible."
+
+[call_title]
+other = "Llamada de contrato (ABI conocida)"
+
+[call_select_network]
+other = "Seleccionar red:"
+
+[call_enter_select_esc]
+other = "Enter: seleccionar • Esc: volver"
+
+[call_enter_continue_esc]
+other = "Enter: continuar • Esc: volver"
+
+[call_preparing]
+other = "Preparando llamada de contrato..."
+
+[call_preview_body]
+other = "Contrato: {{.Contract}}\nMétodo: {{.Method}}\nFuente del ABI: {{.Source}}\nHash del ABI: {{.Hash}}\nValor: {{.Value}}\nSalida simulada: {{.Output}}"
+
+[call_nonce_gas]
+other = "Nonce: {{.Nonce}}\nLímite de gas: {{.Gas}}\n"
+
+[call_risk_line]
+other = "Riesgo [{{.Severity}}]: {{.ID}} ({{.Subject}})\n"
+
+[call_plan_digest]
+other = "Plan: 0x{{.Plan}}\nDigest: 0x{{.Digest}}\n"
+
+[call_approve_intent]
+other = "Enter: aprobar el intent estructurado exacto • Esc: cancelar"
+
+[call_critical_approve]
+other = "Crítico: esta llamada mueve valor nativo u otorga control amplio. Verifica el contrato de forma independiente.\n\nEscribe APPROVE para realizar la segunda confirmación:"
+
+[call_enter_password]
+other = "Introduce la contraseña de almacenamiento para firmar esta transacción aprobada:"
+
+[call_enter_sign_broadcast]
+other = "Enter: firmar y transmitir • Esc: cancelar"
+
+[call_external_review]
+other = "Pulsa Enter, revisa y confirma la transacción exacta en el firmante externo.\n\nEnter: continuar • Esc: cancelar"
+
+[call_submitting]
+other = "Firmando el intent estructurado aprobado y transmitiendo los bytes exactos..."
+
+[call_tracking_line]
+other = "Transacción: {{.Hash}}\nSiguiendo recibo y confirmaciones"
+
+[call_tracking_state]
+other = "Estado: {{.State}}\nConfirmaciones: {{.Count}}"
+
+[call_rebroadcast_hint]
+other = "B: retransmitir bytes persistidos • Esc: volver; el seguimiento se reanuda tras reiniciar"
+
+[call_final_line]
+other = "Transacción {{.State}}\nHash de la transacción: {{.Hash}}\n\nEnter o Esc: volver"
+
+[call_choice_chain]
+other = " (cadena {{.ID}})"
+
+[tx_contract_placeholder]
+other = "Contrato del token 0x"
+
+[tx_recipient_placeholder]
+other = "Dirección del destinatario 0x"
+
+[tx_amount_placeholder]
+other = "Importe"
+
+[tx_token_id_placeholder]
+other = "ID de token"
+
+[tx_no_network]
+other = "No hay ninguna red activa con metadatos de moneda nativa validados configurada"
+
+[tx_err_contract]
+other = "El contrato del token debe ser una dirección EVM de 20 bytes distinta de cero"
+
+[tx_err_recipient]
+other = "El destinatario debe ser una dirección EVM de 20 bytes"
+
+[tx_err_recipient_same]
+other = "El destinatario debe ser diferente del remitente"
+
+[tx_err_token_id]
+other = "El ID de token debe ser un entero en base 10 sin signo exacto"
+
+[tx_err_create_op]
+other = "No se pudo crear la operación de transacción"
+
+[tx_err_type_approve_spender]
+other = "Escribe APPROVE exactamente para reforzar esta aprobación de spender"
+
+[tx_unavailable]
+other = "El flujo de transacción no está disponible"
+
+[tx_title_native]
+other = "Enviar activo nativo"
+
+[tx_title_erc20]
+other = "Enviar token ERC-20"
+
+[tx_title_approve]
+other = "Aprobar spender ERC-20"
+
+[tx_title_erc721]
+other = "Enviar token ERC-721"
+
+[tx_title_erc1155]
+other = "Enviar token ERC-1155"
+
+[tx_title_erc1155_batch]
+other = "Enviar lote ERC-1155"
+
+[tx_validating]
+other = "Validando proveedor e identidad de la cadena..."
+
+[tx_token_contract_label]
+other = "Contrato del token:"
+
+[tx_recipient_label]
+other = "Destinatario"
+
+[tx_spender_label]
+other = "Spender"
+
+[tx_token_id_label]
+other = "ID de token (identificador en base 10 exacto):"
+
+[tx_effects_label]
+other = "Efectos como pares JSON [[id,amount],...] (máx. 64):"
+
+[tx_amount_symbol]
+other = "Importe ({{.Symbol}}):"
+
+[tx_amount_base]
+other = "Importe en unidades base exactas:"
+
+[tx_token_amount_base]
+other = "Cantidad de token en unidades base exactas:"
+
+[tx_enter_prepare_esc]
+other = "Enter: preparar y simular • Esc: volver"
+
+[tx_preparing]
+other = "Reservando nonce, estimando comisiones y simulando..."
+
+[tx_review]
+other = "Revisar la transacción exacta"
+
+[tx_network_line]
+other = "Red: {{.Name}} (cadena {{.Chain}})"
+
+[tx_op_from]
+other = "Operación: {{.Op}}\nDe: {{.From}}"
+
+[tx_native_line]
+other = "Para: {{.To}}\nImporte: {{.Wei}} wei ({{.Amount}} {{.Symbol}})"
+
+[tx_erc721_line]
+other = "Contrato: {{.Contract}}\nDestinatario: {{.Recipient}}\nID de token: {{.TokenID}}"
+
+[tx_erc1155_line]
+other = "Contrato: {{.Contract}}\nDestinatario: {{.Recipient}}\nID de token: {{.TokenID}}\nImporte: {{.Amount}}"
+
+[tx_effects_header]
+other = "Contrato: {{.Contract}}\nDestinatario: {{.Recipient}}\nEfectos:"
+
+[tx_effect_line]
+other = "  ID de token {{.ID}} × {{.Amount}}"
+
+[tx_calldata_line]
+other = "Calldata:"
+
+[tx_default_line]
+other = "Contrato: {{.Contract}}\n{{.Label}}: {{.To}}\nToken: {{.Name}} ({{.Symbol}}), decimales {{.Decimals}}\nImporte bruto: {{.Amount}}"
+
+[tx_fee_eip1559]
+other = "Comisión máxima por gas: {{.Fee}} wei\nComisión de prioridad por gas: {{.Tip}} wei"
+
+[tx_fee_legacy]
+other = "Precio del gas: {{.Price}} wei"
+
+[tx_max_lines]
+other = "Coste máximo de gas: {{.Gas}} wei ({{.GasFmt}} {{.Symbol}})\nDébito total máximo: {{.Debit}} wei ({{.DebitFmt}} {{.Symbol}})"
+
+[tx_conf_target]
+other = "Objetivo de confirmación: {{.Blocks}} bloques"
+
+[tx_simulation]
+other = "Bloque de simulación: {{.Block}} ({{.Hash}})\nCompromiso de simulación/política: {{.Commit}}\nPlan: 0x{{.Plan}}\nDigest: 0x{{.Digest}}"
+
+[tx_critical_approve]
+other = "Aviso crítico: esto otorga a un contrato permiso para gastar unidades de token. Verifica el spender de forma independiente.\n\nEscribe APPROVE para realizar la segunda confirmación:"
+
+[tx_tracking_state]
+other = "Estado: {{.State}}\nConfirmaciones: {{.Conf}}/{{.Target}}"
+
+[tx_network_line_suffix]
+other = " ({{.ID}}) {{.Symbol}}"
+
+[safe_name_placeholder]
+other = "Nombre del Safe"
+
+[safe_owners_placeholder]
+other = "Direcciones de owners, separadas por comas"
+
+[safe_threshold_placeholder]
+other = "Threshold (p. ej. 2)"
+
+[safe_import_addr_placeholder]
+other = "Dirección del Safe (checksummed)"
+
+[safe_to_placeholder]
+other = "Dirección del destinatario"
+
+[safe_value_placeholder]
+other = "Valor en wei"
+
+[safe_data_placeholder]
+other = "Calldata (hex, opcional)"
+
+[safe_err_required]
+other = "Nombre, owners y threshold son obligatorios."
+
+[safe_err_threshold_int]
+other = "El threshold debe ser un entero positivo."
+
+[safe_err_owner_addr]
+other = "El owner \"{{.Owner}}\" debe ser una dirección checksummed."
+
+[safe_err_threshold_range]
+other = "El threshold debe estar entre 1 y el número de owners."
+
+[safe_err_no_deployer]
+other = "Ninguna cuenta local puede pagar la comisión de despliegue."
+
+[safe_deployed_result]
+other = "Desplegado {{.Address}} tx={{.Tx}}"
+
+[safe_err_import_required]
+other = "Se requieren un nombre y una dirección checksummed."
+
+[safe_imported_result]
+other = "Importado {{.Address}}"
+
+[safe_err_recipient]
+other = "El destinatario debe ser una dirección válida."
+
+[safe_err_value]
+other = "El valor debe ser un entero no negativo en wei."
+
+[safe_err_calldata]
+other = "El calldata debe ser hex de longitud par."
+
+[safe_proposed_result]
+other = "Propuesto {{.ID}}"
+
+[safe_err_no_signer]
+other = "Ninguna cuenta owner local puede firmar esta propuesta."
+
+[safe_signed_result]
+other = "Firma del owner registrada."
+
+[safe_err_no_payer]
+other = "Ninguna cuenta local puede pagar la comisión de ejecución."
+
+[safe_executed_result]
+other = "Ejecutado tx={{.Tx}}"
+
+[safe_view_unavailable]
+other = "Vista de Safe no disponible."
+
+[safe_network_prefix]
+other = "Red: "
+
+[safe_network_switch]
+other = "  (r: cambiar)"
+
+[safe_no_accounts]
+other = "Aún no hay cuentas Safe. Pulsa n para desplegar una o i para importar."
+
+[safe_deployed_yes]
+other = "Desplegado: sí • owners: {{.Owners}} • threshold: {{.Threshold}} • nonce: {{.Nonce}}"
+
+[safe_deployed_no]
+other = "Desplegado: no (despliegue pendiente)"
+
+[safe_help_list]
+other = "n/c desplegar • i importar • enter propuestas • r red • esc volver"
+
+[safe_field_name]
+other = "Nombre"
+
+[safe_field_owners]
+other = "Owners (checksummed, separados por comas)"
+
+[safe_field_threshold]
+other = "Threshold"
+
+[safe_help_deploy]
+other = "tab: siguiente campo • enter: preparar • esc: volver"
+
+[safe_deploy_title]
+other = "Desplegar un nuevo Safe — contratos oficiales v1.5.0"
+
+[safe_fund_address]
+other = "Financia primero la dirección prevista del Safe:"
+
+[safe_deployer_label]
+other = "Deployer que paga la llamada de la factory:"
+
+[safe_password_mask]
+other = "Contraseña de almacenamiento: {{.Mask}}"
+
+[safe_help_deploy_run]
+other = "up/down: deployer • enter: transmitir • esc: volver"
+
+[safe_deploy_run_title]
+other = "Desplegar Safe"
+
+[safe_help_import]
+other = "enter: importar • tab: siguiente campo • esc: volver"
+
+[safe_import_title]
+other = "Importar un Safe existente"
+
+[safe_proposal_recipient]
+other = "Nueva propuesta — Destinatario"
+
+[safe_value_wei]
+other = "Valor (wei)"
+
+[safe_calldata_label]
+other = "Calldata (hex, opcional)"
+
+[safe_no_proposals]
+other = "(aún no hay propuestas)"
+
+[safe_section_new_proposal]
+other = "Nueva propuesta"
+
+[safe_section_proposals]
+other = "Propuestas"
+
+[safe_help_proposals]
+other = "enter: proponer • tab: siguiente campo • enter/a: revisar propuesta • esc: volver"
+
+[safe_proposals_title]
+other = "{{.Name}} — propuestas"
+
+[safe_no_proposal]
+other = "Ninguna propuesta seleccionada"
+
+[safe_proposal_line]
+other = "Propuesta: {{.ID}}"
+
+[safe_to_line]
+other = "Para: {{.To}}"
+
+[safe_value_line]
+other = "Valor: {{.Value}}"
+
+[safe_digest_line]
+other = "Digest: {{.Digest}}"
+
+[safe_signatures_line]
+other = "Firmas: {{.Sigs}}/{{.Threshold}}"
+
+[safe_owners_header]
+other = "Owners disponibles para firmar:"
+
+[safe_help_details]
+other = "up/down: owner • a: firmar • x: ejecutar • esc: volver"
+
+[safe_details_title]
+other = "Detalles de la propuesta"
+
+[safe_signing_as]
+other = "Firmando como {{.Name}}  {{.Address}}"
+
+[safe_password_label]
+other = "Contraseña de almacenamiento: "
+
+[safe_help_sign]
+other = "enter: firmar • esc: volver"
+
+[safe_sign_title]
+other = "Confirmar firma del owner"
+
+[safe_gas_payer]
+other = "Pagador de gas (paga la comisión de ejecución):"
+
+[safe_help_execute]
+other = "up/down: pagador de gas • enter: ejecutar • esc: volver"
+
+[safe_execute_title]
+other = "Ejecutar propuesta"
+
+[wc_previous]
+other = "anterior"
+
+[wc_next]
+other = "siguiente"
+
+[wc_select]
+other = "seleccionar"
+
+[wc_revoke]
+other = "revocar sesión"
+
+[wc_approve]
+other = "aprobar propuesta"
+
+[wc_reject]
+other = "rechazar propuesta"
+
+[wc_unavailable]
+other = "WalletConnect no está disponible."
+
+[wc_no_sessions]
+other = "No hay sesiones activas para esta cuenta.\n\nEmpareja un dApp para comenzar."
+
+[wc_active_sessions]
+other = "Sesiones activas:"
+
+[wc_session_expires]
+other = " — expira {{.Time}}"
+
+[wc_chains_line]
+other = "    cadenas: {{.Chains}}"
+
+[wc_sessions_hint]
+other = "Enter: sesión • r: revocar • Esc: volver"
+
+[wc_session_lines]
+other = "Sesión: {{.Peer}}\nTema: {{.Topic}}\nCuenta: {{.Account}}\nExpira: {{.Expires}}"
+
+[wc_namespaces_header]
+other = "Namespaces:"
+
+[wc_namespace_line]
+other = "  {{.Ns}}: cadenas [{{.Chains}}] métodos [{{.Methods}}] cuentas [{{.Accounts}}]"
+
+[wc_revoke_confirm]
+other = "Esto revoca la sesión inmediatamente. Enter: confirmar • Esc: volver"
+
+[wc_no_proposal]
+other = "No hay ninguna propuesta pendiente."
+
+[wc_proposal_incoming]
+other = "Propuesta de sesión entrante de {{.Name}}\nURL: {{.URL}}"
+
+[wc_required_namespaces]
+other = "Namespaces requeridos:"
+
+[wc_namespace_req]
+other = "  {{.Ns}}: cadenas [{{.Chains}}]\n    métodos [{{.Methods}}]\n    eventos [{{.Events}}]"
+
+[wc_binding_account]
+other = "Cuenta vinculada: {{.Account}}\n\na: aprobar • x: rechazar • Esc: volver"
+
+[wc_no_request]
+other = "No hay ninguna solicitud pendiente."
+
+[wc_request_lines]
+other = "Solicitud de {{.Peer}}\nCadena: {{.Chain}}\nMétodo: {{.Method}}"
+
+[wc_request_approve]
+other = "Completa la aprobación en el flujo normal de firma de la cartera."
+
+[fido2_previous]
+other = "anterior"
+
+[fido2_next]
+other = "siguiente"
+
+[fido2_register]
+other = "registrar llave"
+
+[fido2_authenticate]
+other = "autenticar"
+
+[fido2_submit]
+other = "enviar"
+
+[fido2_response_placeholder]
+other = "Pega el JSON de respuesta WebAuthn"
+
+[fido2_err_unavailable]
+other = "El servicio FIDO2 no está disponible"
+
+[fido2_reg_challenge]
+other = "Desafío de registro (base64url):"
+
+[fido2_auth_challenge]
+other = "Desafío de autenticación (base64url):"
+
+[fido2_paste_response]
+other = "Pega el JSON de respuesta del autenticador a continuación."
+
+[fido2_err_response]
+other = "La respuesta debe ser el JSON del autenticador"
+
+[fido2_authenticated]
+other = "Autenticado. Contador ahora {{.Count}}."
+
+[fido2_unavailable]
+other = "FIDO2 no está disponible."
+
+[fido2_title]
+other = "Llaves de seguridad FIDO2"
+
+[fido2_no_keys]
+other = "No hay llaves de seguridad registradas.\n\nr: registrar una llave • Esc: volver"
+
+[fido2_registered]
+other = "Llaves de seguridad registradas:"
+
+[fido2_credential_line]
+other = " (RP {{.RP}}, contador {{.Count}})"
+
+[fido2_list_hint]
+other = "r: registrar • a: autenticar • Esc: volver"
+
+[fido2_verify_store]
+other = "Enter: verificar y almacenar • Esc: volver"
+
+[fido2_verify]
+other = "Enter: verificar • Esc: volver"
+
+[fido2_key_registered]
+other = "Llave de seguridad registrada y almacenada.\n\nEnter: volver"
+
+[popup_title]
+other = "Contraseña requerida"
+
+[create_wallet_title]
+other = "Crear Nueva Wallet"
+
+[create_wallet_name_prompt]
+other = "Introduce el nombre de tu nueva wallet:"
+
+[create_options_title]
+other = "Configurar cuenta BIP39"
+
+[create_step_progress]
+other = "Paso {{.Step}}/4"
+
+[create_passphrase_body]
+other = "Frase de contraseña BIP39 opcional"
+
+[create_custom_path_body]
+other = "Ruta de derivación EVM personalizada"
+
+[create_enter_continue]
+other = "Pulsa Enter para continuar o Esc para cancelar."
+
+[backup_confirm_words]
+other = "Confirma solo las palabras solicitadas en orden ({{.Indices}}):"
+
+[backup_metadata]
+other = "Metadatos de la copia de seguridad (no es necesario reintroducir):\nRuta: {{.Path}}\nIdioma: {{.Language}}\n"
+
+[backup_passphrase_note]
+other = "Guarda por separado cualquier frase de contraseña BIP39 configurada; no se puede recuperar a partir de estas palabras.\n"
+
+[pwd_rule_required]
+other = " obligatoria\n"
+
+[pwd_rule_length]
+other = " tiene 15 caracteres o más\n"
+
+[pwd_rule_utf8]
+other = " es UTF-8 válido\n"
+
+[pwd_rule_printable]
+other = " contiene solo caracteres imprimibles\n"
+
+[pwd_rule_whitespace]
+other = " conserva los espacios exactamente"
+
+[confirm_storage_password_label]
+other = "Confirmar contraseña de almacenamiento:"
+
+[terminal_too_small]
+other = "Terminal demasiado pequeño\nAmplíalo a al menos {{.Width}} × {{.Height}}"
+
+[vault_rotate_title]
+other = "Rotar contraseña de almacenamiento"
+
+[vault_export_keystore_title]
+other = "Exportar Keystore V3"
+
+[vault_export_encrypted_title]
+other = "Exportar copia de seguridad cifrada Bloco"
+
+[vault_export_format_keystore]
+other = "Keystore V3 (solo clave privada derivada)"
+
+[vault_export_format_encrypted]
+other = "Copia de seguridad cifrada Bloco (secreto canónico)"
+
+[vault_export_confirm_title]
+other = "Confirmar exportación de secreto"
+
+[vault_export_confirm_body]
+other = "Cuenta: {{.Name}}\nDirección: {{.Address}}\nFormato: {{.Format}}\nDestino: {{.Destination}}\n\nEsta operación escribe un artefacto de secreto exportable."
+
+[vault_current_password]
+other = "Contraseña actual:"
+
+[vault_new_password]
+other = "Nueva contraseña:"
+
+[vault_confirm_password]
+other = "Confirmar nueva contraseña:"
+
+[vault_destination]
+other = "Destino:"
+
+[enhanced_import_not_init]
+other = "Importación avanzada no inicializada"
+
+[import_keystore_tab_hint]
+other = " | Tab para mostrar/recorrer sugerencias"
+
+[amount_unavailable]
+other = "no disponible"
+
+[version_label]
+other = "Versión: {{.Version}}"
+
+[footer_wallets_count]
+other = "Carteras: {{.Count}}"
+
+[footer_date]
+other = "Fecha: {{.Date}}"
+
+[view_splash]
+other = "Splash"
+
+[view_import_keystore]
+other = "Importar Keystore"
+
+[view_import_wallet]
+other = "Importar Cartera"
+
+[view_change_password]
+other = "Cambiar Contraseña"
+
+[view_export_wallet]
+other = "Exportar Cartera"
+
+[view_recovery]
+other = "Recuperación"
+
+[view_local_history]
+other = "Historial Local"
+
+[view_sign_message]
+other = "Firmar Mensaje"
+
+[view_sign_typed_data]
+other = "Firmar Typed Data"
+
+[view_contract_call]
+other = "Llamada de Contrato"
+
+[view_send]
+other = "Enviar"
+
+[view_security_keys]
+other = "Llaves de Seguridad"
+
+[view_delete_wallet]
+other = "Eliminar Cartera"
+
+[hint_cancel]
+other = "Cancelar"
+
+[hint_quit]
+other = "Salir"
+
+[hint_continue]
+other = "Continuar"
+
+[hint_delete]
+other = "Eliminar"
+
+[hint_select]
+other = "Seleccionar"
+
+[hint_confirm]
+other = "Confirmar"
+
+[hint_navigate]
+other = "Navegar"
+
+[hint_open]
+other = "Abrir"
+
+[hint_back]
+other = "Volver"
+
+[hint_wallets]
+other = "Carteras"
+
+[hint_import]
+other = "Importar"
+
+[hint_preview]
+other = "Previsualizar"
+
+[hint_complete]
+other = "Completar"
+
+[hint_suggestions]
+other = "Sugerencias"
+
+[hint_reveal]
+other = "Revelar"
+
+[hint_export]
+other = "Exportar"
+
+[hint_scroll]
+other = "Desplazar"
+
+[hint_hide]
+other = "Ocultar"
+
+[hint_change_password]
+other = "Cambiar contraseña"
+
+[hint_cancel_quit]
+other = "Cancelar y Salir"
+
+[footer_view_prefix]
+other = "Vista: "
+
+[balance_no_networks]
+other = "No hay redes activas con proveedores validados"
+
+[focus_lost_hidden]
+other = "La ventana perdió el foco; secretos ocultados"
+
+[too_small_hidden]
+other = "Terminal demasiado pequeño; secreto ocultado"
+
+[create_select_required]
+other = "Selecciona una opción antes de continuar"
+
+[password_confirm_mismatch]
+other = "La confirmación de la contraseña de almacenamiento no coincide"
+
+[vault_err_new_password_mismatch]
+other = "La confirmación de la nueva contraseña no coincide"
+
+[vault_err_export_abs]
+other = "El destino de exportación debe ser absoluto"
+
+[vault_export_done]
+other = "Exportación completada correctamente"
+
+[wallet_name_placeholder]
+other = "Introduce el nombre de la wallet"
+
+[word_count_placeholder]
+other = "Número de palabras"
+
+[bip39_language_placeholder]
+other = "Idioma BIP39"
+
+[passphrase_optional_placeholder]
+other = "Frase de contraseña BIP39 opcional"
+
+[evm_path_placeholder]
+other = "Ruta de derivación EVM"
+
+[backup_reenter_path]
+other = "Reintroduce la ruta de derivación"
+
+[backup_reenter_language]
+other = "Reintroduce el idioma BIP39"
+
+[backup_reenter_passphrase]
+other = "Reintroduce la frase de contraseña BIP39"
+
+[confirm_storage_placeholder]
+other = "Confirmar contraseña de almacenamiento"
+
+[current_storage_placeholder]
+other = "Contraseña de almacenamiento actual"
+
+[new_password_placeholder]
+other = "Nueva contraseña"
+
+[export_destination_placeholder]
+other = "Destino absoluto de exportación"
+
+[wallet_name_empty_err]
+other = "el nombre de la wallet no puede estar vacío"
+
+[eimp_phase_files]
+other = "Selección de archivos"
+
+[eimp_phase_importing]
+other = "Importando"
+
+[eimp_phase_password]
+other = "Entrada de contraseña"
+
+[eimp_phase_complete]
+other = "Completado"
+
+[eimp_phase_cancelled]
+other = "Cancelado"
+
+[eimp_phase_unknown]
+other = "Desconocido"
+
+[eimp_pause_password]
+other = "Esperando entrada de contraseña"
+
+[eimp_no_picker]
+other = "Selector de archivos no inicializado"
+
+[eimp_no_progress]
+other = "Barra de progreso no inicializada"
+
+[eimp_no_popup]
+other = "Popup de contraseña no inicializado"
+
+[eimp_unknown_phase]
+other = "Fase desconocida: {{.Phase}}"
+
+[eimp_complete_title]
+other = "✓ Importación completada"
+
+[eimp_stats]
+other = "Total: {{.Total}} | Éxito: {{.Success}} | Fallidos: {{.Failed}} | Omitidos: {{.Skipped}}"
+
+[eimp_errors_label]
+other = "Errores:"
+
+[eimp_error_failed]
+other = "Falló"
+
+[eimp_error_skipped]
+other = "Omitido"
+
+[eimp_return_hint]
+other = "Pulsa ENTER para volver al menú o R para reintentar las importaciones fallidas"
+
+[eimp_cancelled_title]
+other = "✗ Importación cancelada"
+
+[eimp_cancelled_stats]
+other = "Procesados: {{.Done}}/{{.Total}} archivos antes de la cancelación"
+
+[eimp_cancelled_imported]
+other = "Importadas correctamente: {{.Count}} carteras"
+
+[eimp_enter_menu]
+other = "Pulsa ENTER para volver al menú"
+
+[fp_up]
+other = "subir"
+
+[fp_down]
+other = "bajar"
+
+[fp_top]
+other = "inicio"
+
+[fp_bottom]
+other = "fin"
+
+[fp_back]
+other = "volver"
+
+[fp_open]
+other = "abrir"
+
+[fp_open_confirm]
+other = "abrir/confirmar"
+
+[fp_select]
+other = "seleccionar"
+
+[fp_select_all]
+other = "seleccionar todo"
+
+[fp_clear_all]
+other = "borrar todo"
+
+[fp_confirm_selection]
+other = "confirmar selección"
+
+[fp_cancel]
+other = "cancelar"
+
+[fp_empty]
+other = "No se encontraron archivos en este directorio"
+
+[fp_selected_suffix]
+other = " ({{.Count}} seleccionados)"
+
+[fp_hint_select]
+other = "Espacio: seleccionar"
+
+[fp_hint_confirm]
+other = "Tab: confirmar"
+
+[fp_hint_select_all]
+other = "Ctrl+A: seleccionar todo"
+
+[fp_hint_clear]
+other = "Ctrl+C: borrar"
+
+[fp_hint_open]
+other = "Enter: abrir"
+
+[fp_hint_back]
+other = "Esc: volver"
+
+[fp_hint_cancel]
+other = "Ctrl+Q: cancelar"
+
+[ip_title]
+other = "Progreso de la importación"
+
+[ip_progress_stats]
+other = "Progreso: {{.Done}}/{{.Total}} archivos ({{.Percent}}%)"
+
+[ip_processing]
+other = "Procesando: {{.File}}"
+
+[ip_paused_on]
+other = "Pausado en: {{.File}}"
+
+[ip_completed]
+other = "✓ Importación completada en {{.Elapsed}}"
+
+[ip_summary]
+other = "Éxito: {{.Success}}, Fallidos: {{.Failed}}, Omitidos: {{.Skipped}}"
+
+[ip_paused]
+other = "⏸ Importación pausada"
+
+[ip_importing]
+other = "⏳ Importando... (transcurrido: {{.Elapsed}})"
+
+[ip_errors_title]
+other = "Errores:"
+
+[ip_more_errors]
+other = "... y {{.Count}} errores más"
+
+[ip_error_line]
+other = "• {{.Type}}: {{.File}} - {{.Error}}"
+
+[ip_cancel_hint]
+other = "Pulsa ESC para cancelar la importación"
+
+[ip_continue_hint]
+other = "Pulsa ENTER para continuar o R para reintentar las importaciones fallidas"
+
+[ip_completed_in]
+other = "Importación completada en {{.Elapsed}}"
+
+[ip_total_files]
+other = "Total de archivos: {{.Count}}"
+
+[ip_successful]
+other = "Correctos: {{.Count}}"
+
+[ip_failed_count]
+other = "Fallidos: {{.Count}}"
+
+[ip_skipped_count]
+other = "Omitidos: {{.Count}}"
+
+[ic_return_menu]
+other = "Volver al menú principal"
+
+[ic_return_menu_desc]
+other = "Volver al menú principal de gestión de carteras"
+
+[ic_select_files]
+other = "Seleccionar archivos diferentes"
+
+[ic_select_files_desc]
+other = "Elegir otros archivos keystore para importar"
+
+[ic_retry_failed]
+other = "Reintentar importaciones fallidas ({{.Count}})"
+
+[ic_retry_failed_desc]
+other = "Reintentar la importación de archivos que fallaron por errores"
+
+[ic_retry_skipped]
+other = "Reintentar importaciones omitidas ({{.Count}})"
+
+[ic_retry_skipped_desc]
+other = "Reintentar la importación de archivos omitidos (entrada de contraseña cancelada)"
+
+[ic_retry_all]
+other = "Reintentar todos los fallidos/omitidos ({{.Count}})"
+
+[ic_retry_all_desc]
+other = "Reintentar todos los archivos que fallaron o fueron omitidos"
+
+[ic_view_errors]
+other = "Ver detalles de los errores ({{.Count}})"
+
+[ic_view_errors_desc]
+other = "Ver información detallada sobre los errores ocurridos"
+
+[ic_title_success]
+other = "✓ Importación completada correctamente"
+
+[ic_title_issues]
+other = "⚠ Importación completada con problemas"
+
+[ic_title_failed]
+other = "✗ Importación fallida"
+
+[ic_success_rate]
+other = "Tasa de éxito: {{.Rate}}%"
+
+[ic_completed_in]
+other = "Completado en: {{.Elapsed}}"
+
+[ic_avg_per_file]
+other = " (media: {{.Avg}} por archivo)"
+
+[ic_issues_title]
+other = "Problemas encontrados:"
+
+[ic_failed_label]
+other = "Fallidos:"
+
+[ic_skipped_label]
+other = "Omitidos:"
+
+[ic_more]
+other = "  ... y {{.Count}} más"
+
+[ic_actions_title]
+other = "Acciones disponibles:"
+
+[ic_nav_actions]
+other = "Usa ↑/↓ o j/k para navegar por las acciones"
+
+[ic_enter_action]
+other = "Pulsa ENTER para ejecutar la acción seleccionada"
+
+[ic_esc_menu]
+other = "Pulsa ESC o Q para volver al menú principal"
+
+[ic_press_e]
+other = "Pulsa E para ver información detallada de los errores"
+
+[ic_no_errors]
+other = "No hay errores para mostrar"
+
+[ic_error_details]
+other = "Detalles del error"
+
+[ic_error_nav]
+other = "Error {{.Index}} de {{.Total}}"
+
+[ic_nav_errors]
+other = "Usa ↑/↓ o j/k para navegar entre los errores"
+
+[ic_retry_file]
+other = "Pulsa R para reintentar este archivo específico"
+
+[ic_esc_summary]
+other = "Pulsa ESC o Q para volver al resumen"
+
+[ic_file_label]
+other = "Archivo: {{.File}}"
+
+[ic_status_label]
+other = "Estado: {{.Status}}"
+
+[ic_details_label]
+other = "Detalles del error:"
+
+[ic_suggested]
+other = "Acciones sugeridas:"
+
+[ic_sug_skipped]
+other = "El archivo se omitió por cancelación del usuario"
+
+[ic_sug_retry_manual]
+other = "Reintenta con entrada manual de contraseña"
+
+[ic_sug_password]
+other = "Verifica que la contraseña sea correcta"
+
+[ic_sug_pwdfile]
+other = "Comprueba si existe un archivo .pwd con la contraseña correcta"
+
+[ic_sug_format]
+other = "Verifica que el archivo tenga un formato KeyStore V3 válido"
+
+[ic_sug_corrupt]
+other = "Comprueba si el archivo está dañado"
+
+[ic_sug_perms]
+other = "Comprueba los permisos del archivo"
+
+[ic_sug_locked]
+other = "Asegúrate de que el archivo no esté bloqueado por otro proceso"
+
+[ic_sug_details]
+other = "Comprueba los detalles del error anteriores"
+
+[ic_sug_accessible]
+other = "Verifica que el archivo sea accesible y válido"
+
+[unknown_view]
+other = "Vista desconocida"
+
+[unknown_state]
+other = "Estado desconocido"
+
+[all_words_required]
+other = "Todas las palabras son obligatorias"
+
+[invalid_private_key]
+other = "Clave privada inválida"
+
+[error_loading_wallets]
+other = "Error al cargar carteras"
+
+[id]
+other = "ID"
+
+[word]
+other = "Palabra"
+
+[confirm]
+other = "Confirmar"
+
+[confirm_delete_wallet]
+other = "¿Eliminar esta cartera?"
+
+[sign_entry_hint]
+other = "Pulsa n para ver el mensaje firmado exacto o esc para cancelar."
+
+[eip712_preview_hint]
+other = "Pulsa a para aprobar y firmar, p para editar o esc para cancelar."
+
+[create_passphrase_hint]
+other = "Déjalo en blanco para ninguna frase de contraseña. Este valor no se puede recuperar del mnemónico."
+
+[create_custom_path_hint]
+other = "La ruta debe permanecer dentro del namespace BIP44 EVM m/44'/60'."
+
+[bip39_language_english]
+other = "English"
+
+[bip39_language_chinese_simplified]
+other = "中文（简体）"
+
+[bip39_language_chinese_traditional]
+other = "中文（繁體）"
+
+[bip39_language_czech]
+other = "Čeština"
+
+[bip39_language_french]
+other = "Français"
+
+[bip39_language_italian]
+other = "Italiano"
+
+[bip39_language_japanese]
+other = "日本語"
+
+[bip39_language_korean]
+other = "한국어"
+
+[bip39_language_portuguese]
+other = "Português"
+
+[bip39_language_spanish]
+other = "Español"
+
+[keystore_not_found_detail]
+other = "Archivo keystore no encontrado en la ruta: {{.Path}}"
+
+[keystore_access_error_detail]
+other = "Error al acceder al archivo keystore: {{.Path}}"
+
+[keystore_too_large_detail]
+other = "Archivo keystore demasiado grande: {{.Size}} bytes (máx. {{.Max}} bytes)"
+
+[call_validate_address]
+other = "El contrato debe ser una dirección EVM de 20 bytes no nula"
+
+[call_validate_method]
+other = "El nombre del método es obligatorio"
+
+[call_validate_value]
+other = "El valor debe ser un entero base-10 sin signo exacto"
+
+[tx_effects_json]
+other = "Los efectos deben ser JSON como [[id,amount],...]"
+
+[tx_effects_count]
+other = "Los efectos deben contener entre 1 y 64 pares"
+
+[tx_effect_pair]
+other = "Cada efecto debe ser [id, amount]"
+
+[tx_token_id_uint]
+other = "El ID de token debe ser un entero base-10 sin signo exacto"
+
+[tx_amount_positive]
+other = "El importe debe ser un entero base-10 positivo exacto"
+
+[tx_amount_uint]
+other = "El importe del token debe ser un entero en unidades base sin signo exacto"
+
+[tx_unsupported_op]
+other = "Operación de transacción no soportada"
+
+[hist_entry_line]
+other = "{{.When}} | Cadena {{.Chain}} | {{.Op}} | {{.State}}"
+
+[list_help_prev_page]
+other = "página anterior"
+
+[list_help_next_page]
+other = "siguiente página"
+
+[list_help_go_start]
+other = "ir al inicio"
+
+[list_help_go_end]
+other = "ir al final"
+
+[list_help_filter]
+other = "filtrar"
+
+[list_help_clear_filter]
+other = "limpiar filtro"
+
+[list_help_cancel_filter]
+other = "cancelar"
+
+[list_help_accept_filter]
+other = "aplicar filtro"
+
+[list_help_more]
+other = "más"
+
+[list_help_close]
+other = "cerrar ayuda"
+
+[list_help_quit]
+other = "salir"
+
+[list_help_force_quit]
+other = "forzar salida"
