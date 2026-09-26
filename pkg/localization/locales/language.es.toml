@@ -31,7 +31,7 @@ other = "Añadir Red"
 other = "Añadir una nueva red blockchain"
 
 [add_network_footer]
-other = "↑/↓: Navegar Sugerencias • Tab: Siguiente Campo • Enter: Seleccionar/Enviar • Esc: Volver"
+other = "↑/↓: Navegar Sugerencias • Tab: Siguiente Campo • ENTER: Seleccionar/Enviar • ESC: Volver"
 
 [adding_network]
 other = "Añadiendo red"
@@ -490,7 +490,7 @@ other = "Lista de Redes"
 other = "Ver y administrar redes blockchain"
 
 [network_list_instructions]
-other = "Use las flechas para navegar, 'a' para añadir, 'e' para editar, 'd' para eliminar, 'esc' para volver."
+other = "Use las flechas para navegar, 'a' para añadir, 'e' para editar, 'd' para eliminar, 'ESC' para volver."
 
 [network_name]
 other = "Nombre de Red"
@@ -610,7 +610,7 @@ other = "La contraseña debe tener al menos 8 caracteres"
 other = "Falló la validación de la contraseña"
 
 [press_enter]
-other = "Presione Enter para continuar."
+other = "Presione ENTER para continuar."
 
 [press_esc]
 other = "Presione ESC para volver a la lista de carteras."
@@ -694,7 +694,7 @@ other = "Oculto - usa el flujo explícito de exportación"
 other = "Estado"
 
 [status_bar_instructions]
-other = "Vista: {{.View}} | Presione 'esc' para volver | Ctrl+Q para salir"
+other = "Vista: {{.View}} | Presione 'ESC' para volver | Ctrl+Q para salir"
 
 [suggestions]
 other = "Sugerencias"
@@ -738,10 +738,10 @@ other = "Detalles de la Cartera"
 other = "¡Cartera importada exitosamente!"
 
 [wallet_list_instructions]
-other = "Use las flechas para navegar, Enter para ver detalles y 'esc' para volver al menú."
+other = "Use las flechas para navegar, ENTER para ver detalles y 'ESC' para volver al menú."
 
 [wallet_list_status_bar]
-other = "Vista: {{.View}} | Presione 'esc' para volver | Ctrl+Q para salir"
+other = "Vista: {{.View}} | Presione 'ESC' para volver | Ctrl+Q para salir"
 
 [wallet_type]
 other = "Tipo"
@@ -792,7 +792,7 @@ other = "Número máximo de intentos alcanzado"
 other = "Error: {{.Error}}"
 
 [popup_instructions]
-other = "Enter: confirmar • Esc: cancelar • Ctrl+S: omitir archivo"
+other = "ENTER: confirmar • ESC: cancelar • Ctrl+S: omitir archivo"
 
 [detail_name]
 other = "Nombre"
@@ -1671,7 +1671,7 @@ other = "Cuenta: {{.Account}}"
 other = "Cuenta: {{.Account}}\nLongitud del mensaje: {{.Length}} bytes\nUTF-8: {{.UTF8}}\nMensaje:\n{{.Message}}\n\nDigest: {{.Digest}}\nIntent: {{.Intent}}\n\nEstás firmando exactamente estos bytes con personal_sign. La firma no tiene vinculación de cadena.\n\nPulsa a para aprobar y firmar, p para editar el mensaje o esc para cancelar."
 
 [sign_external_prompt]
-other = "Pulsa Enter y confirma este mensaje en el firmante externo."
+other = "Pulsa ENTER y confirma este mensaje en el firmante externo."
 
 [sign_submitting]
 other = "Firmando con confirmación reforzada tras aprobación duradera..."
@@ -1728,7 +1728,7 @@ other = "Cadena: "
 other = "Cadena: {{.Chain}} ({{.ID}})\nDigest: {{.Digest}}\nIntent: {{.Intent}}"
 
 [eip712_external_prompt]
-other = "Pulsa Enter y confirma el typed data o los hashes mostrados por el firmante externo. El hardware de solo hash requiere una política explícita de firma ciega."
+other = "Pulsa ENTER y confirma el typed data o los hashes mostrados por el firmante externo. El hardware de solo hash requiere una política explícita de firma ciega."
 
 [eip712_failed]
 other = "La firma EIP-712 falló."
@@ -1776,10 +1776,10 @@ other = "Llamada de contrato (ABI conocida)"
 other = "Seleccionar red:"
 
 [call_enter_select_esc]
-other = "Enter: seleccionar • Esc: volver"
+other = "ENTER: seleccionar • ESC: volver"
 
 [call_enter_continue_esc]
-other = "Enter: continuar • Esc: volver"
+other = "ENTER: continuar • ESC: volver"
 
 [call_preparing]
 other = "Preparando llamada de contrato..."
@@ -1797,7 +1797,7 @@ other = "Riesgo [{{.Severity}}]: {{.ID}} ({{.Subject}})\n"
 other = "Plan: 0x{{.Plan}}\nDigest: 0x{{.Digest}}\n"
 
 [call_approve_intent]
-other = "Enter: aprobar el intent estructurado exacto • Esc: cancelar"
+other = "ENTER: aprobar el intent estructurado exacto • ESC: cancelar"
 
 [call_critical_approve]
 other = "Crítico: esta llamada mueve valor nativo u otorga control amplio. Verifica el contrato de forma independiente.\n\nEscribe APPROVE para realizar la segunda confirmación:"
@@ -1806,10 +1806,10 @@ other = "Crítico: esta llamada mueve valor nativo u otorga control amplio. Veri
 other = "Introduce la contraseña de almacenamiento para firmar esta transacción aprobada:"
 
 [call_enter_sign_broadcast]
-other = "Enter: firmar y transmitir • Esc: cancelar"
+other = "ENTER: firmar y transmitir • ESC: cancelar"
 
 [call_external_review]
-other = "Pulsa Enter, revisa y confirma la transacción exacta en el firmante externo.\n\nEnter: continuar • Esc: cancelar"
+other = "Pulsa ENTER, revisa y confirma la transacción exacta en el firmante externo.\n\nENTER: continuar • ESC: cancelar"
 
 [call_submitting]
 other = "Firmando el intent estructurado aprobado y transmitiendo los bytes exactos..."
@@ -1821,10 +1821,10 @@ other = "Transacción: {{.Hash}}\nSiguiendo recibo y confirmaciones"
 other = "Estado: {{.State}}\nConfirmaciones: {{.Count}}"
 
 [call_rebroadcast_hint]
-other = "B: retransmitir bytes persistidos • Esc: volver; el seguimiento se reanuda tras reiniciar"
+other = "B: retransmitir bytes persistidos • ESC: volver; el seguimiento se reanuda tras reiniciar"
 
 [call_final_line]
-other = "Transacción {{.State}}\nHash de la transacción: {{.Hash}}\n\nEnter o Esc: volver"
+other = "Transacción {{.State}}\nHash de la transacción: {{.Hash}}\n\nENTER o ESC: volver"
 
 [call_choice_chain]
 other = " (cadena {{.ID}})"
@@ -1911,7 +1911,7 @@ other = "Importe en unidades base exactas:"
 other = "Cantidad de token en unidades base exactas:"
 
 [tx_enter_prepare_esc]
-other = "Enter: preparar y simular • Esc: volver"
+other = "ENTER: preparar y simular • ESC: volver"
 
 [tx_preparing]
 other = "Reservando nonce, estimando comisiones y simulando..."
@@ -2070,7 +2070,7 @@ other = "Owners (checksummed, separados por comas)"
 other = "Threshold"
 
 [safe_help_deploy]
-other = "tab: siguiente campo • enter: preparar • esc: volver"
+other = "TAB: siguiente campo • enter: preparar • ESC: volver"
 
 [safe_deploy_title]
 other = "Desplegar un nuevo Safe — contratos oficiales v1.5.0"
@@ -2085,13 +2085,13 @@ other = "Deployer que paga la llamada de la factory:"
 other = "Contraseña de almacenamiento: {{.Mask}}"
 
 [safe_help_deploy_run]
-other = "up/down: deployer • enter: transmitir • esc: volver"
+other = "up/down: deployer • enter: transmitir • ESC: volver"
 
 [safe_deploy_run_title]
 other = "Desplegar Safe"
 
 [safe_help_import]
-other = "enter: importar • tab: siguiente campo • esc: volver"
+other = "enter: importar • TAB: siguiente campo • ESC: volver"
 
 [safe_import_title]
 other = "Importar un Safe existente"
@@ -2115,7 +2115,7 @@ other = "Nueva propuesta"
 other = "Propuestas"
 
 [safe_help_proposals]
-other = "enter: proponer • tab: siguiente campo • enter/a: revisar propuesta • esc: volver"
+other = "enter: proponer • TAB: siguiente campo • enter/a: revisar propuesta • ESC: volver"
 
 [safe_proposals_title]
 other = "{{.Name}} — propuestas"
@@ -2142,7 +2142,7 @@ other = "Firmas: {{.Sigs}}/{{.Threshold}}"
 other = "Owners disponibles para firmar:"
 
 [safe_help_details]
-other = "up/down: owner • a: firmar • x: ejecutar • esc: volver"
+other = "up/down: owner • a: firmar • x: ejecutar • ESC: volver"
 
 [safe_details_title]
 other = "Detalles de la propuesta"
@@ -2154,7 +2154,7 @@ other = "Firmando como {{.Name}}  {{.Address}}"
 other = "Contraseña de almacenamiento: "
 
 [safe_help_sign]
-other = "enter: firmar • esc: volver"
+other = "enter: firmar • ESC: volver"
 
 [safe_sign_title]
 other = "Confirmar firma del owner"
@@ -2163,7 +2163,7 @@ other = "Confirmar firma del owner"
 other = "Pagador de gas (paga la comisión de ejecución):"
 
 [safe_help_execute]
-other = "up/down: pagador de gas • enter: ejecutar • esc: volver"
+other = "up/down: pagador de gas • enter: ejecutar • ESC: volver"
 
 [safe_execute_title]
 other = "Ejecutar propuesta"
@@ -2202,7 +2202,7 @@ other = " — expira {{.Time}}"
 other = "    cadenas: {{.Chains}}"
 
 [wc_sessions_hint]
-other = "Enter: sesión • r: revocar • Esc: volver"
+other = "ENTER: sesión • r: revocar • ESC: volver"
 
 [wc_session_lines]
 other = "Sesión: {{.Peer}}\nTema: {{.Topic}}\nCuenta: {{.Account}}\nExpira: {{.Expires}}"
@@ -2214,7 +2214,7 @@ other = "Namespaces:"
 other = "  {{.Ns}}: cadenas [{{.Chains}}] métodos [{{.Methods}}] cuentas [{{.Accounts}}]"
 
 [wc_revoke_confirm]
-other = "Esto revoca la sesión inmediatamente. Enter: confirmar • Esc: volver"
+other = "Esto revoca la sesión inmediatamente. ENTER: confirmar • ESC: volver"
 
 [wc_no_proposal]
 other = "No hay ninguna propuesta pendiente."
@@ -2229,7 +2229,7 @@ other = "Namespaces requeridos:"
 other = "  {{.Ns}}: cadenas [{{.Chains}}]\n    métodos [{{.Methods}}]\n    eventos [{{.Events}}]"
 
 [wc_binding_account]
-other = "Cuenta vinculada: {{.Account}}\n\na: aprobar • x: rechazar • Esc: volver"
+other = "Cuenta vinculada: {{.Account}}\n\na: aprobar • x: rechazar • ESC: volver"
 
 [wc_no_request]
 other = "No hay ninguna solicitud pendiente."
@@ -2283,7 +2283,7 @@ other = "FIDO2 no está disponible."
 other = "Llaves de seguridad FIDO2"
 
 [fido2_no_keys]
-other = "No hay llaves de seguridad registradas.\n\nr: registrar una llave • Esc: volver"
+other = "No hay llaves de seguridad registradas.\n\nr: registrar una llave • ESC: volver"
 
 [fido2_registered]
 other = "Llaves de seguridad registradas:"
@@ -2292,16 +2292,16 @@ other = "Llaves de seguridad registradas:"
 other = " (RP {{.RP}}, contador {{.Count}})"
 
 [fido2_list_hint]
-other = "r: registrar • a: autenticar • Esc: volver"
+other = "r: registrar • a: autenticar • ESC: volver"
 
 [fido2_verify_store]
-other = "Enter: verificar y almacenar • Esc: volver"
+other = "ENTER: verificar y almacenar • ESC: volver"
 
 [fido2_verify]
-other = "Enter: verificar • Esc: volver"
+other = "ENTER: verificar • ESC: volver"
 
 [fido2_key_registered]
-other = "Llave de seguridad registrada y almacenada.\n\nEnter: volver"
+other = "Llave de seguridad registrada y almacenada.\n\nENTER: volver"
 
 [popup_title]
 other = "Contraseña requerida"
@@ -2325,7 +2325,7 @@ other = "Frase de contraseña BIP39 opcional"
 other = "Ruta de derivación EVM personalizada"
 
 [create_enter_continue]
-other = "Pulsa Enter para continuar o Esc para cancelar."
+other = "Pulsa ENTER para continuar o Esc para cancelar."
 
 [backup_confirm_words]
 other = "Confirma solo las palabras solicitadas en orden ({{.Indices}}):"
@@ -2691,10 +2691,10 @@ other = "Ctrl+A: seleccionar todo"
 other = "Ctrl+C: borrar"
 
 [fp_hint_open]
-other = "Enter: abrir"
+other = "ENTER: abrir"
 
 [fp_hint_back]
-other = "Esc: volver"
+other = "ESC: volver"
 
 [fp_hint_cancel]
 other = "Ctrl+Q: cancelar"

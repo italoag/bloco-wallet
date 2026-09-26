@@ -31,7 +31,7 @@ other = "Add Network"
 other = "Add a new blockchain network"
 
 [add_network_footer]
-other = "↑/↓: Navigate Suggestions • Tab: Next Field • Enter: Select/Submit • Esc: Back"
+other = "↑/↓: Navigate Suggestions • Tab: Next Field • ENTER: Select/Submit • ESC: Back"
 
 [adding_network]
 other = "Adding network"
@@ -274,7 +274,7 @@ other = "Select Import Method"
 other = "Mnemonic Phrase"
 
 [import_mnemonic_desc]
-other = "Import using a BIP39 mnemonic phrase (12/15/18/21/24 words)"
+other = "Import using a BIP39 mnemonic phrase"
 
 [import_private_key]
 other = "Private Key"
@@ -490,7 +490,7 @@ other = "Blockchain Networks"
 other = "Manage blockchain networks"
 
 [network_list_instructions]
-other = "Use arrow keys to navigate, 'a' to add, 'e' to edit, 'd' to delete, 'esc' to go back."
+other = "Use arrow keys to navigate, 'a' to add, 'e' to edit, 'd' to delete, 'ESC' to go back."
 
 [network_name]
 other = "Network Name"
@@ -694,7 +694,7 @@ other = "Hidden - use the explicit export flow"
 other = "Status"
 
 [status_bar_instructions]
-other = "View: {{.View}} | Press 'esc' to return | Ctrl+Q to quit"
+other = "{{.View}} | Press 'ESC' to return | Ctrl+Q to quit"
 
 [suggestions]
 other = "Suggestions"
@@ -724,7 +724,6 @@ other = "Wallet Actions"
 one = "{{.Count}} wallet"
 other = "{{.Count}} wallets"
 
-
 [wallet_created]
 other = "Wallet created successfully!"
 
@@ -738,10 +737,10 @@ other = "Wallet Details"
 other = "Wallet imported successfully!"
 
 [wallet_list_instructions]
-other = "Use the arrow keys to navigate, Enter to view details, and 'esc' to return to the menu."
+other = "Use the arrow keys to navigate, Enter to view details, and 'ESC' to return to the menu."
 
 [wallet_list_status_bar]
-other = "View: {{.View}} | Press 'esc' to return | Ctrl+Q to quit"
+other = "{{.View}} | Press 'ESC' to return | Ctrl+Q to quit"
 
 [wallet_type]
 other = "Type"
@@ -792,7 +791,7 @@ other = "Maximum attempts reached"
 other = "Error: {{.Error}}"
 
 [popup_instructions]
-other = "Enter: Confirm • Esc: Cancel • Ctrl+S: Skip file"
+other = "ENTER: Confirm • ESC: Cancel • Ctrl+S: Skip file"
 
 [detail_name]
 other = "Name"
@@ -1776,10 +1775,10 @@ other = "Contract Call (known ABI)"
 other = "Select network:"
 
 [call_enter_select_esc]
-other = "Enter: select • Esc: back"
+other = "ENTER: select • ESC: back"
 
 [call_enter_continue_esc]
-other = "Enter: continue • Esc: back"
+other = "ENTER: continue • ESC: back"
 
 [call_preparing]
 other = "Preparing contract call..."
@@ -1797,7 +1796,7 @@ other = "Risk [{{.Severity}}]: {{.ID}} ({{.Subject}})\n"
 other = "Plan: 0x{{.Plan}}\nDigest: 0x{{.Digest}}\n"
 
 [call_approve_intent]
-other = "Enter: approve exact structured intent • Esc: cancel"
+other = "ENTER: approve exact structured intent • ESC: cancel"
 
 [call_critical_approve]
 other = "Critical: this call moves native value or grants broad control. Verify the contract independently.\n\nType APPROVE to perform the second confirmation:"
@@ -1806,10 +1805,10 @@ other = "Critical: this call moves native value or grants broad control. Verify 
 other = "Enter storage password to sign this approved transaction:"
 
 [call_enter_sign_broadcast]
-other = "Enter: sign and broadcast • Esc: cancel"
+other = "ENTER: sign and broadcast • ESC: cancel"
 
 [call_external_review]
-other = "Press Enter, then review and confirm the exact transaction on the external signer.\n\nEnter: continue • Esc: cancel"
+other = "Press Enter, then review and confirm the exact transaction on the external signer.\n\nENTER: continue • ESC: cancel"
 
 [call_submitting]
 other = "Signing approved structured intent and broadcasting exact bytes..."
@@ -1821,10 +1820,10 @@ other = "Transaction: {{.Hash}}\nTracking receipt and confirmations"
 other = "State: {{.State}}\nConfirmations: {{.Count}}"
 
 [call_rebroadcast_hint]
-other = "B: rebroadcast persisted bytes • Esc: return; tracking resumes after restart"
+other = "B: rebroadcast persisted bytes • ESC: return; tracking resumes after restart"
 
 [call_final_line]
-other = "Transaction {{.State}}\nTransaction hash: {{.Hash}}\n\nEnter or Esc: return"
+other = "Transaction {{.State}}\nTransaction hash: {{.Hash}}\n\nEnter or ESC: return"
 
 [call_choice_chain]
 other = " (chain {{.ID}})"
@@ -1911,7 +1910,7 @@ other = "Amount in exact base units:"
 other = "Token amount in exact base units:"
 
 [tx_enter_prepare_esc]
-other = "Enter: prepare and simulate • Esc: back"
+other = "ENTER: prepare and simulate • ESC: back"
 
 [tx_preparing]
 other = "Reserving nonce, estimating fees, and simulating..."
@@ -2070,7 +2069,7 @@ other = "Owners (checksummed, comma separated)"
 other = "Threshold"
 
 [safe_help_deploy]
-other = "tab: next field • enter: prepare • esc: back"
+other = "TAB: next field • ENTER: prepare • ESC: back"
 
 [safe_deploy_title]
 other = "Deploy a new Safe — official v1.5.0 contracts"
@@ -2085,13 +2084,13 @@ other = "Deployer paying the factory call:"
 other = "Storage password: {{.Mask}}"
 
 [safe_help_deploy_run]
-other = "up/down: deployer • enter: broadcast • esc: back"
+other = "↑/↓: deployer • ENTER: broadcast • ESC: back"
 
 [safe_deploy_run_title]
 other = "Deploy Safe"
 
 [safe_help_import]
-other = "enter: import • tab: next field • esc: back"
+other = "ENTER: import • TAB: next field • ESC: back"
 
 [safe_import_title]
 other = "Import an existing Safe"
@@ -2115,7 +2114,7 @@ other = "New proposal"
 other = "Proposals"
 
 [safe_help_proposals]
-other = "enter: propose • tab: next field • enter/a: review proposal • esc: back"
+other = "ENTER: propose • TAB: next field • ENTER/a: review proposal • ESC: back"
 
 [safe_proposals_title]
 other = "{{.Name}} — proposals"
@@ -2142,7 +2141,7 @@ other = "Signatures: {{.Sigs}}/{{.Threshold}}"
 other = "Owners available to sign:"
 
 [safe_help_details]
-other = "up/down: owner • a: sign • x: execute • esc: back"
+other = "↑/↓: owner • a: sign • x: execute • ESC: back"
 
 [safe_details_title]
 other = "Proposal details"
@@ -2154,7 +2153,7 @@ other = "Signing as {{.Name}}  {{.Address}}"
 other = "Storage password: "
 
 [safe_help_sign]
-other = "enter: sign • esc: back"
+other = "ENTER: sign • ESC: back"
 
 [safe_sign_title]
 other = "Confirm owner signature"
@@ -2163,7 +2162,7 @@ other = "Confirm owner signature"
 other = "Gas payer (pays the execution fee):"
 
 [safe_help_execute]
-other = "up/down: gas payer • enter: execute • esc: back"
+other = "↑/↓: gas payer • ENTER: execute • ESC: back"
 
 [safe_execute_title]
 other = "Execute proposal"
@@ -2202,7 +2201,7 @@ other = " — expires {{.Time}}"
 other = "    chains: {{.Chains}}"
 
 [wc_sessions_hint]
-other = "Enter: session • r: revoke • Esc: back"
+other = "ENTER: session • r: revoke • ESC: back"
 
 [wc_session_lines]
 other = "Session: {{.Peer}}\nTopic: {{.Topic}}\nAccount: {{.Account}}\nExpires: {{.Expires}}"
@@ -2214,7 +2213,7 @@ other = "Namespaces:"
 other = "  {{.Ns}}: chains [{{.Chains}}] methods [{{.Methods}}] accounts [{{.Accounts}}]"
 
 [wc_revoke_confirm]
-other = "This revokes the session immediately. Enter: confirm • Esc: back"
+other = "This revokes the session immediately. ENTER: confirm • ESC: back"
 
 [wc_no_proposal]
 other = "No pending proposal."
@@ -2229,7 +2228,7 @@ other = "Required namespaces:"
 other = "  {{.Ns}}: chains [{{.Chains}}]\n    methods [{{.Methods}}]\n    events [{{.Events}}]"
 
 [wc_binding_account]
-other = "Binding account: {{.Account}}\n\na: approve • x: reject • Esc: back"
+other = "Binding account: {{.Account}}\n\na: approve • x: reject • ESC: back"
 
 [wc_no_request]
 other = "No pending request."
@@ -2283,7 +2282,7 @@ other = "FIDO2 is unavailable."
 other = "FIDO2 Security Keys"
 
 [fido2_no_keys]
-other = "No security keys registered.\n\nr: register a key • Esc: back"
+other = "No security keys registered.\n\nr: register a key • ESC: back"
 
 [fido2_registered]
 other = "Registered security keys:"
@@ -2292,16 +2291,16 @@ other = "Registered security keys:"
 other = " (RP {{.RP}}, counter {{.Count}})"
 
 [fido2_list_hint]
-other = "r: register • a: authenticate • Esc: back"
+other = "r: register • a: authenticate • ESC: back"
 
 [fido2_verify_store]
-other = "Enter: verify and store • Esc: back"
+other = "ENTER: verify and store • ESC: back"
 
 [fido2_verify]
-other = "Enter: verify • Esc: back"
+other = "ENTER: verify • ESC: back"
 
 [fido2_key_registered]
-other = "Security key registered and stored.\n\nEnter: return"
+other = "Security key registered and stored.\n\nENTER: return"
 
 [popup_title]
 other = "Password Required"
@@ -2691,10 +2690,10 @@ other = "Ctrl+A: select all"
 other = "Ctrl+C: clear"
 
 [fp_hint_open]
-other = "Enter: open"
+other = "ENTER: open"
 
 [fp_hint_back]
-other = "Esc: back"
+other = "ESC: back"
 
 [fp_hint_cancel]
 other = "Ctrl+Q: cancel"
