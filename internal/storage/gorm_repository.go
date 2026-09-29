@@ -378,16 +378,21 @@ func (repo *GORMRepository) UpdateAccount(ctx context.Context, account *wallet.A
 }
 
 func (repo *GORMRepository) DeletePendingAccount(ctx context.Context, accountID string, backupGeneration uint64) error {
-	result := repo.db.WithContext(ctx).
-		Where("account_id = ? AND state = ? AND backup_generation = ?", accountID, wallet.AccountStatePendingBackup, backupGeneration).
-		Delete(&wallet.Account{})
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected != 1 {
-		return wallet.ErrAccountNotFound
-	}
-	return nil
+	return repo.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		result := tx.
+			Where("account_id = ? AND state = ? AND backup_generation = ?", accountID, wallet.AccountStatePendingBackup, backupGeneration).
+			Delete(&wallet.Account{})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return wallet.ErrAccountNotFound
+		}
+		return tx.
+			Where("account_id = ? AND state = ? AND operation = ?",
+				accountID, wallet.CredentialBackupStatePending, wallet.CredentialBackupOperationUpsert).
+			Delete(&wallet.CredentialBackupState{}).Error
+	})
 }
 
 func (repo *GORMRepository) WithAccountTransaction(ctx context.Context, operation func(wallet.AccountRepository) error) error {

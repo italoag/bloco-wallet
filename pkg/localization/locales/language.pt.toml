@@ -3040,3 +3040,183 @@ other = "sair"
 
 [list_help_force_quit]
 other = "forçar saída"
+
+[menu_keepass]
+other = "Backups KeePass"
+[desc_keepass]
+other = "Gerenciar cofre KeePass de credenciais"
+[help_keepass]
+other = "Backup KeePass"
+[hint_keepass_toggle]
+other = "alternar credencial KeePass"
+[hint_keepass_remove]
+other = "também remover backup"
+[keepass_account_title]
+other = "Backup KeePass"
+[keepass_save_backup]
+other = "Salvar/atualizar backup"
+[keepass_view_status]
+other = "Ver status do backup"
+[keepass_master_title]
+other = "Cofre KeePass"
+[keepass_master_body]
+other = "Digite a senha mestra do cofre KeePass para continuar."
+[keepass_master_placeholder]
+other = "Senha mestra"
+[keepass_master_required]
+other = "A senha mestra é obrigatória"
+[keepass_master_label]
+other = "Senha mestra:"
+[keepass_confirm_label]
+other = "Confirme a senha mestra:"
+[keepass_confirm_placeholder]
+other = "Confirme a senha mestra"
+[keepass_path_label]
+other = "Caminho do cofre (.kdbx):"
+[keepass_path_placeholder]
+other = "/caminho/para/bloco-wallet.kdbx"
+[keepass_path_required]
+other = "É necessário um caminho .kdbx"
+[keepass_consent_label]
+other = "Digite ENABLE para continuar:"
+[keepass_consent_required]
+other = "Digite o token de confirmação exato para continuar"
+[keepass_disable_confirm]
+other = "Digite DISABLE para desativar os backups KeePass (o arquivo é mantido):"
+[keepass_recovery_warning]
+other = "O cofre KeePass armazena senhas de contas, chaves privadas e frases de recuperação. Guarde uma cópia do arquivo e da senha mestra; perder qualquer um torna os backups irrecuperáveis."
+[keepass_enabled_notice]
+other = "Backups de credenciais KeePass ativados"
+[keepass_disabled_notice]
+other = "Backups KeePass desativados; arquivo do cofre preservado"
+[keepass_created_save_failed]
+other = "Cofre criado em {{.Path}}, mas salvar a configuração falhou; use Vincular para ativá-lo"
+[keepass_test_ok]
+other = "Cofre aberto com sucesso"
+[keepass_pending_empty]
+other = "Nenhum backup de credencial pendente"
+[keepass_retry_done]
+other = "Sincronização concluída: {{.Saved}} salvos, {{.Deleted}} removidos"
+[keepass_retry_confirm_label]
+other = "Digite o ID da conta para confirmar a remoção do backup:"
+[keepass_status_enabled]
+other = "ativado"
+[keepass_status_disabled]
+other = "desativado"
+[keepass_status_line]
+other = "Status: {{.Status}}  Caminho: {{.Path}}"
+[keepass_action_create]
+other = "Criar novo cofre"
+[keepass_action_link]
+other = "Vincular cofre existente"
+[keepass_action_test]
+other = "Testar desbloqueio do cofre"
+[keepass_action_pending]
+other = "Backups pendentes"
+[keepass_action_disable]
+other = "Desativar backups"
+[keepass_action_back]
+other = "Voltar"
+[keepass_method_keepass]
+other = "Credencial: cofre KeePass"
+[keepass_method_manual]
+other = "Credencial: senha manual"
+[keepass_backup_pending_notice]
+other = "Operação concluída; backup de credencial pendente — tente novamente em Configurações > Backups KeePass"
+[keepass_err_auth]
+other = "Senha mestra incorreta"
+[keepass_err_busy]
+other = "Cofre ocupado; tente novamente"
+[keepass_err_missing]
+other = "Cofre ou credencial não encontrado"
+[keepass_err_conflict]
+other = "Cofre ou configuração alterados; recarregue e tente novamente"
+[keepass_err_cancelled]
+other = "Operação cancelada"
+[keepass_err_failed]
+other = "Falha na operação KeePass"
+[keepass_err_unavailable]
+other = "Serviço de backup de credenciais indisponível"
+[passwords_do_not_match]
+other = "As senhas não coincidem"
+
+[keepass_remove_toggle]
+other = "Remover backup de credencial: {{.Status}}"
+
+[backup_suspended_resume]
+other = "Backup suspenso. Retome nos detalhes da conta com uma nova senha de armazenamento."
+
+[canonical_import_committed_notice]
+other = "Importação confirmada no cofre."
+
+[keepass_commit_summary]
+other = "Backups: {{.Saved}} salvos, {{.Pending}} pendentes."
+
+[keepass_delete_entries_warning]
+other = "Todas as entradas de backup desta conta serão removidas do KeePass. Cópias .bak anteriores não são afetadas."
+
+[keepass_item_account]
+other = "Credenciais da conta"
+
+[keepass_lookup_label]
+other = "Busca no KeePass para sidecars .pwd ausentes: {{.Status}}"
+
+[keepass_old_backups_warning]
+other = "Backups criptografados exportados anteriormente permanecem no disco e ainda podem conter os segredos antigos."
+
+[keepass_pending_more]
+other = "... e mais {{.Count}} entradas pendentes. Use ↑/↓ para rolar."
+
+[keepass_pending_path_label]
+other = "Caminho do arquivo de artefato"
+
+[keepass_source_kdbx]
+other = "[KeePass]"
+
+[keepass_source_password_label]
+other = "Senha do arquivo de origem"
+
+[keepass_stage_syncing]
+other = "Sincronizando backups de credenciais..."
+
+[keepass_state_delete_pending]
+other = "exclusão pendente"
+
+[keepass_state_not_registered]
+other = "não cadastrado"
+
+[keepass_state_pending]
+other = "pendente"
+
+[keepass_state_prepared]
+other = "preparado"
+
+[keepass_state_synced]
+other = "sincronizado"
+
+[keepass_wallet_password_label]
+other = "Senha de armazenamento da carteira"
+
+[vault_export_committed]
+other = "Arquivo de exportação gravado em {{.Path}}, mas a sincronização do backup ainda está pendente."
+
+[vault_password_rotated]
+other = "Senha de armazenamento alterada."
+
+[keepass_master_weak]
+other = "A senha mestra deve ter pelo menos 12 caracteres"
+
+[keepass_password_required]
+other = "Digite a senha de armazenamento da carteira"
+
+[keepass_err_digest]
+other = "O arquivo selecionado não corresponde ao artefato pendente"
+
+[keepass_config_warning]
+other = "A configuração foi gravada, mas a durabilidade não pôde ser totalmente confirmada"
+
+[keepass_config_committed_error]
+other = "A configuração foi salva, mas a ativação falhou: {{.Reason}}"
+
+[keepass_confirmed_notice]
+other = "Backup confirmado."

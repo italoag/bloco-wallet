@@ -89,6 +89,11 @@ func (vault *WalletVault) ExportEncryptedAccount(ctx context.Context, request En
 	if len(request.NewPassword) != len(request.ConfirmNewPassword) || subtle.ConstantTimeCompare(request.NewPassword, request.ConfirmNewPassword) != 1 {
 		return fmt.Errorf("new export password confirmation does not match")
 	}
+	credentialOp, credentialDone, err := vault.beginCredentialMutation(ctx)
+	if err != nil {
+		return err
+	}
+	defer credentialDone()
 	return vault.withPrivateKey(ctx, request.Handle, func(_ []byte, account *Account) error {
 		if account.Capabilities&CapabilityExportSecret == 0 {
 			return ErrCapabilityDenied
@@ -151,7 +156,33 @@ func (vault *WalletVault) ExportEncryptedAccount(ctx context.Context, request En
 		if err != nil {
 			return fmt.Errorf("encode encrypted account export: %w", err)
 		}
-		return writeExclusiveAtomic(ctx, request.Destination, encoded, 0600)
+		var prepared *CredentialBackupState
+		var artifact credentialArtifact
+		if credentialOp != nil {
+			artifact = credentialArtifact{
+				Kind:       credentialKindEncryptedFile,
+				Name:       filepath.Base(request.Destination),
+				Path:       request.Destination,
+				Ciphertext: encoded,
+				Password:   request.NewPassword,
+			}
+			state, err := vault.registerPreparedArtifact(ctx, credentialOp, account.AccountID, artifact)
+			if err != nil {
+				return err
+			}
+			prepared = &state
+		}
+		writeErr := writeExclusiveAtomic(ctx, request.Destination, encoded, 0600)
+		if prepared != nil && (writeErr == nil || IsExportCommitted(writeErr)) {
+			key := CredentialBackupKey{TargetID: prepared.TargetID, VaultID: prepared.VaultID, AccountID: prepared.AccountID, ItemID: prepared.ItemID}
+			if err := vault.markArtifactPending(ctx, credentialOp, key); err != nil {
+				return &ExportCommittedWarning{Cause: err}
+			}
+			if err := credentialOp.queueFileArtifact(account.AccountID, artifact); err != nil {
+				return &ExportCommittedWarning{Cause: err}
+			}
+		}
+		return writeErr
 	})
 }
 

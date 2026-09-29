@@ -93,7 +93,7 @@ func TestEIP712SignFlowSelectsChainPreviewsFieldsAndSigns(t *testing.T) {
 	if submit == nil {
 		t.Fatal("EIP-712 sign did not start submission")
 	}
-	_, _ = model.Update(submit())
+	feedCmdResult(model, submit, 0)
 	view = model.viewEIP712Sign()
 	if model.eip712Sign.phase != eip712SignComplete || !strings.Contains(view, "Signature") {
 		t.Fatalf("EIP-712 sign did not complete: %q", view)

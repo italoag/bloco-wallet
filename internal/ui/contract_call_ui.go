@@ -154,6 +154,7 @@ func (model *CLIModel) initContractCall() {
 		state.inputs[field] = &input
 	}
 	state.help.Width = max(40, model.width-6)
+	model.credentialUseKeePass = false
 	if len(choices) == 0 {
 		state.err = localization.Get("eip712_no_network")
 	}
@@ -305,48 +306,66 @@ func (model *CLIModel) updateContractCall(message tea.Msg) (tea.Model, tea.Cmd) 
 			state.inputs["confirm"] = &updated
 			return model, command
 		case contractCallPassword:
+			if message.String() == "ctrl+k" && model.credentialToggleEligible(state.account) {
+				model.credentialUseKeePass = !model.credentialUseKeePass
+				if model.credentialUseKeePass {
+					state.inputs["password"].SetValue("")
+				}
+				return model, nil
+			}
 			if message.String() == "enter" {
 				password := []byte(state.inputs["password"].Value())
 				authorizer := model.transactionAuthorizer
 				accountID := state.account.AccountID
-				if authorizer == nil || (len(password) == 0 && !authorizer.HasActiveSession(context.Background(), accountID)) {
+				useKeePass := model.credentialUseKeePass && model.credentialToggleEligible(state.account)
+				if authorizer == nil || (len(password) == 0 && !useKeePass && !authorizer.HasActiveSession(context.Background(), accountID)) {
 					state.err = localization.Get("call_err_password_session")
 					state.inputs["password"].Focus()
 					return model, nil
 				}
 				state.inputs["password"].SetValue("")
 				state.err = ""
-				state.generation = model.nextContractCallGeneration()
-				generation := state.generation
-				engine := model.contractCallEngine()
-				prepared := state.prepared
-				confirmationTarget := uint64(state.networks[state.selected].network.ConfirmationTarget)
-				if confirmationTarget == 0 {
-					confirmationTarget = 12
-				}
-				ctx, cancel := context.WithCancel(context.Background())
-				state.cancel = cancel
-				state.phase = contractCallSubmitting
-				return model, func() tea.Msg {
-					defer clear(password)
-					var result evm.ExecutionResult
-					err := authorizer.Authorize(ctx, accountID, password, func(handle wallet.CapabilityHandle, epoch uint64) error {
-						riskLevel := evm.RiskNormal
-						confirmationLevel := evm.ConfirmationStandard
-						for _, finding := range prepared.Findings() {
-							if finding.Severity == evm.RiskSeverityCritical {
-								riskLevel = evm.RiskCritical
-								confirmationLevel = evm.ConfirmationReinforced
-							}
+				submit := func() tea.Cmd {
+					state.generation = model.nextContractCallGeneration()
+					generation := state.generation
+					engine := model.contractCallEngine()
+					prepared := state.prepared
+					confirmationTarget := uint64(state.networks[state.selected].network.ConfirmationTarget)
+					if confirmationTarget == 0 {
+						confirmationTarget = 12
+					}
+					authCtx, cancel, op := model.credentialWorkerContext(canonicalImportTimeout)
+					state.cancel = cancel
+					state.phase = contractCallSubmitting
+					worker := func() tea.Msg {
+						defer clear(password)
+						defer cancel()
+						if op != nil {
+							defer op.Close()
 						}
-						var operationErr error
-						result, operationErr = engine.ApproveSignAndBroadcast(ctx, handle, prepared, evm.ApprovalRequest{
-							AuthorizationEpoch: epoch, RiskLevel: riskLevel, ConfirmationLevel: confirmationLevel, ConfirmationTarget: confirmationTarget,
+						var result evm.ExecutionResult
+						err := runWithAccountCredential(authCtx, op, accountID, password, useKeePass, func(resolved []byte) error {
+							return authorizer.Authorize(authCtx, accountID, resolved, func(handle wallet.CapabilityHandle, epoch uint64) error {
+								riskLevel := evm.RiskNormal
+								confirmationLevel := evm.ConfirmationStandard
+								for _, finding := range prepared.Findings() {
+									if finding.Severity == evm.RiskSeverityCritical {
+										riskLevel = evm.RiskCritical
+										confirmationLevel = evm.ConfirmationReinforced
+									}
+								}
+								var operationErr error
+								result, operationErr = engine.ApproveSignAndBroadcast(authCtx, handle, prepared, evm.ApprovalRequest{
+									AuthorizationEpoch: epoch, RiskLevel: riskLevel, ConfirmationLevel: confirmationLevel, ConfirmationTarget: confirmationTarget,
+								})
+								return operationErr
+							})
 						})
-						return operationErr
-					})
-					return contractCallSubmittedMsg{generation: generation, result: result, err: err}
+						return contractCallSubmittedMsg{generation: generation, result: result, err: err}
+					}
+					return tea.Sequence(worker, func() tea.Msg { return credentialOpDoneMsg{op: op} })
 				}
+				return model, model.submitWithCredentialCancel(useKeePass, submit, func() { clear(password) })
 			}
 			updated, command := state.inputs["password"].Update(message)
 			state.inputs["password"] = &updated
@@ -575,7 +594,7 @@ func (model *CLIModel) viewContractCall() string {
 		builder.WriteString(localization.Get("call_critical_approve") + "\n" + state.inputs["confirm"].View() + "\n\n" + localization.Get("call_enter_continue_esc"))
 	case contractCallPassword:
 		if state.account.SignerKind == wallet.SignerKindSoftware {
-			builder.WriteString(localization.Get("call_enter_password") + "\n" + state.inputs["password"].View() + "\n\n" + localization.Get("call_enter_sign_broadcast"))
+			builder.WriteString(localization.Get("call_enter_password") + "\n" + state.inputs["password"].View() + "\n" + model.credentialMethodLabel(model.credentialToggleEligible(state.account)) + "\n\n" + localization.Get("call_enter_sign_broadcast"))
 		} else {
 			builder.WriteString(localization.Get("call_external_review"))
 		}
@@ -594,6 +613,8 @@ func (model *CLIModel) viewContractCall() string {
 }
 
 func (model *CLIModel) clearContractCall() {
+	model.credentialUseKeePass = false
+
 	model.contractCallGeneration++
 	if model.contractCall != nil && model.contractCall.cancel != nil {
 		model.contractCall.cancel()

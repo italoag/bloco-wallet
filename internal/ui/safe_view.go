@@ -132,6 +132,7 @@ type safeResultMsg struct {
 	generation uint64
 	kind       string
 	result     string
+	deployment *SafeDeploymentSummary
 	err        error
 }
 
@@ -141,6 +142,7 @@ func (model *CLIModel) ConfigureSafeService(service SafeService) {
 }
 
 func (model *CLIModel) initSafeView() {
+	model.credentialUseKeePass = false
 	model.safeView = &safeViewState{phase: safeViewList}
 	model.currentView = constants.SafeView
 	if err := model.refreshSafeAccounts(); err != nil {
@@ -295,6 +297,9 @@ func (model *CLIModel) updateSafeView(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if err := model.reloadSafeProposals(state); err != nil {
 				state.err = safeError(err)
 			}
+		case "deploy_prepared":
+			state.deployment = message.deployment
+			state.phase = safeViewDeployRun
 		}
 		return model, nil
 	case tea.KeyMsg:
@@ -459,8 +464,7 @@ func (model *CLIModel) runSafeDeploy(state *safeViewState) tea.Cmd {
 		if err != nil {
 			return safeResultMsg{generation: generation, kind: "deploy", err: err}
 		}
-		state.deployment = deployment
-		return safeResultMsg{generation: generation, kind: "deploy_prepared", result: deployment.SafeAddress.Hex()}
+		return safeResultMsg{generation: generation, kind: "deploy_prepared", result: deployment.SafeAddress.Hex(), deployment: deployment}
 	}
 }
 
@@ -470,34 +474,56 @@ func (model *CLIModel) updateSafeDeployRun(message tea.KeyMsg, state *safeViewSt
 		return nil
 	}
 	switch {
-	case keyIs(message, "down", "j"):
+	case keyIs(message, "down"):
 		if state.deployAccount < len(state.deployAccounts)-1 {
 			state.deployAccount++
 		}
-	case keyIs(message, "up", "k"):
+	case keyIs(message, "up"):
 		if state.deployAccount > 0 {
 			state.deployAccount--
 		}
+	case keyIs(message, "ctrl+k") && len(state.deployAccounts) > 0 && state.deployAccount >= 0 && state.deployAccount < len(state.deployAccounts) && model.credentialEligibleSigner(state.deployAccounts[state.deployAccount].SignerKind):
+		model.credentialUseKeePass = !model.credentialUseKeePass
+		if model.credentialUseKeePass {
+			state.password = ""
+		}
+		return nil
 	case keyIs(message, "enter"):
-		if len(state.deployAccounts) == 0 {
+		if len(state.deployAccounts) == 0 || state.deployAccount < 0 || state.deployAccount >= len(state.deployAccounts) {
 			state.err = localization.Get("safe_err_no_deployer")
 			return nil
 		}
 		password := []byte(state.password)
 		state.password = ""
-		state.generation++
-		generation := state.generation
-		deployment := state.deployment
-		accountID := state.deployAccounts[state.deployAccount].AccountID
-		service := model.safeService
-		return func() tea.Msg {
-			defer clear(password)
-			hash, err := service.BroadcastDeploy(context.Background(), deployment, accountID, password)
-			if err != nil {
-				return safeResultMsg{generation: generation, kind: "deploy", err: err}
+		deployer := state.deployAccounts[state.deployAccount]
+		useKeePass := model.credentialUseKeePass && model.credentialEligibleSigner(deployer.SignerKind)
+		deploy := func() tea.Cmd {
+			state.generation++
+			generation := state.generation
+			deployment := state.deployment
+			accountID := deployer.AccountID
+			service := model.safeService
+			ctx, cancel, op := model.credentialWorkerContext(canonicalImportTimeout)
+			worker := func() tea.Msg {
+				defer clear(password)
+				defer cancel()
+				if op != nil {
+					defer op.Close()
+				}
+				var hash string
+				err := runWithAccountCredential(ctx, op, accountID, password, useKeePass, func(resolved []byte) error {
+					var inner error
+					hash, inner = service.BroadcastDeploy(ctx, deployment, accountID, resolved)
+					return inner
+				})
+				if err != nil {
+					return safeResultMsg{generation: generation, kind: "deploy", err: err}
+				}
+				return safeResultMsg{generation: generation, kind: "deploy", result: localization.T("safe_deployed_result", map[string]interface{}{"Address": deployment.SafeAddress.Hex(), "Tx": hash})}
 			}
-			return safeResultMsg{generation: generation, kind: "deploy", result: localization.T("safe_deployed_result", map[string]interface{}{"Address": deployment.SafeAddress.Hex(), "Tx": hash})}
+			return tea.Sequence(worker, func() tea.Msg { return credentialOpDoneMsg{op: op} })
 		}
+		return model.submitWithCredentialCancel(useKeePass, deploy, func() { clear(password) })
 	case message.Type == tea.KeyBackspace:
 		if len(state.password) > 0 {
 			state.password = state.password[:len(state.password)-1]
@@ -666,25 +692,47 @@ func (model *CLIModel) updateSafeDetails(message tea.KeyMsg, state *safeViewStat
 }
 
 func (model *CLIModel) updateSafeSigning(message tea.KeyMsg, state *safeViewState) tea.Cmd {
+	if state.ownerIndex < 0 || state.ownerIndex >= len(state.owners) {
+		return nil
+	}
+	owner := state.owners[state.ownerIndex]
 	switch {
+	case keyIs(message, "ctrl+k") && model.credentialEligibleSigner(owner.SignerKind):
+		model.credentialUseKeePass = !model.credentialUseKeePass
+		if model.credentialUseKeePass {
+			state.password = ""
+		}
+		return nil
 	case keyIs(message, "enter"):
 		password := []byte(state.password)
 		state.password = ""
 		state.err = ""
-		state.generation++
-		generation := state.generation
-		proposalID := state.proposal.ProposalID
-		ownerAccountID := state.owners[state.ownerIndex].AccountID
-		chainID := state.chainID
-		service := model.safeService
-		return func() tea.Msg {
-			defer clear(password)
-			err := service.Sign(context.Background(), proposalID, ownerAccountID, chainID, password)
-			if err != nil {
-				return safeResultMsg{generation: generation, kind: "sign", err: err}
+		useKeePass := model.credentialUseKeePass && model.credentialEligibleSigner(owner.SignerKind)
+		sign := func() tea.Cmd {
+			state.generation++
+			generation := state.generation
+			proposalID := state.proposal.ProposalID
+			ownerAccountID := owner.AccountID
+			chainID := state.chainID
+			service := model.safeService
+			ctx, cancel, op := model.credentialWorkerContext(canonicalImportTimeout)
+			worker := func() tea.Msg {
+				defer clear(password)
+				defer cancel()
+				if op != nil {
+					defer op.Close()
+				}
+				err := runWithAccountCredential(ctx, op, ownerAccountID, password, useKeePass, func(resolved []byte) error {
+					return service.Sign(ctx, proposalID, ownerAccountID, chainID, resolved)
+				})
+				if err != nil {
+					return safeResultMsg{generation: generation, kind: "sign", err: err}
+				}
+				return safeResultMsg{generation: generation, kind: "sign", result: localization.Get("safe_signed_result")}
 			}
-			return safeResultMsg{generation: generation, kind: "sign", result: localization.Get("safe_signed_result")}
+			return tea.Sequence(worker, func() tea.Msg { return credentialOpDoneMsg{op: op} })
 		}
+		return model.submitWithCredentialCancel(useKeePass, sign, func() { clear(password) })
 	case message.Type == tea.KeyBackspace:
 		if len(state.password) > 0 {
 			state.password = state.password[:len(state.password)-1]
@@ -699,35 +747,57 @@ func (model *CLIModel) updateSafeSigning(message tea.KeyMsg, state *safeViewStat
 
 func (model *CLIModel) updateSafeExecute(message tea.KeyMsg, state *safeViewState) tea.Cmd {
 	switch {
-	case keyIs(message, "down", "j"):
+	case keyIs(message, "down"):
 		if state.gasIndex < len(state.gasPayers)-1 {
 			state.gasIndex++
 		}
-	case keyIs(message, "up", "k"):
+	case keyIs(message, "up"):
 		if state.gasIndex > 0 {
 			state.gasIndex--
 		}
+	case keyIs(message, "ctrl+k") && len(state.gasPayers) > 0 && state.gasIndex < len(state.gasPayers) && model.credentialEligibleSigner(state.gasPayers[state.gasIndex].SignerKind):
+		model.credentialUseKeePass = !model.credentialUseKeePass
+		if model.credentialUseKeePass {
+			state.password = ""
+		}
+		return nil
 	case keyIs(message, "enter"):
-		if len(state.gasPayers) == 0 {
+		if len(state.gasPayers) == 0 || state.gasIndex < 0 || state.gasIndex >= len(state.gasPayers) {
 			state.err = localization.Get("safe_err_no_payer")
 			return nil
 		}
 		password := []byte(state.password)
 		state.password = ""
-		state.generation++
-		generation := state.generation
-		proposalID := state.proposal.ProposalID
-		gasPayerID := state.gasPayers[state.gasIndex].AccountID
-		chainID := state.chainID
-		service := model.safeService
-		return func() tea.Msg {
-			defer clear(password)
-			hash, err := service.Execute(context.Background(), proposalID, gasPayerID, chainID, password)
-			if err != nil {
-				return safeResultMsg{generation: generation, kind: "execute", err: err}
+		gasPayer := state.gasPayers[state.gasIndex]
+		useKeePass := model.credentialUseKeePass && model.credentialEligibleSigner(gasPayer.SignerKind)
+		execute := func() tea.Cmd {
+			state.generation++
+			generation := state.generation
+			proposalID := state.proposal.ProposalID
+			gasPayerID := gasPayer.AccountID
+			chainID := state.chainID
+			service := model.safeService
+			ctx, cancel, op := model.credentialWorkerContext(canonicalImportTimeout)
+			worker := func() tea.Msg {
+				defer clear(password)
+				defer cancel()
+				if op != nil {
+					defer op.Close()
+				}
+				var hash string
+				err := runWithAccountCredential(ctx, op, gasPayerID, password, useKeePass, func(resolved []byte) error {
+					var inner error
+					hash, inner = service.Execute(ctx, proposalID, gasPayerID, chainID, resolved)
+					return inner
+				})
+				if err != nil {
+					return safeResultMsg{generation: generation, kind: "execute", err: err}
+				}
+				return safeResultMsg{generation: generation, kind: "execute", result: localization.T("safe_executed_result", map[string]interface{}{"Tx": hash})}
 			}
-			return safeResultMsg{generation: generation, kind: "execute", result: localization.T("safe_executed_result", map[string]interface{}{"Tx": hash})}
+			return tea.Sequence(worker, func() tea.Msg { return credentialOpDoneMsg{op: op} })
 		}
+		return model.submitWithCredentialCancel(useKeePass, execute, func() { clear(password) })
 	case message.Type == tea.KeyBackspace:
 		if len(state.password) > 0 {
 			state.password = state.password[:len(state.password)-1]

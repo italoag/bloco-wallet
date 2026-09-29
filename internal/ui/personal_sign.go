@@ -107,6 +107,7 @@ func (model *CLIModel) initPersonalSign(service MessageSigningService) {
 	model.personalSign.password.EchoMode = textinput.EchoPassword
 	model.personalSign.password.EchoCharacter = '•'
 	model.personalSign.help.Width = max(40, model.width-6)
+	model.credentialUseKeePass = false
 	model.currentView = constants.PersonalSignView
 }
 
@@ -187,37 +188,54 @@ func (model *CLIModel) updatePersonalSign(message tea.Msg) (tea.Model, tea.Cmd) 
 				state.phase = personalSignPreview
 				return model, nil
 			}
+			if message.String() == "ctrl+k" && model.credentialToggleEligible(state.account) {
+				model.credentialUseKeePass = !model.credentialUseKeePass
+				if model.credentialUseKeePass {
+					state.password.SetValue("")
+				}
+				return model, nil
+			}
 			if message.String() == "enter" {
 				password := []byte(state.password.Value())
-				if len(password) == 0 && (model.transactionAuthorizer == nil || !model.transactionAuthorizer.HasActiveSession(context.Background(), state.account.AccountID)) {
+				useKeePass := model.credentialUseKeePass && model.credentialToggleEligible(state.account)
+				if len(password) == 0 && !useKeePass && (model.transactionAuthorizer == nil || !model.transactionAuthorizer.HasActiveSession(context.Background(), state.account.AccountID)) {
 					state.err = localization.Get("sign_err_password_required")
 					return model, nil
 				}
 				state.password.SetValue("")
 				state.err = ""
-				state.phase = personalSignSubmitting
-				model.personalSignGeneration++
-				state.generation = model.personalSignGeneration
-				generation := state.generation
-				service := state.service
-				authorizer := model.transactionAuthorizer
-				prepared := state.prepared
-				accountID := state.account.AccountID
-				operationContext, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-				state.cancel = cancel
-				return model, func() tea.Msg {
-					defer clear(password)
-					defer cancel()
-					var result evm.PersonalSignResult
-					var operationErr error
-					operationErr = authorizer.Authorize(operationContext, accountID, password, func(handle wallet.CapabilityHandle, epoch uint64) error {
-						result, operationErr = service.ApproveAndSignPersonal(operationContext, handle, prepared, evm.PersonalSignApprovalRequest{
-							AuthorizationEpoch: epoch, ConfirmedIntentHash: prepared.Preview().IntentHash, ConfirmationLevel: evm.ConfirmationReinforced,
+				submit := func() tea.Cmd {
+					state.phase = personalSignSubmitting
+					model.personalSignGeneration++
+					state.generation = model.personalSignGeneration
+					generation := state.generation
+					service := state.service
+					authorizer := model.transactionAuthorizer
+					prepared := state.prepared
+					accountID := state.account.AccountID
+					authCtx, cancel, op := model.credentialWorkerContext(5 * time.Minute)
+					state.cancel = cancel
+					worker := func() tea.Msg {
+						defer clear(password)
+						defer cancel()
+						if op != nil {
+							defer op.Close()
+						}
+						var result evm.PersonalSignResult
+						operationErr := runWithAccountCredential(authCtx, op, accountID, password, useKeePass, func(resolved []byte) error {
+							return authorizer.Authorize(authCtx, accountID, resolved, func(handle wallet.CapabilityHandle, epoch uint64) error {
+								var signErr error
+								result, signErr = service.ApproveAndSignPersonal(authCtx, handle, prepared, evm.PersonalSignApprovalRequest{
+									AuthorizationEpoch: epoch, ConfirmedIntentHash: prepared.Preview().IntentHash, ConfirmationLevel: evm.ConfirmationReinforced,
+								})
+								return signErr
+							})
 						})
-						return operationErr
-					})
-					return personalSignResultMsg{generation: generation, result: result, err: operationErr}
+						return personalSignResultMsg{generation: generation, result: result, err: operationErr}
+					}
+					return tea.Sequence(worker, func() tea.Msg { return credentialOpDoneMsg{op: op} })
 				}
+				return model, model.submitWithCredentialCancel(useKeePass, submit, func() { clear(password) })
 			}
 			var command tea.Cmd
 			state.password, command = state.password.Update(message)
@@ -246,7 +264,7 @@ func (model *CLIModel) viewPersonalSign() string {
 		}))
 	case personalSignPassword:
 		if state.account.SignerKind == wallet.SignerKindSoftware {
-			content.WriteString("\n\n" + state.password.View())
+			content.WriteString("\n\n" + state.password.View() + "\n" + model.credentialMethodLabel(model.credentialToggleEligible(state.account)))
 		} else {
 			content.WriteString("\n\n" + localization.Get("sign_external_prompt"))
 		}
@@ -272,6 +290,8 @@ func (model *CLIModel) viewPersonalSign() string {
 }
 
 func (model *CLIModel) clearPersonalSign() {
+	model.credentialUseKeePass = false
+
 	model.personalSignGeneration++
 	if model.personalSign != nil {
 		if model.personalSign.cancel != nil {

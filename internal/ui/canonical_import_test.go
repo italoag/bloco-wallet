@@ -761,7 +761,7 @@ func TestCanonicalBatchCancelledCommitLogsFailures(t *testing.T) {
 	state.batchPreviews = []canonicalBatchPreview{{name: items[0].Name, digest: hex.EncodeToString(digest[:])}}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	summary, lines, err := executeCanonicalImport(ctx, nil, state)
+	summary, lines, err := executeCanonicalImport(ctx, nil, state, nil, false)
 	require.NoError(t, err)
 	assert.Empty(t, summary.AccountID)
 	joined := strings.Join(lines, "\n")

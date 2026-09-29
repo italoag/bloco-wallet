@@ -227,6 +227,7 @@ func (model *CLIModel) initTransactionTransfer(operation evm.Operation) {
 		contractInput: contractInput, recipientInput: recipientInput, amountInput: amountInput,
 		passwordInput: passwordInput, confirmationInput: confirmationInput,
 	}
+	model.credentialUseKeePass = false
 	if len(choices) == 0 {
 		state.err = localization.Get("tx_no_network")
 	}
@@ -234,6 +235,8 @@ func (model *CLIModel) initTransactionTransfer(operation evm.Operation) {
 }
 
 func (model *CLIModel) clearNativeTransfer() {
+	model.credentialUseKeePass = false
+
 	if model.nativeTransfer == nil {
 		return
 	}
@@ -576,44 +579,62 @@ func (model *CLIModel) updateNativeTransfer(msg tea.Msg) (tea.Model, tea.Cmd) {
 			state.confirmationInput, command = state.confirmationInput.Update(message)
 			return model, command
 		case nativeTransferPassword:
+			if message.String() == "ctrl+k" && model.credentialToggleEligible(state.account) {
+				model.credentialUseKeePass = !model.credentialUseKeePass
+				if model.credentialUseKeePass {
+					state.passwordInput.SetValue("")
+				}
+				return model, nil
+			}
 			if message.String() == "enter" {
 				password := []byte(state.passwordInput.Value())
 				authorizer := model.transactionAuthorizer
 				accountID := state.account.AccountID
-				if authorizer == nil || (len(password) == 0 && !authorizer.HasActiveSession(context.Background(), accountID)) {
+				useKeePass := model.credentialUseKeePass && model.credentialToggleEligible(state.account)
+				if authorizer == nil || (len(password) == 0 && !useKeePass && !authorizer.HasActiveSession(context.Background(), accountID)) {
 					state.err = localization.Get("call_err_password_session")
 					state.passwordInput.Focus()
 					return model, nil
 				}
 				state.passwordInput.SetValue("")
 				state.passwordInput.Blur()
-				state.generation = model.nextNativeTransferGeneration()
-				generation := state.generation
-				engine := state.engine
-				prepared := state.prepared
-				operation := state.operation
-				confirmationTarget := state.confirmationTarget
-				ctx, cancel := context.WithCancel(context.Background())
-				state.cancel = cancel
-				state.phase = nativeTransferSubmitting
-				return model, func() tea.Msg {
-					defer clear(password)
-					var result evm.ExecutionResult
-					err := authorizer.Authorize(ctx, accountID, password, func(handle wallet.CapabilityHandle, epoch uint64) error {
-						riskLevel := evm.RiskNormal
-						confirmationLevel := evm.ConfirmationStandard
-						if operation == evm.OperationERC20Approve {
-							riskLevel = evm.RiskCritical
-							confirmationLevel = evm.ConfirmationReinforced
+				submit := func() tea.Cmd {
+					state.generation = model.nextNativeTransferGeneration()
+					generation := state.generation
+					engine := state.engine
+					prepared := state.prepared
+					operation := state.operation
+					confirmationTarget := state.confirmationTarget
+					ctx, cancel, op := model.credentialWorkerContext(canonicalImportTimeout)
+					state.cancel = cancel
+					state.phase = nativeTransferSubmitting
+					worker := func() tea.Msg {
+						defer clear(password)
+						defer cancel()
+						if op != nil {
+							defer op.Close()
 						}
-						var operationErr error
-						result, operationErr = engine.ApproveSignAndBroadcast(ctx, handle, prepared, evm.ApprovalRequest{
-							AuthorizationEpoch: epoch, RiskLevel: riskLevel, ConfirmationLevel: confirmationLevel, ConfirmationTarget: confirmationTarget,
+						var result evm.ExecutionResult
+						err := runWithAccountCredential(ctx, op, accountID, password, useKeePass, func(resolved []byte) error {
+							return authorizer.Authorize(ctx, accountID, resolved, func(handle wallet.CapabilityHandle, epoch uint64) error {
+								riskLevel := evm.RiskNormal
+								confirmationLevel := evm.ConfirmationStandard
+								if operation == evm.OperationERC20Approve {
+									riskLevel = evm.RiskCritical
+									confirmationLevel = evm.ConfirmationReinforced
+								}
+								var operationErr error
+								result, operationErr = engine.ApproveSignAndBroadcast(ctx, handle, prepared, evm.ApprovalRequest{
+									AuthorizationEpoch: epoch, RiskLevel: riskLevel, ConfirmationLevel: confirmationLevel, ConfirmationTarget: confirmationTarget,
+								})
+								return operationErr
+							})
 						})
-						return operationErr
-					})
-					return nativeSubmittedMsg{generation: generation, result: result, err: err}
+						return nativeSubmittedMsg{generation: generation, result: result, err: err}
+					}
+					return tea.Sequence(worker, func() tea.Msg { return credentialOpDoneMsg{op: op} })
 				}
+				return model, model.submitWithCredentialCancel(useKeePass, submit, func() { clear(password) })
 			}
 			var command tea.Cmd
 			state.passwordInput, command = state.passwordInput.Update(message)
@@ -791,7 +812,7 @@ func (model *CLIModel) viewNativeTransfer() string {
 		builder.WriteString(localization.Get("tx_critical_approve") + "\n" + state.confirmationInput.View() + "\n\n" + localization.Get("call_enter_continue_esc"))
 	case nativeTransferPassword:
 		if state.account.SignerKind == wallet.SignerKindSoftware {
-			builder.WriteString(localization.Get("call_enter_password") + "\n" + state.passwordInput.View() + "\n\n" + localization.Get("call_enter_sign_broadcast"))
+			builder.WriteString(localization.Get("call_enter_password") + "\n" + state.passwordInput.View() + "\n" + model.credentialMethodLabel(model.credentialToggleEligible(state.account)) + "\n\n" + localization.Get("call_enter_sign_broadcast"))
 		} else {
 			builder.WriteString(localization.Get("call_external_review"))
 		}

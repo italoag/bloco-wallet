@@ -106,7 +106,7 @@ func TestPersonalSignFlowShowsPreviewSignatureAndKeepsViewPure(t *testing.T) {
 		t.Fatal("personal sign did not start submission")
 	}
 	before := model.personalSignGeneration
-	_, _ = model.Update(submit())
+	feedCmdResult(model, submit, 0)
 	view = model.viewPersonalSign()
 	if model.personalSignGeneration != before || model.personalSign.phase != personalSignComplete || !strings.Contains(view, "Signature") || !strings.Contains(view, "0x") {
 		t.Fatalf("personal sign did not complete: %q", view)
@@ -172,7 +172,7 @@ func TestPersonalSignStaleResultIsIgnoredAfterBack(t *testing.T) {
 	if model.currentView != constants.WalletDetailsView || model.personalSign != nil {
 		t.Fatal("back navigation did not clear personal sign")
 	}
-	_, _ = model.Update(submit())
+	feedCmdResult(model, submit, 0)
 	if model.currentView != constants.WalletDetailsView || model.personalSign != nil {
 		t.Fatal("stale personal sign result changed the restored view")
 	}

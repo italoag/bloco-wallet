@@ -63,6 +63,7 @@ func NewConfigMenu() []menuItem {
 	return []menuItem{
 		{title: localization.Get("networks"), description: localization.Get("networks_desc"), action: "networks"},
 		{title: localization.Get("language"), description: localization.Get("language_desc"), action: "language"},
+		{title: localization.Get("menu_keepass"), description: localization.Get("desc_keepass"), action: "keepass"},
 		{title: localization.Get("back_to_menu"), description: localization.Get("back_to_menu_desc"), action: "back"},
 	}
 }
@@ -204,6 +205,18 @@ func (m *CLIModel) refreshFormPlaceholders() {
 	if state := m.accountDeletion; state != nil {
 		state.confirmation.Placeholder = localization.Get("delete_confirm_placeholder")
 		state.password.Placeholder = localization.Get("vault_storage_password_placeholder")
+	}
+	if state := m.keepassSettings; state != nil {
+		state.pathInput.Placeholder = localization.Get("keepass_path_placeholder")
+		state.masterInput.Placeholder = localization.Get("keepass_master_placeholder")
+		state.confirmInput.Placeholder = localization.Get("keepass_confirm_placeholder")
+		state.retryPathInput.Placeholder = localization.Get("keepass_pending_path_label")
+	}
+	if state := m.keepassAccount; state != nil {
+		state.password.Placeholder = localization.Get("enter_wallet_password")
+	}
+	if prompt := m.credentialPrompt; prompt != nil {
+		prompt.input.Placeholder = localization.Get("keepass_master_placeholder")
 	}
 	if state := m.personalSign; state != nil {
 		state.message.Placeholder = localization.Get("sign_message_placeholder")

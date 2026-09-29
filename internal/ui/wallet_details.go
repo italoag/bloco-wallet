@@ -36,6 +36,7 @@ type WalletDetailsKeyMap struct {
 	FIDO2           key.Binding
 	ApproveToken    key.Binding
 	ResumeBackup    key.Binding
+	KeePass         key.Binding
 	ToggleHelp      key.Binding
 	Back            key.Binding
 }
@@ -65,6 +66,7 @@ func newWalletDetailsKeyMap() WalletDetailsKeyMap {
 		FIDO2:           key.NewBinding(key.WithKeys("p"), key.WithHelp("p", localization.Get("help_security_keys"))),
 		ApproveToken:    key.NewBinding(key.WithKeys("a"), key.WithHelp("a", localization.Get("help_approve_erc20"))),
 		ResumeBackup:    key.NewBinding(key.WithKeys("b"), key.WithHelp("b", localization.Get("help_resume_backup"))),
+		KeePass:         key.NewBinding(key.WithKeys("K"), key.WithHelp("K", localization.Get("help_keepass"))),
 		ToggleHelp:      key.NewBinding(key.WithKeys("?"), key.WithHelp("?", localization.Get("help_more"))),
 		Back:            key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", localization.Get("help_back"))),
 	}
@@ -102,6 +104,7 @@ func (model *CLIModel) refreshWalletDetailsHelp() {
 		{&k.FIDO2, "help_security_keys"},
 		{&k.ApproveToken, "help_approve_erc20"},
 		{&k.ResumeBackup, "help_resume_backup"},
+		{&k.KeePass, "help_keepass"},
 		{&k.ToggleHelp, "help_more"},
 		{&k.Back, "help_back"},
 	} {
@@ -110,7 +113,7 @@ func (model *CLIModel) refreshWalletDetailsHelp() {
 }
 
 func (keyMap WalletDetailsKeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{keyMap.Lock, keyMap.Recovery, keyMap.FetchBalances, keyMap.History, keyMap.SignMessage, keyMap.SignTypedData, keyMap.SendNative, keyMap.SendToken, keyMap.SendNFT, keyMap.Send1155, keyMap.Send1155Batch, keyMap.ContractCall, keyMap.WalletConnect, keyMap.FIDO2, keyMap.ResumeBackup, keyMap.Back}
+	return []key.Binding{keyMap.Lock, keyMap.Recovery, keyMap.FetchBalances, keyMap.History, keyMap.SignMessage, keyMap.SignTypedData, keyMap.SendNative, keyMap.SendToken, keyMap.SendNFT, keyMap.Send1155, keyMap.Send1155Batch, keyMap.ContractCall, keyMap.WalletConnect, keyMap.FIDO2, keyMap.KeePass, keyMap.ResumeBackup, keyMap.Back}
 }
 
 func (keyMap WalletDetailsKeyMap) FullHelp() [][]key.Binding {
@@ -118,7 +121,7 @@ func (keyMap WalletDetailsKeyMap) FullHelp() [][]key.Binding {
 		{keyMap.Up, keyMap.Down, keyMap.PageUp, keyMap.PageDown},
 		{keyMap.Lock, keyMap.Rotate, keyMap.Export, keyMap.EncryptedExport, keyMap.Recovery},
 		{keyMap.FetchBalances, keyMap.History, keyMap.SignMessage, keyMap.SignTypedData, keyMap.SendNative, keyMap.SendToken, keyMap.SendNFT, keyMap.Send1155, keyMap.Send1155Batch, keyMap.ContractCall, keyMap.WalletConnect, keyMap.FIDO2, keyMap.ApproveToken},
-		{keyMap.ResumeBackup, keyMap.ToggleHelp, keyMap.Back},
+		{keyMap.ResumeBackup, keyMap.KeePass, keyMap.ToggleHelp, keyMap.Back},
 	}
 }
 
@@ -169,6 +172,7 @@ func (model *CLIModel) updateWalletDetailsKeyAvailability() {
 	model.walletDetailsKeys.Export.SetEnabled(canExport)
 	model.walletDetailsKeys.EncryptedExport.SetEnabled(canExport)
 	model.walletDetailsKeys.Recovery.SetEnabled(canExport && (account.State == wallet.AccountStateActive || account.State == wallet.AccountStateLocked))
+	model.walletDetailsKeys.KeePass.SetEnabled(canExport && (account.State == wallet.AccountStateActive || account.State == wallet.AccountStateLocked) && model.credentialBackupEnabled())
 	model.walletDetailsKeys.FetchBalances.SetEnabled(hasAccount && model.balanceProvider != nil && !pendingBackup)
 	model.walletDetailsKeys.History.SetEnabled(hasAccount && model.historyReader != nil && !pendingBackup)
 	model.walletDetailsKeys.SignMessage.SetEnabled(hasAccount && model.messageSigningFactory != nil && model.transactionAuthorizer != nil && account.SignerKind.SupportsEOASigning() && account.Capabilities&wallet.CapabilitySignMessage != 0 && !pendingBackup)

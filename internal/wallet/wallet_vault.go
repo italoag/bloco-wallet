@@ -147,6 +147,9 @@ type WalletVault struct {
 	closed     bool
 	challenges map[string]*backupChallengeState
 	sessions   map[string]*vaultSession
+
+	credentialMu      sync.Mutex
+	credentialService *CredentialBackupService
 }
 
 func NewWalletVault(repository AccountRepository, codec SecretEnvelope, options VaultOptions) (*WalletVault, error) {
@@ -219,6 +222,11 @@ func (vault *WalletVault) endOperation() {
 }
 
 func (vault *WalletVault) Create(ctx context.Context, request CreateAccountRequest) (AccountSummary, BackupChallenge, error) {
+	credentialOp, credentialDone, err := vault.beginCredentialMutation(ctx)
+	if err != nil {
+		return AccountSummary{}, BackupChallenge{}, err
+	}
+	defer credentialDone()
 	if err := vault.beginOperation(); err != nil {
 		return AccountSummary{}, BackupChallenge{}, err
 	}
@@ -363,6 +371,9 @@ func (vault *WalletVault) Create(ctx context.Context, request CreateAccountReque
 		if !addressesEqual(verificationAddress, persisted.Address) {
 			return fmt.Errorf("pending envelope identity mismatch")
 		}
+		if err := vault.recordAccountIntent(ctx, transaction, persisted); err != nil {
+			return err
+		}
 		account = persisted
 		return ctx.Err()
 	}); err != nil {
@@ -377,10 +388,18 @@ func (vault *WalletVault) Create(ctx context.Context, request CreateAccountReque
 	}
 	clear(challenge.passphraseMAC)
 	challenge.passphraseMAC = nil
+	if err := queueCommittedAccountCredential(credentialOp, account, request.Password, nil); err != nil {
+		return summaryFromAccount(account), challenge, err
+	}
 	return summaryFromAccount(account), challenge, nil
 }
 
 func (vault *WalletVault) ResumeBackup(ctx context.Context, accountID string, password []byte) (AccountSummary, BackupChallenge, error) {
+	credentialOp, credentialDone, err := vault.beginCredentialMutation(ctx)
+	if err != nil {
+		return AccountSummary{}, BackupChallenge{}, err
+	}
+	defer credentialDone()
 	if err := vault.beginOperation(); err != nil {
 		return AccountSummary{}, BackupChallenge{}, err
 	}
@@ -423,6 +442,9 @@ func (vault *WalletVault) ResumeBackup(ctx context.Context, accountID string, pa
 		if err := transaction.UpdateAccount(ctx, latest); err != nil {
 			return err
 		}
+		if err := vault.recordAccountIntent(ctx, transaction, latest); err != nil {
+			return err
+		}
 		resumed = latest
 		return nil
 	}); err != nil {
@@ -431,6 +453,9 @@ func (vault *WalletVault) ResumeBackup(ctx context.Context, accountID string, pa
 	challenge, err := vault.issueBackupChallenge(resumed.AccountID, resumed.BackupGeneration, backupMaterial)
 	if err != nil {
 		return summaryFromAccount(resumed), BackupChallenge{}, err
+	}
+	if err := queueCommittedAccountCredential(credentialOp, resumed, password, nil); err != nil {
+		return summaryFromAccount(resumed), challenge, err
 	}
 	return summaryFromAccount(resumed), challenge, nil
 }
@@ -444,6 +469,11 @@ func (vault *WalletVault) ConfirmBackupWithMaterial(ctx context.Context, challen
 }
 
 func (vault *WalletVault) confirmBackup(ctx context.Context, challengeID string, confirmation BackupMaterialConfirmation, materialProvided bool) (AccountSummary, error) {
+	credentialOp, credentialDone, err := vault.beginCredentialMutation(ctx)
+	if err != nil {
+		return AccountSummary{}, err
+	}
+	defer credentialDone()
 	if err := vault.beginOperation(); err != nil {
 		return AccountSummary{}, err
 	}
@@ -523,6 +553,9 @@ func (vault *WalletVault) confirmBackup(ctx context.Context, challengeID string,
 		if err := transaction.UpdateAccount(ctx, account); err != nil {
 			return err
 		}
+		if err := vault.recordAccountIntent(ctx, transaction, account); err != nil {
+			return err
+		}
 		activated = account
 		return nil
 	}); err != nil {
@@ -540,7 +573,13 @@ func (vault *WalletVault) confirmBackup(ctx context.Context, challengeID string,
 		delete(vault.challenges, challengeID)
 	}
 	vault.mu.Unlock()
-	return summaryFromAccount(activated), nil
+	summary := summaryFromAccount(activated)
+	if credentialOp != nil {
+		if err := credentialOp.refreshQueuedAccount(accountID, activated.EnvelopeGeneration, activated.Revision, activated.AuthorizationEpoch); err != nil {
+			return summary, &CredentialBackupPendingError{Cause: err}
+		}
+	}
+	return summary, nil
 }
 
 func (vault *WalletVault) CancelBackup(ctx context.Context, challengeID string) error {
@@ -678,6 +717,11 @@ func (vault *WalletVault) Unlock(ctx context.Context, accountID string, password
 }
 
 func (vault *WalletVault) RotatePassword(ctx context.Context, accountID string, oldPassword, newPassword []byte) error {
+	credentialOp, credentialDone, err := vault.beginCredentialMutation(ctx)
+	if err != nil {
+		return err
+	}
+	defer credentialDone()
 	if err := vault.beginOperation(); err != nil {
 		return err
 	}
@@ -688,6 +732,7 @@ func (vault *WalletVault) RotatePassword(ctx context.Context, accountID string, 
 	if len(oldPassword) == len(newPassword) && subtle.ConstantTimeCompare(oldPassword, newPassword) == 1 {
 		return fmt.Errorf("new storage password must differ from old password")
 	}
+	var rotatedAccount *Account
 	if err := vault.repository.WithAccountTransaction(ctx, func(transaction AccountRepository) error {
 		account, err := transaction.GetAccount(ctx, accountID)
 		if err != nil {
@@ -737,12 +782,16 @@ func (vault *WalletVault) RotatePassword(ctx context.Context, accountID string, 
 		if !addressesEqual(address, persisted.Address) {
 			return fmt.Errorf("rotated envelope identity mismatch")
 		}
+		if err := vault.recordAccountIntent(ctx, transaction, persisted); err != nil {
+			return err
+		}
+		rotatedAccount = persisted
 		return nil
 	}); err != nil {
 		return err
 	}
 	vault.lockAccountSessions(accountID)
-	return nil
+	return queueCommittedAccountCredential(credentialOp, rotatedAccount, newPassword, nil)
 }
 
 func (vault *WalletVault) LockAccount(ctx context.Context, accountID string) error {
@@ -818,6 +867,12 @@ func (vault *WalletVault) Close() {
 		return
 	}
 	vault.closed = true
+	vault.credentialMu.Lock()
+	service := vault.credentialService
+	vault.credentialMu.Unlock()
+	if service != nil {
+		service.Close()
+	}
 	vault.mu.Lock()
 	defer vault.mu.Unlock()
 	for token, session := range vault.sessions {

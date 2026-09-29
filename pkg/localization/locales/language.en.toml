@@ -3039,3 +3039,183 @@ other = "quit"
 
 [list_help_force_quit]
 other = "force quit"
+
+[menu_keepass]
+other = "KeePass backups"
+[desc_keepass]
+other = "Manage KeePass credential backup vault"
+[help_keepass]
+other = "KeePass backup"
+[hint_keepass_toggle]
+other = "toggle KeePass credential"
+[hint_keepass_remove]
+other = "also remove backup"
+[keepass_account_title]
+other = "KeePass backup"
+[keepass_save_backup]
+other = "Save/update backup"
+[keepass_view_status]
+other = "View backup status"
+[keepass_master_title]
+other = "KeePass vault"
+[keepass_master_body]
+other = "Enter the KeePass vault master password to continue."
+[keepass_master_placeholder]
+other = "Master password"
+[keepass_master_required]
+other = "Master password is required"
+[keepass_master_label]
+other = "Master password:"
+[keepass_confirm_label]
+other = "Confirm master password:"
+[keepass_confirm_placeholder]
+other = "Confirm master password"
+[keepass_path_label]
+other = "Vault file path (.kdbx):"
+[keepass_path_placeholder]
+other = "/path/to/bloco-wallet.kdbx"
+[keepass_path_required]
+other = "A .kdbx vault path is required"
+[keepass_consent_label]
+other = "Type ENABLE to continue:"
+[keepass_consent_required]
+other = "Type the exact confirmation token to continue"
+[keepass_disable_confirm]
+other = "Type DISABLE to turn off KeePass backups (vault file is kept):"
+[keepass_recovery_warning]
+other = "The KeePass vault stores account passwords, private keys, and recovery phrases. Keep a copy of the vault file and master password; losing either makes backups unrecoverable."
+[keepass_enabled_notice]
+other = "KeePass credential backups enabled"
+[keepass_disabled_notice]
+other = "KeePass credential backups disabled; vault file preserved"
+[keepass_created_save_failed]
+other = "Vault file created at {{.Path}} but saving configuration failed; use Link to activate it"
+[keepass_test_ok]
+other = "Vault opened successfully"
+[keepass_pending_empty]
+other = "No pending credential backups"
+[keepass_retry_done]
+other = "Backup sync finished: {{.Saved}} saved, {{.Deleted}} deleted"
+[keepass_retry_confirm_label]
+other = "Type the account ID to confirm backup removal:"
+[keepass_status_enabled]
+other = "enabled"
+[keepass_status_disabled]
+other = "disabled"
+[keepass_status_line]
+other = "Status: {{.Status}}  Path: {{.Path}}"
+[keepass_action_create]
+other = "Create new vault"
+[keepass_action_link]
+other = "Link existing vault"
+[keepass_action_test]
+other = "Test vault unlock"
+[keepass_action_pending]
+other = "Pending backups"
+[keepass_action_disable]
+other = "Disable backups"
+[keepass_action_back]
+other = "Back"
+[keepass_method_keepass]
+other = "Credential: KeePass vault"
+[keepass_method_manual]
+other = "Credential: manual password"
+[keepass_backup_pending_notice]
+other = "Operation completed; credential backup is pending — retry from Settings > KeePass backups"
+[keepass_err_auth]
+other = "Wrong master password"
+[keepass_err_busy]
+other = "Vault is busy; try again"
+[keepass_err_missing]
+other = "Vault or credential entry not found"
+[keepass_err_conflict]
+other = "Vault or configuration changed; reload and retry"
+[keepass_err_cancelled]
+other = "Operation cancelled"
+[keepass_err_failed]
+other = "KeePass operation failed"
+[keepass_err_unavailable]
+other = "Credential backup service is not available"
+[passwords_do_not_match]
+other = "Passwords do not match"
+
+[keepass_remove_toggle]
+other = "Remove credential backup: {{.Status}}"
+
+[backup_suspended_resume]
+other = "Backup suspended. Resume it from the account details with a fresh storage password."
+
+[canonical_import_committed_notice]
+other = "Import committed to the vault."
+
+[keepass_commit_summary]
+other = "Backups: {{.Saved}} saved, {{.Pending}} pending."
+
+[keepass_delete_entries_warning]
+other = "All backup entries for this account will be removed from KeePass. Previous .bak copies are not affected."
+
+[keepass_item_account]
+other = "Account credentials"
+
+[keepass_lookup_label]
+other = "KeePass lookup for missing .pwd sidecars: {{.Status}}"
+
+[keepass_old_backups_warning]
+other = "Previously exported encrypted backups remain on disk and may still contain the old secrets."
+
+[keepass_pending_more]
+other = "... and {{.Count}} more pending entries. Use ↑/↓ to scroll."
+
+[keepass_pending_path_label]
+other = "Artifact file path"
+
+[keepass_source_kdbx]
+other = "[KeePass]"
+
+[keepass_source_password_label]
+other = "Source file password"
+
+[keepass_stage_syncing]
+other = "Syncing credential backups..."
+
+[keepass_state_delete_pending]
+other = "delete pending"
+
+[keepass_state_not_registered]
+other = "not registered"
+
+[keepass_state_pending]
+other = "pending"
+
+[keepass_state_prepared]
+other = "prepared"
+
+[keepass_state_synced]
+other = "synced"
+
+[keepass_wallet_password_label]
+other = "Wallet storage password"
+
+[vault_export_committed]
+other = "Export file written to {{.Path}}, but the backup sync is still pending."
+
+[vault_password_rotated]
+other = "Storage password rotated."
+
+[keepass_master_weak]
+other = "Master password must be at least 12 characters"
+
+[keepass_password_required]
+other = "Enter the wallet storage password"
+
+[keepass_err_digest]
+other = "Selected file does not match the pending artifact"
+
+[keepass_config_warning]
+other = "Configuration was written but durability could not be fully confirmed"
+
+[keepass_config_committed_error]
+other = "Configuration was saved but activation failed: {{.Reason}}"
+
+[keepass_confirmed_notice]
+other = "Backup confirmed."
