@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -53,6 +54,7 @@ type KeystoreImportRequest struct {
 	Name                   string
 	KeystoreJSON           []byte
 	SourcePassword         []byte
+	SourcePath             string
 	StoragePassword        []byte
 	ConfirmStoragePassword []byte
 }
@@ -205,10 +207,25 @@ func (vault *WalletVault) ImportKeystore(ctx context.Context, request KeystoreIm
 		return AccountSummary{}, err
 	}
 	defer clear(secret.PrivateKey)
-	return vault.importCanonicalSecret(ctx, strings.TrimSpace(request.Name), secret, request.StoragePassword, request.ConfirmStoragePassword)
+	artifact := credentialArtifact{
+		Kind:       credentialKindKeystoreV3,
+		Name:       "imported-keystore.json",
+		Ciphertext: request.KeystoreJSON,
+		Password:   request.SourcePassword,
+	}
+	if request.SourcePath != "" {
+		artifact.Path = request.SourcePath
+		artifact.Name = filepath.Base(request.SourcePath)
+	}
+	return vault.importCanonicalSecret(ctx, strings.TrimSpace(request.Name), secret, request.StoragePassword, request.ConfirmStoragePassword, artifact)
 }
 
-func (vault *WalletVault) importCanonicalSecret(ctx context.Context, name string, secret canonicalSecretV1, storagePassword, confirmation []byte) (AccountSummary, error) {
+func (vault *WalletVault) importCanonicalSecret(ctx context.Context, name string, secret canonicalSecretV1, storagePassword, confirmation []byte, artifacts ...credentialArtifact) (AccountSummary, error) {
+	credentialOp, credentialDone, err := vault.beginCredentialMutation(ctx)
+	if err != nil {
+		return AccountSummary{}, err
+	}
+	defer credentialDone()
 	if err := vault.beginOperation(); err != nil {
 		return AccountSummary{}, err
 	}
@@ -325,10 +342,16 @@ func (vault *WalletVault) importCanonicalSecret(ctx context.Context, name string
 		if !addressesEqual(verificationAddress, stored.Address) {
 			return fmt.Errorf("persisted import identity mismatch")
 		}
+		if err := vault.recordAccountIntent(ctx, transaction, stored, artifacts...); err != nil {
+			return err
+		}
 		persisted = stored
 		return ctx.Err()
 	}); err != nil {
 		return AccountSummary{}, err
+	}
+	if err := queueCommittedAccountCredential(credentialOp, persisted, storagePassword, artifacts); err != nil {
+		return summaryFromAccount(persisted), err
 	}
 	return summaryFromAccount(persisted), nil
 }

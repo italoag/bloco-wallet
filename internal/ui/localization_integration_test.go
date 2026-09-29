@@ -39,7 +39,7 @@ func menuActions(items []menuItem) []string {
 
 func TestMenuStableActionsAcrossLocales(t *testing.T) {
 	expectedMain := []string{"create_wallet", "import_wallet", "list_wallets", "safe", "configuration", "exit"}
-	expectedConfig := []string{"networks", "language", "back"}
+	expectedConfig := []string{"networks", "language", "keepass", "back"}
 	expectedImport := []string{"mnemonic", "private_key", "keystore", "keystore_batch", "bloco_encrypted", "watch_only", "mnemonic_batch", "back"}
 	expectedNetwork := []string{"add_network", "network_list", "back"}
 	titles := map[string][2]string{
@@ -80,7 +80,7 @@ func TestMenuRoutingUsesActionsNotTitles(t *testing.T) {
 	model.selectedMenu = 4 // configuration
 	_, _ = model.updateMenu(tea.KeyMsg{Type: tea.KeyEnter})
 	assert.Equal(t, constants.ConfigurationView, model.currentView)
-	assert.Equal(t, []string{"networks", "language", "back"}, menuActions(model.menuItems))
+	assert.Equal(t, []string{"networks", "language", "keepass", "back"}, menuActions(model.menuItems))
 }
 
 func TestLanguageMenuMarksCurrentWithNormalizedCode(t *testing.T) {

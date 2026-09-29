@@ -12,6 +12,7 @@ import (
 
 	"blocowallet/internal/blockchain"
 	"blocowallet/internal/evm"
+	"blocowallet/internal/keepass"
 	"blocowallet/internal/safe"
 	"blocowallet/internal/storage"
 	"blocowallet/internal/ui"
@@ -133,6 +134,21 @@ func main() {
 		os.Exit(1)
 	}
 	defer vault.Close()
+	credentialStore := keepass.NewStore(keepass.Options{})
+	credentialService, err := wallet.NewCredentialBackupService(vault, credentialStore)
+	if err != nil {
+		log.Printf("Failed to initialize credential backup service: %v", err)
+		os.Exit(1)
+	}
+	defer credentialService.Close()
+	err = credentialService.Configure(context.Background(), wallet.CredentialBackupPolicy{
+		Enabled: cfg.KeePass.Enabled,
+		Binding: keepass.Binding{Path: cfg.KeePass.Path, TargetID: cfg.KeePass.TargetID, VaultID: cfg.KeePass.VaultID},
+	})
+	if err != nil {
+		log.Printf("Failed to configure credential backups: %v", err)
+		os.Exit(1)
+	}
 	lgr.Info("Wallet vault initialized")
 	allowedLocalTargets := append([]string(nil), cfg.NetworkPolicy.AllowedLocalTargets...)
 	allowedLocalTargets = append(allowedLocalTargets, hardwareEmulatorLocalTargets()...)
@@ -171,6 +187,7 @@ func main() {
 		os.Exit(1)
 	}
 	app.ConfigureVersion(version)
+	app.ConfigureCredentialBackups(credentialService, credentialStore)
 	app.ConfigureBalanceProvider(balanceProvider, cfg)
 	app.ConfigureHistoryReader(repo)
 	app.ConfigureTransactionAuthorizer(transactionAuthorizer)

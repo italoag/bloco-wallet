@@ -4,6 +4,7 @@ import (
 	"blocowallet/internal/blockchain"
 	"blocowallet/internal/constants"
 	"blocowallet/internal/evm"
+	"blocowallet/internal/keepass"
 	"blocowallet/internal/wallet"
 	"blocowallet/pkg/config"
 	"blocowallet/pkg/localization"
@@ -139,6 +140,24 @@ type CLIModel struct {
 	// localeLanguage tracks the localization language the rendered model was
 	// built with; Update refreshes visible labels when it drifts.
 	localeLanguage string
+
+	credentialService    *wallet.CredentialBackupService
+	credentialStore      *keepass.Store
+	credentialOperation  *wallet.CredentialBackupOperation
+	credentialCancel     context.CancelFunc
+	credentialPrompt     *credentialPromptState
+	credentialGeneration uint64
+	credentialUseKeePass bool
+	keepassSettings      *keepassSettingsState
+	keepassAccount       *keepassAccountState
+	uiOperationID        uint64
+	vaultBusy            bool
+	vaultBusyCancelling  bool
+	vaultQuitAfterResult bool
+	vaultCancel          context.CancelFunc
+	vaultBusyOwner       string
+	loadConfigFn         func() (*config.Config, error)
+	saveConfigFn         func(*config.Config) error
 }
 
 // GetEnhancedImportState returns the enhanced import state

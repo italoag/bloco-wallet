@@ -115,6 +115,49 @@ func (vault *WalletVault) ExportRecoverySecret(ctx context.Context, request Reco
 }
 
 func (vault *WalletVault) withRecoveryMaterial(ctx context.Context, request RecoverySecretRequest, operation func(*RecoveryMaterial) error) error {
+	return vault.withVerifiedRecoveryMaterial(ctx, request.AccountID, request.Password, true, false, func() error {
+		if request.AccountID == "" || request.AccountID != request.ConfirmAccountID {
+			return ErrRecoveryConfirmation
+		}
+		switch request.Kind {
+		case RecoveryMnemonic, RecoveryPrivateKey, RecoveryPassphrase:
+		default:
+			return ErrRecoveryUnavailable
+		}
+		return nil
+	}, func(account *Account, secret canonicalSecretV1, privateKey []byte) error {
+		var data []byte
+		switch request.Kind {
+		case RecoveryMnemonic:
+			if secret.Kind != SecretTypeMnemonic {
+				return ErrRecoveryUnavailable
+			}
+			data = []byte(normalizedMnemonic(secret.Mnemonic))
+		case RecoveryPrivateKey:
+			data = make([]byte, 66)
+			copy(data, "0x")
+			hex.Encode(data[2:], privateKey)
+		case RecoveryPassphrase:
+			if secret.Kind != SecretTypeMnemonic || !account.HasBIP39Passphrase || secret.BIP39Passphrase == "" {
+				return ErrRecoveryUnavailable
+			}
+			data = []byte(secret.BIP39Passphrase)
+		}
+		material := &RecoveryMaterial{
+			AccountID:          account.AccountID,
+			Address:            account.Address,
+			Kind:               request.Kind,
+			DerivationPath:     account.DerivationPath,
+			BIP39Language:      BIP39Language(account.BIP39Language),
+			HasBIP39Passphrase: account.HasBIP39Passphrase,
+			data:               data,
+		}
+		defer material.Destroy()
+		return operation(material)
+	})
+}
+
+func (vault *WalletVault) withVerifiedRecoveryMaterial(ctx context.Context, accountID string, password []byte, requireExport, permitUnavailable bool, precheck func() error, operation func(*Account, canonicalSecretV1, []byte) error) error {
 	vault.lifecycle.Lock()
 	defer vault.lifecycle.Unlock()
 	if vault.closed {
@@ -123,18 +166,15 @@ func (vault *WalletVault) withRecoveryMaterial(ctx context.Context, request Reco
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if request.AccountID == "" || request.AccountID != request.ConfirmAccountID {
-		return ErrRecoveryConfirmation
+	if precheck != nil {
+		if err := precheck(); err != nil {
+			return err
+		}
 	}
-	switch request.Kind {
-	case RecoveryMnemonic, RecoveryPrivateKey, RecoveryPassphrase:
-	default:
-		return ErrRecoveryUnavailable
-	}
-	if len(request.Password) == 0 {
+	if len(password) == 0 {
 		return ErrRecoveryAuthentication
 	}
-	account, err := vault.repository.GetAccount(ctx, request.AccountID)
+	account, err := vault.repository.GetAccount(ctx, accountID)
 	if err != nil {
 		return err
 	}
@@ -144,13 +184,14 @@ func (vault *WalletVault) withRecoveryMaterial(ctx context.Context, request Reco
 	if account.SignerKind != SignerKindSoftware {
 		return ErrRecoveryUnavailable
 	}
-	if account.Capabilities&CapabilityExportSecret == 0 {
+	if requireExport && account.Capabilities&CapabilityExportSecret == 0 {
 		return ErrCapabilityDenied
 	}
-	if account.State != AccountStateActive && account.State != AccountStateLocked {
+	stateAllowed := account.State == AccountStateActive || account.State == AccountStateLocked || (permitUnavailable && account.State == AccountStateUnavailable)
+	if !stateAllowed {
 		return ErrRecoveryUnavailable
 	}
-	plaintext, err := vault.codec.Open(request.Password, metadataForAccount(account), account.SecretEnvelope)
+	plaintext, err := vault.codec.Open(password, metadataForAccount(account), account.SecretEnvelope)
 	if err != nil {
 		return ErrRecoveryAuthentication
 	}
@@ -159,58 +200,29 @@ func (vault *WalletVault) withRecoveryMaterial(ctx context.Context, request Reco
 	if err != nil {
 		return ErrRecoveryAuthentication
 	}
-	defer clear(privateKey)
 	if !addressesEqual(address, account.Address) {
+		clear(privateKey)
 		return ErrRecoveryAuthentication
 	}
 	secret, err := canonicalSecretFromStored(account, plaintext)
 	if err != nil {
+		clear(privateKey)
 		return ErrRecoveryAuthentication
 	}
 	defer clear(secret.PrivateKey)
-	var data []byte
-	switch request.Kind {
-	case RecoveryMnemonic:
-		if secret.Kind != SecretTypeMnemonic {
-			return ErrRecoveryUnavailable
-		}
-		data = []byte(normalizedMnemonic(secret.Mnemonic))
-	case RecoveryPrivateKey:
-		data = make([]byte, 66)
-		copy(data, "0x")
-		hex.Encode(data[2:], privateKey)
-	case RecoveryPassphrase:
-		if secret.Kind != SecretTypeMnemonic || !account.HasBIP39Passphrase || secret.BIP39Passphrase == "" {
-			return ErrRecoveryUnavailable
-		}
-		data = []byte(secret.BIP39Passphrase)
-	}
+	defer clear(privateKey)
 	if err := ctx.Err(); err != nil {
-		clear(data)
 		return err
 	}
-	latest, err := vault.repository.GetAccount(ctx, request.AccountID)
+	latest, err := vault.repository.GetAccount(ctx, accountID)
 	if err != nil {
-		clear(data)
 		return err
 	}
 	if latest.AccountID != account.AccountID || latest.Revision != account.Revision || latest.AuthorizationEpoch != account.AuthorizationEpoch || latest.Capabilities != account.Capabilities || latest.State != account.State || latest.SignerKind != account.SignerKind || !addressesEqual(latest.Address, account.Address) {
-		clear(data)
 		return ErrCapabilityExpired
 	}
 	if err := ctx.Err(); err != nil {
-		clear(data)
 		return err
 	}
-	material := &RecoveryMaterial{
-		AccountID:          account.AccountID,
-		Address:            account.Address,
-		Kind:               request.Kind,
-		DerivationPath:     account.DerivationPath,
-		BIP39Language:      BIP39Language(account.BIP39Language),
-		HasBIP39Passphrase: account.HasBIP39Passphrase,
-		data:               data,
-	}
-	defer material.Destroy()
-	return operation(material)
+	return operation(account, secret, privateKey)
 }

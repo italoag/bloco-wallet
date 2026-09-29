@@ -225,8 +225,8 @@ func TestPasswordPopupModel_View(t *testing.T) {
 	// Check that key elements are present in the view
 	assert.Contains(t, view, "Password Required")
 	assert.Contains(t, view, "test-wallet.json")
-	assert.Contains(t, view, "Enter: Confirm")
-	assert.Contains(t, view, "Esc: Cancel")
+	assert.Contains(t, view, "ENTER: Confirm")
+	assert.Contains(t, view, "ESC: Cancel")
 	assert.Contains(t, view, "Ctrl+S: Skip file")
 }
 

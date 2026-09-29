@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"blocowallet/internal/constants"
+	"blocowallet/internal/keepass"
 	"blocowallet/internal/wallet"
 	"blocowallet/pkg/localization"
 
@@ -46,6 +47,7 @@ type canonicalBatchPreview struct {
 	address string
 	digest  string
 	err     string
+	kdbx    bool
 }
 
 type canonicalImportState struct {
@@ -61,6 +63,7 @@ type canonicalImportState struct {
 	operationID            uint64
 	busy                   bool
 	cancelling             bool
+	quitAfterResult        bool
 	cancel                 context.CancelFunc
 	err                    string
 	sourcePassword         []byte
@@ -73,6 +76,9 @@ type canonicalImportState struct {
 	suggestKey             string
 	suggestValue           string
 	suggestGeneration      uint64
+	lookupMissingSidecars  bool
+	kdbxSources            map[string]bool
+	kdbxSource             bool
 }
 
 type canonicalPreviewResultMsg struct {
@@ -82,14 +88,19 @@ type canonicalPreviewResultMsg struct {
 	batchItems    []wallet.KeystoreBatchItem
 	mnemonicItems []wallet.MnemonicBatchItem
 	batchPreviews []canonicalBatchPreview
+	kdbxSource    bool
 	err           error
 }
 
 type canonicalCommitResultMsg struct {
-	operationID uint64
-	summary     wallet.AccountSummary
-	resultLines []string
-	err         error
+	operationID   uint64
+	summary       wallet.AccountSummary
+	resultLines   []string
+	err           error
+	backupPending bool
+	backupSaved   int
+	backupFailed  int
+	op            *wallet.CredentialBackupOperation
 }
 
 type canonicalImportProgressMsg struct {
@@ -190,7 +201,10 @@ func newCanonicalField(key, labelKey string, optional, secret bool, limit int) c
 }
 
 func (m *CLIModel) initCanonicalImport(method wallet.ImportMethod) {
+	m.credentialUseKeePass = false
 	m.canonicalImport = newCanonicalImportState(method)
+	m.canonicalImport.lookupMissingSidecars = m.credentialBackupEnabled()
+	m.canonicalImport.kdbxSources = make(map[string]bool)
 	m.currentView = constants.CanonicalImportView
 }
 
@@ -229,6 +243,9 @@ func (m *CLIModel) updateCanonicalImport(msg tea.Msg) (tea.Model, tea.Cmd) {
 		state.cancel = nil
 		if result.err != nil {
 			state.err = result.err.Error()
+			if state.quitAfterResult {
+				return m, tea.Quit
+			}
 			return m, nil
 		}
 		state.preview = result.preview
@@ -236,10 +253,15 @@ func (m *CLIModel) updateCanonicalImport(msg tea.Msg) (tea.Model, tea.Cmd) {
 		state.batchItems = result.batchItems
 		state.mnemonicItems = result.mnemonicItems
 		state.batchPreviews = result.batchPreviews
+		state.kdbxSource = result.kdbxSource
 		state.err = ""
+		if state.quitAfterResult {
+			return m, tea.Quit
+		}
 		return m, nil
 	case canonicalCommitResultMsg:
 		if result.operationID != state.operationID {
+			m.discardCredentialOperation(result.op)
 			return m, nil
 		}
 		state.busy = false
@@ -249,9 +271,25 @@ func (m *CLIModel) updateCanonicalImport(msg tea.Msg) (tea.Model, tea.Cmd) {
 			state.cancel()
 		}
 		state.cancel = nil
+		m.discardCredentialOperation(result.op)
 		if result.err != nil {
-			state.err = result.err.Error()
-			return m, nil
+			var pendingErr *wallet.CredentialBackupPendingError
+			if !errors.As(result.err, &pendingErr) {
+				state.err = result.err.Error()
+				if state.quitAfterResult {
+					return m, tea.Quit
+				}
+				return m, nil
+			}
+			result.backupPending = true
+		}
+		notice := ""
+		if result.backupPending {
+			notice = localization.Get("keepass_backup_pending_notice")
+		}
+		if result.backupSaved > 0 || result.backupPending {
+			notice = strings.TrimSpace(notice + " " + localization.T("keepass_commit_summary", map[string]interface{}{"Saved": result.backupSaved, "Pending": result.backupFailed}))
+			m.lastOperationNotice = notice
 		}
 		if len(result.resultLines) > 0 {
 			state.resultLines = result.resultLines
@@ -259,11 +297,18 @@ func (m *CLIModel) updateCanonicalImport(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if result.summary.AccountID != "" {
 				m.selectedAccount = &result.summary
 			}
-			return m, m.refreshWalletsTable()
+			cmd := m.refreshWalletsTable()
+			if state.quitAfterResult {
+				return m, tea.Sequence(cmd, tea.Quit)
+			}
+			return m, cmd
 		}
 		m.clearCanonicalImport()
 		m.selectedAccount = &result.summary
 		m.currentView = constants.WalletDetailsView
+		if state.quitAfterResult {
+			return m, tea.Quit
+		}
 		return m, m.refreshWalletsTable()
 	case canonicalImportProgressMsg:
 		if result.operationID != state.operationID || state.events == nil {
@@ -330,10 +375,12 @@ func (m *CLIModel) updateCanonicalImport(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if state.preview != nil {
-			return m, m.startCanonicalCommit()
+			needsOp := m.credentialBackupEnabled() && state.method != wallet.ImportMethodWatchOnly
+			return m, m.submitWithCredential(needsOp, func() tea.Cmd { return m.startCanonicalCommit() })
 		}
 		field := &state.fields[state.stage]
-		if !field.optional && field.input.Value() == "" {
+		keepsSource := field.key == "source_password" && m.credentialUseKeePass && m.credentialBackupEnabled()
+		if !field.optional && field.input.Value() == "" && !keepsSource {
 			state.err = localization.T("field_required", map[string]interface{}{"Field": localization.Get(field.labelKey)})
 			return m, nil
 		}
@@ -352,10 +399,26 @@ func (m *CLIModel) updateCanonicalImport(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, m.advanceCanonicalField()
 		}
-		return m, m.startCanonicalPreview()
+		needsOp := m.credentialBackupEnabled() && state.method != wallet.ImportMethodWatchOnly
+		return m, m.submitWithCredential(needsOp, func() tea.Cmd { return m.startCanonicalPreview() })
 	}
 	if state.preview != nil {
 		return m, nil
+	}
+	if key, ok := msg.(tea.KeyMsg); ok && key.String() == "ctrl+k" && state.stage < len(state.fields) && m.credentialBackupEnabled() {
+		switch state.fields[state.stage].key {
+		case "source_password":
+			m.credentialUseKeePass = !m.credentialUseKeePass
+			if m.credentialUseKeePass {
+				state.fields[state.stage].input.SetValue("")
+			}
+			return m, nil
+		case "directory":
+			if state.method == canonicalBatchMethod {
+				state.lookupMissingSidecars = !state.lookupMissingSidecars
+				return m, nil
+			}
+		}
 	}
 	var command tea.Cmd
 	state.fields[state.stage].input, command = state.fields[state.stage].input.Update(msg)
@@ -454,12 +517,18 @@ func (m *CLIModel) startCanonicalPreview() tea.Cmd {
 	m.canonicalOperationID++
 	state.operationID = m.canonicalOperationID
 	operationID := state.operationID
-	ctx, cancel := context.WithTimeout(context.Background(), canonicalImportTimeout)
+	op := m.activeCredentialOperation()
+	parent := context.Background()
+	if op != nil {
+		parent = op.Context()
+	}
+	ctx, cancel := context.WithTimeout(parent, canonicalImportTimeout)
 	state.cancel = cancel
 	state.busy = true
 	state.cancelling = false
 	state.err = ""
 	snapshot := cloneCanonicalImportState(state)
+	useKeePass := m.credentialUseKeePass && op != nil
 	if state.isBatch() {
 		events := make(chan tea.Msg, canonicalBatchLimit+3)
 		state.events = events
@@ -472,7 +541,7 @@ func (m *CLIModel) startCanonicalPreview() tea.Cmd {
 			defer close(events)
 			defer cancel()
 			defer clear(snapshot.sourcePassword)
-			err := prepareCanonicalImportPreview(ctx, m.Vault, snapshot)
+			err := prepareCanonicalImportPreview(ctx, m.Vault, snapshot, op, useKeePass)
 			if err != nil {
 				clear(snapshot.data)
 				clearCanonicalBatchItems(snapshot.batchItems)
@@ -485,6 +554,7 @@ func (m *CLIModel) startCanonicalPreview() tea.Cmd {
 				batchItems:    snapshot.batchItems,
 				mnemonicItems: snapshot.mnemonicItems,
 				batchPreviews: snapshot.batchPreviews,
+				kdbxSource:    snapshot.kdbxSource,
 				err:           err,
 			}
 			return nil
@@ -494,7 +564,7 @@ func (m *CLIModel) startCanonicalPreview() tea.Cmd {
 	return func() tea.Msg {
 		defer cancel()
 		defer clear(snapshot.sourcePassword)
-		err := prepareCanonicalImportPreview(ctx, m.Vault, snapshot)
+		err := prepareCanonicalImportPreview(ctx, m.Vault, snapshot, op, useKeePass)
 		if err != nil {
 			clear(snapshot.data)
 			clearCanonicalBatchItems(snapshot.batchItems)
@@ -507,6 +577,7 @@ func (m *CLIModel) startCanonicalPreview() tea.Cmd {
 			batchItems:    snapshot.batchItems,
 			mnemonicItems: snapshot.mnemonicItems,
 			batchPreviews: snapshot.batchPreviews,
+			kdbxSource:    snapshot.kdbxSource,
 			err:           err,
 		}
 	}
@@ -526,10 +597,13 @@ func cloneCanonicalImportState(state *canonicalImportState) *canonicalImportStat
 	cloned.cancelling = false
 	cloned.events = nil
 	cloned.sourcePassword = append([]byte(nil), state.sourcePassword...)
+	cloned.lookupMissingSidecars = state.lookupMissingSidecars
+	cloned.kdbxSources = make(map[string]bool)
+	cloned.kdbxSource = false
 	return &cloned
 }
 
-func prepareCanonicalImportPreview(ctx context.Context, vault *wallet.WalletVault, state *canonicalImportState) error {
+func prepareCanonicalImportPreview(ctx context.Context, vault *wallet.WalletVault, state *canonicalImportState, credential *wallet.CredentialBackupOperation, useKeePass bool) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -562,9 +636,20 @@ func prepareCanonicalImportPreview(ctx context.Context, vault *wallet.WalletVaul
 	case wallet.ImportMethodKeystore:
 		state.data, err = readCanonicalKeystore(state.value("keystore_path"))
 		if err == nil {
-			sourcePassword := canonicalSourcePassword(state)
-			preview, err = wallet.PreviewKeystoreImportContext(ctx, state.data, sourcePassword)
-			clear(sourcePassword)
+			if useKeePass && !state.sourcePasswordFromFile {
+				err = credential.WithFilePassword(ctx, "keystore_v3", state.data, func(resolved []byte) error {
+					var inner error
+					preview, inner = wallet.PreviewKeystoreImportContext(ctx, state.data, resolved)
+					return inner
+				})
+				if err == nil {
+					state.kdbxSource = true
+				}
+			} else {
+				sourcePassword := canonicalSourcePassword(state)
+				preview, err = wallet.PreviewKeystoreImportContext(ctx, state.data, sourcePassword)
+				clear(sourcePassword)
+			}
 		}
 	case canonicalBatchMethod:
 		state.batchItems, err = readCanonicalKeystoreBatch(state.value("directory"))
@@ -590,6 +675,37 @@ func prepareCanonicalImportPreview(ctx context.Context, vault *wallet.WalletVaul
 						state.reportProgress(batchProgress)
 					}
 					continue
+				}
+				if !item.SourcePasswordFromFile && state.lookupMissingSidecars && credential != nil {
+					lookupErr := credential.WithFilePassword(ctx, "keystore_v3", item.KeystoreJSON, func(resolved []byte) error {
+						validated, inner := wallet.PreviewKeystoreImportContext(ctx, item.KeystoreJSON, resolved)
+						if inner == nil {
+							itemPreview.address = validated.Address
+						}
+						return inner
+					})
+					switch {
+					case lookupErr == nil:
+						itemPreview.kdbx = true
+						state.kdbxSources[itemPreview.digest] = true
+						state.batchPreviews = append(state.batchPreviews, itemPreview)
+						batchProgress.Completed++
+						if state.reportProgress != nil {
+							state.reportProgress(batchProgress)
+						}
+						continue
+					case errors.Is(lookupErr, keepass.ErrNotFound):
+					default:
+						item.PreflightErr = lookupErr
+						itemPreview.err = canonicalBatchFailureReason(lookupErr)
+						state.batchPreviews = append(state.batchPreviews, itemPreview)
+						batchProgress.Completed++
+						batchProgress.Failed++
+						if state.reportProgress != nil {
+							state.reportProgress(batchProgress)
+						}
+						continue
+					}
 				}
 				validated, previewErr := wallet.PreviewKeystoreImportContext(ctx, item.KeystoreJSON, item.SourcePassword)
 				if previewErr != nil {
@@ -661,7 +777,20 @@ func prepareCanonicalImportPreview(ctx context.Context, vault *wallet.WalletVaul
 	case canonicalEncryptedMethod:
 		state.data, err = readCanonicalKeystore(state.value("encrypted_path"))
 		if err == nil {
-			preview, err = vault.PreviewEncryptedAccountImport(ctx, state.data, []byte(state.value("source_password")))
+			if useKeePass {
+				err = credential.WithFilePassword(ctx, "bloco_encrypted", state.data, func(resolved []byte) error {
+					var inner error
+					preview, inner = vault.PreviewEncryptedAccountImport(ctx, state.data, resolved)
+					return inner
+				})
+				if err == nil {
+					state.kdbxSource = true
+				}
+			} else {
+				sourcePassword := []byte(state.value("source_password"))
+				preview, err = vault.PreviewEncryptedAccountImport(ctx, state.data, sourcePassword)
+				clear(sourcePassword)
+			}
 		}
 	default:
 		err = fmt.Errorf("unsupported import method")
@@ -688,12 +817,34 @@ func (m *CLIModel) startCanonicalCommit() tea.Cmd {
 	m.canonicalOperationID++
 	state.operationID = m.canonicalOperationID
 	operationID := state.operationID
-	ctx, cancel := context.WithTimeout(context.Background(), canonicalImportTimeout)
+	op := m.activeCredentialOperation()
+	parent := context.Background()
+	if op != nil {
+		parent = op.Context()
+	}
+	ctx, cancel := context.WithTimeout(parent, canonicalImportTimeout)
 	state.cancel = cancel
 	state.busy = true
 	state.cancelling = false
 	state.err = ""
 	snapshot := cloneCanonicalCommitState(state)
+	useKeePass := m.credentialUseKeePass && m.credentialBackupEnabled()
+	syncBackup := func(err error) (saved, failed int, pending bool) {
+		if op == nil {
+			return 0, 0, false
+		}
+		if err != nil {
+			var pendingErr *wallet.CredentialBackupPendingError
+			if !errors.As(err, &pendingErr) {
+				return 0, 0, false
+			}
+			pending = true
+		}
+		report, syncErr := op.Sync(ctx)
+		saved = report.AccountsSaved + report.FilesSaved
+		failed = report.Pending
+		return saved, failed, pending || syncErr != nil || report.Pending > 0
+	}
 	if state.isBatch() {
 		snapshot.logDirectory = m.canonicalFailureLogDirectory()
 		events := make(chan tea.Msg, canonicalBatchLimit+3)
@@ -707,11 +858,16 @@ func (m *CLIModel) startCanonicalCommit() tea.Cmd {
 			defer close(events)
 			defer cancel()
 			defer clear(snapshot.sourcePassword)
-			summary, resultLines, err := executeCanonicalImport(ctx, m.Vault, snapshot)
+			summary, resultLines, err := executeCanonicalImport(ctx, m.Vault, snapshot, op, useKeePass)
 			clear(snapshot.data)
 			clearCanonicalBatchItems(snapshot.batchItems)
 			clearCanonicalMnemonicItems(snapshot.mnemonicItems)
-			events <- canonicalCommitResultMsg{operationID: operationID, summary: summary, resultLines: resultLines, err: err}
+			var pendingErr *wallet.CredentialBackupPendingError
+			if op != nil && (err == nil || errors.As(err, &pendingErr)) {
+				events <- canonicalImportProgressMsg{operationID: operationID, stage: "keepass_stage_syncing"}
+			}
+			saved, failed, pending := syncBackup(err)
+			events <- canonicalCommitResultMsg{operationID: operationID, summary: summary, resultLines: resultLines, err: err, backupPending: pending, backupSaved: saved, backupFailed: failed, op: op}
 			return nil
 		}
 		return tea.Batch(worker, waitCanonicalImportEvent(events))
@@ -719,11 +875,12 @@ func (m *CLIModel) startCanonicalCommit() tea.Cmd {
 	return func() tea.Msg {
 		defer cancel()
 		defer clear(snapshot.sourcePassword)
-		summary, resultLines, err := executeCanonicalImport(ctx, m.Vault, snapshot)
+		summary, resultLines, err := executeCanonicalImport(ctx, m.Vault, snapshot, op, useKeePass)
 		clear(snapshot.data)
 		clearCanonicalBatchItems(snapshot.batchItems)
 		clearCanonicalMnemonicItems(snapshot.mnemonicItems)
-		return canonicalCommitResultMsg{operationID: operationID, summary: summary, resultLines: resultLines, err: err}
+		saved, failed, pending := syncBackup(err)
+		return canonicalCommitResultMsg{operationID: operationID, summary: summary, resultLines: resultLines, err: err, backupPending: pending, backupSaved: saved, backupFailed: failed, op: op}
 	}
 }
 
@@ -745,11 +902,12 @@ func cloneCanonicalCommitState(state *canonicalImportState) *canonicalImportStat
 	cloned.batchItems = make([]wallet.KeystoreBatchItem, len(state.batchItems))
 	for index, item := range state.batchItems {
 		cloned.batchItems[index] = wallet.KeystoreBatchItem{
-			Name:           item.Name,
-			KeystoreJSON:   append([]byte(nil), item.KeystoreJSON...),
-			SourcePassword: append([]byte(nil), item.SourcePassword...),
-			SourcePath:     item.SourcePath,
-			PreflightErr:   item.PreflightErr,
+			Name:                   item.Name,
+			KeystoreJSON:           append([]byte(nil), item.KeystoreJSON...),
+			SourcePassword:         append([]byte(nil), item.SourcePassword...),
+			SourcePasswordFromFile: item.SourcePasswordFromFile,
+			SourcePath:             item.SourcePath,
+			PreflightErr:           item.PreflightErr,
 		}
 	}
 	cloned.mnemonicItems = make([]wallet.MnemonicBatchItem, len(state.mnemonicItems))
@@ -762,6 +920,8 @@ func cloneCanonicalCommitState(state *canonicalImportState) *canonicalImportStat
 		}
 	}
 	cloned.batchPreviews = append([]canonicalBatchPreview(nil), state.batchPreviews...)
+	cloned.lookupMissingSidecars = state.lookupMissingSidecars
+	cloned.kdbxSources = state.kdbxSources
 	cloned.cancel = nil
 	cloned.busy = false
 	cloned.cancelling = false
@@ -770,7 +930,7 @@ func cloneCanonicalCommitState(state *canonicalImportState) *canonicalImportStat
 	return &cloned
 }
 
-func executeCanonicalImport(ctx context.Context, vault *wallet.WalletVault, state *canonicalImportState) (wallet.AccountSummary, []string, error) {
+func executeCanonicalImport(ctx context.Context, vault *wallet.WalletVault, state *canonicalImportState, credential *wallet.CredentialBackupOperation, useKeePass bool) (wallet.AccountSummary, []string, error) {
 	storagePassword := []byte(state.value("storage_password"))
 	confirmation := []byte(state.value("confirm_password"))
 	defer clear(storagePassword)
@@ -805,30 +965,65 @@ func executeCanonicalImport(ctx context.Context, vault *wallet.WalletVault, stat
 			Address: address,
 		})
 	case wallet.ImportMethodKeystore:
-		sourcePassword := canonicalSourcePassword(state)
-		summary, err = vault.ImportKeystore(ctx, wallet.KeystoreImportRequest{
-			Name:                   strings.TrimSpace(state.value("name")),
-			KeystoreJSON:           state.data,
-			SourcePassword:         sourcePassword,
-			StoragePassword:        storagePassword,
-			ConfirmStoragePassword: confirmation,
-		})
-		clear(sourcePassword)
+		importKeystore := func(sourcePassword []byte) error {
+			var inner error
+			summary, inner = vault.ImportKeystore(ctx, wallet.KeystoreImportRequest{
+				Name:                   strings.TrimSpace(state.value("name")),
+				KeystoreJSON:           state.data,
+				SourcePassword:         sourcePassword,
+				SourcePath:             state.value("keystore_path"),
+				StoragePassword:        storagePassword,
+				ConfirmStoragePassword: confirmation,
+			})
+			return inner
+		}
+		if useKeePass && credential != nil && !state.sourcePasswordFromFile {
+			err = credential.WithFilePassword(ctx, "keystore_v3", state.data, importKeystore)
+		} else {
+			sourcePassword := canonicalSourcePassword(state)
+			err = importKeystore(sourcePassword)
+			clear(sourcePassword)
+		}
 	case canonicalEncryptedMethod:
-		sourcePassword := []byte(state.value("source_password"))
-		summary, err = vault.ImportEncryptedAccount(ctx, wallet.EncryptedAccountImportRequest{
-			Name:                   strings.TrimSpace(state.value("name")),
-			ExportJSON:             state.data,
-			ExportPassword:         sourcePassword,
-			StoragePassword:        storagePassword,
-			ConfirmStoragePassword: confirmation,
-		})
-		clear(sourcePassword)
+		importEncrypted := func(sourcePassword []byte) error {
+			var inner error
+			summary, inner = vault.ImportEncryptedAccount(ctx, wallet.EncryptedAccountImportRequest{
+				Name:                   strings.TrimSpace(state.value("name")),
+				ExportJSON:             state.data,
+				ExportPassword:         sourcePassword,
+				SourcePath:             state.value("encrypted_path"),
+				StoragePassword:        storagePassword,
+				ConfirmStoragePassword: confirmation,
+			})
+			return inner
+		}
+		if useKeePass && credential != nil {
+			err = credential.WithFilePassword(ctx, "bloco_encrypted", state.data, importEncrypted)
+		} else {
+			sourcePassword := []byte(state.value("source_password"))
+			err = importEncrypted(sourcePassword)
+			clear(sourcePassword)
+		}
 	case canonicalBatchMethod:
 		for index, item := range state.batchItems {
 			digest := sha256.Sum256(item.KeystoreJSON)
 			if index >= len(state.batchPreviews) || hex.EncodeToString(digest[:]) != state.batchPreviews[index].digest {
 				return wallet.AccountSummary{}, nil, fmt.Errorf("batch item changed after preview")
+			}
+		}
+		if credential != nil && state.lookupMissingSidecars {
+			for index := range state.batchItems {
+				item := &state.batchItems[index]
+				if item.PreflightErr != nil || item.SourcePasswordFromFile {
+					continue
+				}
+				lookupErr := credential.WithFilePassword(ctx, "keystore_v3", item.KeystoreJSON, func(resolved []byte) error {
+					item.SourcePassword = append([]byte(nil), resolved...)
+					return nil
+				})
+				if lookupErr != nil && !errors.Is(lookupErr, keepass.ErrNotFound) {
+					item.PreflightErr = lookupErr
+				}
 			}
 		}
 		results := vault.ImportKeystoreBatch(ctx, wallet.KeystoreBatchImportRequest{
@@ -906,6 +1101,9 @@ func (m *CLIModel) viewCanonicalImport() string {
 			if item.err != "" {
 				status = localization.T("canonical_preview_error", map[string]interface{}{"Err": item.err})
 			}
+			if item.kdbx {
+				status = status + " " + localization.Get("keepass_source_kdbx")
+			}
 			if state.method == canonicalMnemonicBatchMethod {
 				_, _ = fmt.Fprintf(&view, "%s | %s\n", safeShort(item.name), safeInline(status))
 			} else {
@@ -924,7 +1122,11 @@ func (m *CLIModel) viewCanonicalImport() string {
 		if preview.HasBIP39Passphrase {
 			passphrasePresent = localization.Get("yes")
 		}
-		return fmt.Sprintf("%s\n\n%s",
+		sourceLine := ""
+		if state.kdbxSource {
+			sourceLine = "\n" + localization.Get("keepass_source_kdbx")
+		}
+		return fmt.Sprintf("%s\n\n%s%s",
 			title, localization.T("canonical_preview_summary", map[string]interface{}{
 				"Source":     safeShort(preview.SourceFormat),
 				"Address":    safeShort(preview.Address),
@@ -933,13 +1135,23 @@ func (m *CLIModel) viewCanonicalImport() string {
 				"Path":       safeShort(preview.DerivationPath),
 				"Language":   safeShort(string(preview.BIP39Language)),
 				"Passphrase": passphrasePresent,
-			}))
+			}), sourceLine)
 	}
 	field := state.fields[state.stage]
 	view := fmt.Sprintf("%s\n\n%s\n%s:\n%s",
 		title,
 		localization.T("canonical_step", map[string]interface{}{"Step": state.stage + 1, "Total": len(state.fields)}),
 		localization.Get(field.labelKey), field.input.View())
+	if field.key == "source_password" && m.credentialBackupEnabled() {
+		view += "\n" + m.credentialMethodLabel(true)
+	}
+	if field.key == "directory" && state.method == canonicalBatchMethod && m.credentialBackupEnabled() {
+		label := localization.Get("keepass_status_disabled")
+		if state.lookupMissingSidecars {
+			label = localization.Get("keepass_status_enabled")
+		}
+		view += "\n" + localization.T("keepass_lookup_label", map[string]interface{}{"Status": label})
+	}
 	if state.err != "" {
 		view += "\n\n" + m.styles.ErrorStyle.Render(safeInline(state.err))
 	}
@@ -980,6 +1192,7 @@ func (m *CLIModel) clearCanonicalImport() {
 		m.canonicalImport.cancel()
 	}
 	m.clearCanonicalImportSecrets(true)
+	m.credentialUseKeePass = false
 	m.canonicalImport = nil
 }
 
@@ -1145,6 +1358,7 @@ func readCanonicalKeystoreBatch(directory string) (items []wallet.KeystoreBatchI
 			item.PreflightErr = fmt.Errorf("%w: %v", errCanonicalBatchSourceRead, passwordErr)
 		} else if found {
 			item.SourcePassword = password
+			item.SourcePasswordFromFile = true
 		}
 		items = append(items, item)
 	}

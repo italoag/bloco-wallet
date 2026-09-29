@@ -12,9 +12,20 @@ import (
 	"gorm.io/gorm"
 )
 
-var _ wallet.AccountDeletionRepository = (*GORMRepository)(nil)
+var (
+	_ wallet.AccountDeletionRepository           = (*GORMRepository)(nil)
+	_ wallet.AccountCredentialDeletionRepository = (*GORMRepository)(nil)
+)
 
 func (repo *GORMRepository) DeleteAccount(ctx context.Context, accountID string, expectedRevision uint64, deletedAt time.Time) error {
+	return repo.deleteAccount(ctx, accountID, expectedRevision, deletedAt, nil)
+}
+
+func (repo *GORMRepository) DeleteAccountWithCredentialBackup(ctx context.Context, accountID string, expectedRevision uint64, deletedAt time.Time, intent wallet.CredentialBackupDeleteIntent) error {
+	return repo.deleteAccount(ctx, accountID, expectedRevision, deletedAt, &intent)
+}
+
+func (repo *GORMRepository) deleteAccount(ctx context.Context, accountID string, expectedRevision uint64, deletedAt time.Time, intent *wallet.CredentialBackupDeleteIntent) error {
 	return repo.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		transactionRepo := &GORMRepository{db: tx}
 		account, err := transactionRepo.GetAccount(ctx, accountID)
@@ -90,6 +101,11 @@ func (repo *GORMRepository) DeleteAccount(ctx context.Context, accountID string,
 						return wallet.ErrAccountDeletionPending
 					}
 				}
+			}
+		}
+		if intent != nil {
+			if err := markCredentialBackupDeletion(ctx, tx, *intent, account); err != nil {
+				return err
 			}
 		}
 		hasHistory := false
@@ -178,4 +194,51 @@ func (repo *GORMRepository) DeleteAccount(ctx context.Context, accountID string,
 		}
 		return ctx.Err()
 	})
+}
+
+func markCredentialBackupDeletion(ctx context.Context, tx *gorm.DB, intent wallet.CredentialBackupDeleteIntent, account *wallet.Account) error {
+	if !credentialBackupUUIDPattern.MatchString(intent.TargetID) ||
+		!credentialBackupUUIDPattern.MatchString(intent.VaultID) ||
+		!credentialBackupUUIDPattern.MatchString(intent.OperationID) {
+		return wallet.ErrCredentialBackupConflict
+	}
+	transactionRepo := &GORMRepository{db: tx}
+	rows, err := transactionRepo.ListCredentialBackups(ctx, intent.TargetID, intent.VaultID)
+	if err != nil {
+		return err
+	}
+	hasAccountRow := false
+	for _, row := range rows {
+		if row.AccountID != account.AccountID {
+			continue
+		}
+		updated := row
+		updated.State = wallet.CredentialBackupStateDeletePending
+		updated.Operation = wallet.CredentialBackupOperationDelete
+		updated.OperationID = intent.OperationID
+		updated.UpdatedAt = time.Now().UTC()
+		if row.ItemID == "account" {
+			hasAccountRow = true
+			updated.Generation = account.EnvelopeGeneration
+		}
+		if err := transactionRepo.PutCredentialBackup(ctx, updated, row.Revision); err != nil {
+			return err
+		}
+	}
+	if hasAccountRow {
+		return nil
+	}
+	return transactionRepo.PutCredentialBackup(ctx, wallet.CredentialBackupState{
+		TargetID:    intent.TargetID,
+		VaultID:     intent.VaultID,
+		AccountID:   account.AccountID,
+		ItemID:      "account",
+		OperationID: intent.OperationID,
+		Operation:   wallet.CredentialBackupOperationDelete,
+		State:       wallet.CredentialBackupStateDeletePending,
+		Generation:  account.EnvelopeGeneration,
+		Revision:    1,
+		CreatedAt:   time.Now().UTC(),
+		UpdatedAt:   time.Now().UTC(),
+	}, 0)
 }

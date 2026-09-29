@@ -113,6 +113,7 @@ func (model *CLIModel) initEIP712Sign(service MessageSigningService) {
 	state.password.EchoMode = textinput.EchoPassword
 	state.password.EchoCharacter = '•'
 	state.help.Width = max(40, model.width-6)
+	model.credentialUseKeePass = false
 	if len(choices) == 0 {
 		state.err = localization.Get("eip712_no_network")
 	}
@@ -216,37 +217,54 @@ func (model *CLIModel) updateEIP712Sign(message tea.Msg) (tea.Model, tea.Cmd) {
 				state.phase = eip712SignPreview
 				return model, nil
 			}
+			if message.String() == "ctrl+k" && model.credentialToggleEligible(state.account) {
+				model.credentialUseKeePass = !model.credentialUseKeePass
+				if model.credentialUseKeePass {
+					state.password.SetValue("")
+				}
+				return model, nil
+			}
 			if message.String() == "enter" {
 				password := []byte(state.password.Value())
-				if len(password) == 0 && (model.transactionAuthorizer == nil || !model.transactionAuthorizer.HasActiveSession(context.Background(), state.account.AccountID)) {
+				useKeePass := model.credentialUseKeePass && model.credentialToggleEligible(state.account)
+				if len(password) == 0 && !useKeePass && (model.transactionAuthorizer == nil || !model.transactionAuthorizer.HasActiveSession(context.Background(), state.account.AccountID)) {
 					state.err = localization.Get("sign_err_password_required")
 					return model, nil
 				}
 				state.password.SetValue("")
 				state.err = ""
-				state.phase = eip712SignSubmitting
-				model.eip712SignGeneration++
-				state.generation = model.eip712SignGeneration
-				generation := state.generation
-				service := state.service
-				authorizer := model.transactionAuthorizer
-				prepared := state.prepared
-				accountID := state.account.AccountID
-				operationContext, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-				state.cancel = cancel
-				return model, func() tea.Msg {
-					defer clear(password)
-					defer cancel()
-					var result evm.PersonalSignResult
-					var operationErr error
-					operationErr = authorizer.Authorize(operationContext, accountID, password, func(handle wallet.CapabilityHandle, epoch uint64) error {
-						result, operationErr = service.ApproveAndSignEIP712(operationContext, handle, prepared, evm.PersonalSignApprovalRequest{
-							AuthorizationEpoch: epoch, ConfirmedIntentHash: prepared.Preview().IntentHash, ConfirmationLevel: evm.ConfirmationReinforced,
+				submit := func() tea.Cmd {
+					state.phase = eip712SignSubmitting
+					model.eip712SignGeneration++
+					state.generation = model.eip712SignGeneration
+					generation := state.generation
+					service := state.service
+					authorizer := model.transactionAuthorizer
+					prepared := state.prepared
+					accountID := state.account.AccountID
+					authCtx, cancel, op := model.credentialWorkerContext(5 * time.Minute)
+					state.cancel = cancel
+					worker := func() tea.Msg {
+						defer clear(password)
+						defer cancel()
+						if op != nil {
+							defer op.Close()
+						}
+						var result evm.PersonalSignResult
+						operationErr := runWithAccountCredential(authCtx, op, accountID, password, useKeePass, func(resolved []byte) error {
+							return authorizer.Authorize(authCtx, accountID, resolved, func(handle wallet.CapabilityHandle, epoch uint64) error {
+								var signErr error
+								result, signErr = service.ApproveAndSignEIP712(authCtx, handle, prepared, evm.PersonalSignApprovalRequest{
+									AuthorizationEpoch: epoch, ConfirmedIntentHash: prepared.Preview().IntentHash, ConfirmationLevel: evm.ConfirmationReinforced,
+								})
+								return signErr
+							})
 						})
-						return operationErr
-					})
-					return eip712SignResultMsg{generation: generation, result: result, err: operationErr}
+						return eip712SignResultMsg{generation: generation, result: result, err: operationErr}
+					}
+					return tea.Sequence(worker, func() tea.Msg { return credentialOpDoneMsg{op: op} })
 				}
+				return model, model.submitWithCredentialCancel(useKeePass, submit, func() { clear(password) })
 			}
 			var command tea.Cmd
 			state.password, command = state.password.Update(message)
@@ -285,7 +303,7 @@ func (model *CLIModel) viewEIP712Sign() string {
 		}) + "\n\n" + preview.Rendered + "\n\n" + localization.Get("eip712_preview_hint"))
 	case eip712SignPassword:
 		if state.account.SignerKind == wallet.SignerKindSoftware {
-			content.WriteString("\n\n" + state.password.View())
+			content.WriteString("\n\n" + state.password.View() + "\n" + model.credentialMethodLabel(model.credentialToggleEligible(state.account)))
 		} else {
 			content.WriteString("\n\n" + localization.Get("eip712_external_prompt"))
 		}
@@ -311,6 +329,8 @@ func (model *CLIModel) viewEIP712Sign() string {
 }
 
 func (model *CLIModel) clearEIP712Sign() {
+	model.credentialUseKeePass = false
+
 	model.eip712SignGeneration++
 	if model.eip712Sign != nil {
 		if model.eip712Sign.cancel != nil {

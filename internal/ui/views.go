@@ -270,6 +270,11 @@ func (m *CLIModel) fitMainContent(contentHeight int) {
 		m.updateWalletDetailsKeyAvailability()
 		m.walletDetailsViewport.SetContent(m.walletDetailsContent())
 		m.walletDetailsViewport.Height = max(1, contentHeight-m.styles.Content.GetVerticalFrameSize())
+	case constants.KeePassSettingsView:
+		if m.keepassSettings == nil {
+			return
+		}
+		m.keepassSettings.contentHeight = max(1, contentHeight-m.styles.Content.GetVerticalFrameSize())
 	case constants.AccountHistoryView:
 		if m.accountHistory == nil {
 			return
@@ -625,7 +630,13 @@ func (m *CLIModel) viewVaultAction(export bool) string {
 	}
 	var view strings.Builder
 	view.WriteString(lipgloss.NewStyle().Bold(true).Render(title) + "\n\n")
-	view.WriteString(localization.Get("vault_current_password") + "\n" + m.currentPasswordInput.View() + "\n\n")
+	view.WriteString(localization.Get("vault_current_password") + "\n" + m.currentPasswordInput.View() + "\n")
+	if m.selectedAccount != nil {
+		if label := m.credentialMethodLabel(m.credentialToggleEligible(*m.selectedAccount)); label != "" {
+			view.WriteString(label + "\n")
+		}
+	}
+	view.WriteString("\n")
 	view.WriteString(localization.Get("vault_new_password") + "\n" + m.newPasswordInput.View() + "\n\n")
 	view.WriteString(localization.Get("vault_confirm_password") + "\n" + m.confirmPasswordInput.View() + "\n\n")
 	if export {

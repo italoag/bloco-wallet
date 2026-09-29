@@ -3040,3 +3040,188 @@ other = "salir"
 
 [list_help_force_quit]
 other = "forzar salida"
+
+[menu_keepass]
+other = "Copias KeePass"
+[desc_keepass]
+other = "Gestionar bóveda KeePass de credenciales"
+[help_keepass]
+other = "Copia KeePass"
+[hint_keepass_toggle]
+other = "alternar credencial KeePass"
+[hint_keepass_remove]
+other = "también eliminar copia"
+[keepass_account_title]
+other = "Copia KeePass"
+[keepass_save_backup]
+other = "Guardar/actualizar copia"
+[keepass_view_status]
+other = "Ver estado de la copia"
+[keepass_master_title]
+other = "Bóveda KeePass"
+[keepass_master_body]
+other = "Ingrese la contraseña maestra de la bóveda KeePass para continuar."
+[keepass_master_placeholder]
+other = "Contraseña maestra"
+[keepass_master_required]
+other = "La contraseña maestra es obligatoria"
+[keepass_master_label]
+other = "Contraseña maestra:"
+[keepass_confirm_label]
+other = "Confirme la contraseña maestra:"
+[keepass_confirm_placeholder]
+other = "Confirme la contraseña maestra"
+[keepass_path_label]
+other = "Ruta de la bóveda (.kdbx):"
+[keepass_path_placeholder]
+other = "/ruta/a/bloco-wallet.kdbx"
+[keepass_path_required]
+other = "Se requiere una ruta .kdbx"
+[keepass_consent_label]
+other = "Escriba ENABLE para continuar:"
+[keepass_consent_required]
+other = "Escriba el token de confirmación exacto para continuar"
+[keepass_disable_confirm]
+other = "Escriba DISABLE para desactivar las copias KeePass (el archivo se conserva):"
+[keepass_recovery_warning]
+other = "La bóveda KeePass almacena contraseñas de cuentas, claves privadas y frases de recuperación. Guarde una copia del archivo y de la contraseña maestra; perder cualquiera hace las copias irrecuperables."
+[keepass_enabled_notice]
+other = "Copias de credenciales KeePass activadas"
+[keepass_disabled_notice]
+other = "Copias KeePass desactivadas; archivo de la bóveda conservado"
+[keepass_created_save_failed]
+other = "Bóveda creada en {{.Path}}, pero guardar la configuración falló; use Vincular para activarla"
+[keepass_test_ok]
+other = "Bóveda abierta correctamente"
+[keepass_pending_empty]
+other = "No hay copias de credenciales pendientes"
+[keepass_retry_done]
+other = "Sincronización finalizada: {{.Saved}} guardadas, {{.Deleted}} eliminadas"
+[keepass_retry_confirm_label]
+other = "Escriba el ID de la cuenta para confirmar la eliminación de la copia:"
+[keepass_status_enabled]
+other = "activado"
+[keepass_status_disabled]
+other = "desactivado"
+[keepass_status_line]
+other = "Estado: {{.Status}}  Ruta: {{.Path}}"
+[keepass_action_create]
+other = "Crear nueva bóveda"
+[keepass_action_link]
+other = "Vincular bóveda existente"
+[keepass_action_test]
+other = "Probar desbloqueo de la bóveda"
+[keepass_action_pending]
+other = "Copias pendientes"
+[keepass_action_disable]
+other = "Desactivar copias"
+[keepass_action_back]
+other = "Volver"
+[keepass_method_keepass]
+other = "Credencial: bóveda KeePass"
+[keepass_method_manual]
+other = "Credencial: contraseña manual"
+[keepass_backup_pending_notice]
+other = "Operación completada; copia de credencial pendiente — reintente en Configuración > Copias KeePass"
+[keepass_err_auth]
+other = "Contraseña maestra incorrecta"
+[keepass_err_busy]
+other = "Bóveda ocupada; inténtelo de nuevo"
+[keepass_err_missing]
+other = "Bóveda o credencial no encontrada"
+[keepass_err_conflict]
+other = "La bóveda o configuración cambió; recargue y reintente"
+[keepass_err_cancelled]
+other = "Operación cancelada"
+[keepass_err_failed]
+other = "Falló la operación KeePass"
+[keepass_err_durability]
+other = "Los cambios de la bóveda se instalaron, pero no se pudo confirmar la durabilidad. La copia de seguridad sigue pendiente; reintente para confirmarla."
+[keepass_err_unavailable]
+other = "Servicio de copia de credenciales no disponible"
+[passwords_do_not_match]
+other = "Las contraseñas no coinciden"
+
+[keepass_remove_toggle]
+other = "Eliminar copia de credencial: {{.Status}}"
+
+[backup_suspended_resume]
+other = "Copia de seguridad suspendida. Reanúdela desde los detalles de la cuenta con la contraseña de almacenamiento actual."
+
+[keepass_confirmation_reauth]
+other = "La autenticación de KeePass expiró. Introduzca la contraseña actual de la cartera para reanudar la confirmación de la copia de seguridad."
+
+[canonical_import_committed_notice]
+other = "Importación confirmada en la bóveda."
+
+[keepass_commit_summary]
+other = "Copias de seguridad: {{.Saved}} guardadas, {{.Pending}} pendientes."
+
+[keepass_delete_entries_warning]
+other = "Todas las entradas de copia de seguridad de esta cuenta se eliminarán de KeePass. Las copias .bak anteriores no se ven afectadas."
+
+[keepass_item_account]
+other = "Credenciales de la cuenta"
+
+[keepass_lookup_label]
+other = "Búsqueda en KeePass para sidecars .pwd ausentes: {{.Status}}"
+
+[keepass_old_backups_warning]
+other = "Las copias de seguridad cifradas exportadas anteriormente permanecen en el disco y aún pueden contener los secretos antiguos."
+
+[keepass_pending_more]
+other = "... y {{.Count}} entradas pendientes más. Use ↑/↓ para desplazarse."
+
+[keepass_pending_path_label]
+other = "Ruta del archivo de artefacto"
+
+[keepass_source_kdbx]
+other = "[KeePass]"
+
+[keepass_source_password_label]
+other = "Contraseña del archivo de origen"
+
+[keepass_stage_syncing]
+other = "Sincronizando copias de seguridad de credenciales..."
+
+[keepass_state_delete_pending]
+other = "eliminación pendiente"
+
+[keepass_state_not_registered]
+other = "no registrado"
+
+[keepass_state_pending]
+other = "pendiente"
+
+[keepass_state_prepared]
+other = "preparado"
+
+[keepass_state_synced]
+other = "sincronizado"
+
+[keepass_wallet_password_label]
+other = "Contraseña de almacenamiento de la billetera"
+
+[vault_export_committed]
+other = "Archivo de exportación escrito en {{.Path}}."
+
+[vault_password_rotated]
+other = "Contraseña de almacenamiento actualizada."
+
+[keepass_master_weak]
+other = "La contraseña maestra debe tener al menos 12 caracteres"
+
+[keepass_password_required]
+other = "Ingrese la contraseña de almacenamiento de la billetera"
+
+[keepass_err_digest]
+other = "El archivo seleccionado no coincide con el artefacto pendiente"
+
+[keepass_config_warning]
+other = "La configuración se escribió, pero no se pudo confirmar la durabilidad"
+
+[keepass_config_committed_error]
+other = "La configuración se guardó, pero la activación falló: {{.Reason}}"
+
+[keepass_confirmed_notice]
+other = "Respaldo confirmado."

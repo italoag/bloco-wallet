@@ -1,0 +1,3 @@
+[submodule "third_party/gokeepasslib"]
+	path = third_party/gokeepasslib
+	url = git@github.com:italoag/gokeepasslib.git

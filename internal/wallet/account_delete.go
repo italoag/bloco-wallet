@@ -15,9 +15,11 @@ var (
 )
 
 type DeleteAccountRequest struct {
-	AccountID        string
-	ConfirmAccountID string
-	Password         []byte
+	AccountID              string
+	ConfirmAccountID       string
+	Password               []byte
+	RemoveCredentialBackup bool
+	ConfirmBackupAccountID string
 }
 
 type AccountDeletionRepository interface {
@@ -25,6 +27,21 @@ type AccountDeletionRepository interface {
 }
 
 func (vault *WalletVault) DeleteAccount(ctx context.Context, request DeleteAccountRequest) error {
+	var credentialOp *CredentialBackupOperation
+	if request.RemoveCredentialBackup {
+		if request.AccountID == "" || request.ConfirmBackupAccountID != request.AccountID {
+			return ErrAccountDeleteConfirmation
+		}
+		op, done, err := vault.beginCredentialMutation(ctx)
+		if err != nil {
+			return err
+		}
+		defer done()
+		if op == nil {
+			return ErrCredentialBackupRequired
+		}
+		credentialOp = op
+	}
 	vault.lifecycle.Lock()
 	defer vault.lifecycle.Unlock()
 	if vault.closed {
@@ -75,7 +92,21 @@ func (vault *WalletVault) DeleteAccount(ctx context.Context, request DeleteAccou
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := deleter.DeleteAccount(ctx, account.AccountID, account.Revision, vault.options.Now().UTC()); err != nil {
+	if credentialOp != nil {
+		deleterWithBackup, ok := vault.repository.(AccountCredentialDeletionRepository)
+		if !ok {
+			return ErrAccountDeletionUnsupported
+		}
+		intent := CredentialBackupDeleteIntent{
+			TargetID:    credentialOp.binding.TargetID,
+			VaultID:     credentialOp.binding.VaultID,
+			OperationID: credentialOp.id,
+		}
+		if err := deleterWithBackup.DeleteAccountWithCredentialBackup(ctx, account.AccountID, account.Revision, vault.options.Now().UTC(), intent); err != nil {
+			return err
+		}
+		credentialOp.queueDeletion(account.AccountID)
+	} else if err := deleter.DeleteAccount(ctx, account.AccountID, account.Revision, vault.options.Now().UTC()); err != nil {
 		return err
 	}
 	vault.mu.Lock()

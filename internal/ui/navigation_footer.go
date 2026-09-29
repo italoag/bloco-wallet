@@ -63,6 +63,11 @@ func (m *CLIModel) footerViewName() string {
 		constants.NetworkMenuView:           localization.Get("networks"),
 		constants.NetworkListView:           localization.Get("network_list"),
 		constants.AddNetworkView:            localization.Get("add_network"),
+		constants.KeePassSettingsView:       localization.Get("menu_keepass"),
+		constants.KeePassAccountView:        localization.Get("keepass_account_title"),
+	}
+	if m.credentialPrompt != nil {
+		return safeInline(localization.Get("keepass_master_title"))
 	}
 	// Get the view name from the map, or use the current view constant if not found
 	viewName := viewNames[m.currentView]
@@ -77,6 +82,12 @@ func (m *CLIModel) footerViewName() string {
 
 func (m *CLIModel) navigationHints() []navigationHint {
 	hint := func(key, label string) navigationHint { return navigationHint{key: key, label: label} }
+	if m.credentialPrompt != nil {
+		if m.credentialPrompt.busy {
+			return []navigationHint{hint("Esc", localization.Get("hint_cancel")), hint("Ctrl+Q", localization.Get("hint_quit"))}
+		}
+		return []navigationHint{hint("Enter", localization.Get("hint_continue")), hint("Esc", localization.Get("hint_cancel"))}
+	}
 	switch m.currentView {
 	case constants.ListWalletsView:
 		if m.accountDeletion != nil {
@@ -88,7 +99,14 @@ func (m *CLIModel) navigationHints() []navigationHint {
 			if deletion.stage != 0 || deletion.account.SignerKind != wallet.SignerKindSoftware {
 				enter = localization.Get("hint_delete")
 			}
-			return []navigationHint{hint("Enter", enter), hint("Esc", localization.Get("hint_cancel")), hint("Ctrl+Q", localization.Get("hint_quit"))}
+			hints := []navigationHint{hint("Enter", enter), hint("Esc", localization.Get("hint_cancel")), hint("Ctrl+Q", localization.Get("hint_quit"))}
+			if deletion.stage == 0 && m.credentialBackupEnabled() && deletion.account.SignerKind == wallet.SignerKindSoftware {
+				hints = append(hints[:1], append([]navigationHint{hint("Ctrl+B", localization.Get("hint_keepass_remove"))}, hints[1:]...)...)
+			}
+			if deletion.stage == 1 && m.credentialToggleEligible(deletion.account) {
+				hints = append(hints[:1], append([]navigationHint{hint("Ctrl+K", localization.Get("hint_keepass_toggle"))}, hints[1:]...)...)
+			}
+			return hints
 		}
 		if m.deletingWallet != nil {
 			return []navigationHint{hint("Left/Right", localization.Get("hint_select")), hint("Enter", localization.Get("hint_confirm")), hint("Esc", localization.Get("hint_cancel")), hint("Ctrl+Q", localization.Get("hint_quit"))}
@@ -125,6 +143,9 @@ func (m *CLIModel) navigationHints() []navigationHint {
 			enter = localization.Get("hint_preview")
 		}
 		hints := []navigationHint{hint("Enter", enter)}
+		if state.stage < len(state.fields) && state.fields[state.stage].key == "source_password" && m.credentialBackupEnabled() {
+			hints = append(hints, hint("Ctrl+K", localization.Get("hint_keepass_toggle")))
+		}
 		if state.stage < len(state.fields) && (state.fields[state.stage].key == "keystore_path" || state.fields[state.stage].key == "directory") {
 			hints = append(hints, hint("Tab", localization.Get("hint_complete")), hint("Up/Down", localization.Get("hint_suggestions")))
 		}
@@ -140,7 +161,7 @@ func (m *CLIModel) navigationHints() []navigationHint {
 			}
 		} else {
 			keys := m.walletDetailsKeys
-			bindings = []key.Binding{keys.Recovery, keys.Export, keys.EncryptedExport, keys.Lock, keys.FetchBalances, keys.History, keys.ToggleHelp, keys.Back}
+			bindings = []key.Binding{keys.Recovery, keys.Export, keys.EncryptedExport, keys.Lock, keys.KeePass, keys.FetchBalances, keys.History, keys.ToggleHelp, keys.Back}
 		}
 		var hints []navigationHint
 		seen := make(map[string]bool)
@@ -168,7 +189,11 @@ func (m *CLIModel) navigationHints() []navigationHint {
 		case recoveryStageMenu:
 			return []navigationHint{hint("Up/Down", localization.Get("hint_select")), hint("Enter", localization.Get("hint_continue")), hint("PgUp/PgDown", localization.Get("hint_scroll")), hint("Esc", localization.Get("hint_back")), hint("Ctrl+Q", localization.Get("hint_quit"))}
 		case recoveryStageDestination, recoveryStagePassword:
-			return []navigationHint{hint("Enter", localization.Get("hint_continue")), hint("PgUp/PgDown", localization.Get("hint_scroll")), hint("Esc", localization.Get("hint_cancel")), hint("Ctrl+Q", localization.Get("hint_quit"))}
+			hints := []navigationHint{hint("Enter", localization.Get("hint_continue"))}
+			if state.stage == recoveryStagePassword && m.credentialToggleEligible(state.account) {
+				hints = append(hints, hint("Ctrl+K", localization.Get("hint_keepass_toggle")))
+			}
+			return append(hints, hint("PgUp/PgDown", localization.Get("hint_scroll")), hint("Esc", localization.Get("hint_cancel")), hint("Ctrl+Q", localization.Get("hint_quit")))
 		case recoveryStageConfirmation:
 			enter := localization.Get("hint_reveal")
 			if state.selected >= 0 && state.selected < len(state.actions) && state.actions[state.selected].export {
@@ -184,13 +209,83 @@ func (m *CLIModel) navigationHints() []navigationHint {
 		if m.vaultActionStage >= 2 {
 			enter = localization.Get("hint_change_password")
 		}
-		return []navigationHint{hint("Enter", enter), hint("Esc", localization.Get("hint_cancel")), hint("Ctrl+Q", localization.Get("hint_quit"))}
+		hints := []navigationHint{hint("Enter", enter)}
+		if m.vaultActionStage == 0 && m.selectedAccount != nil && m.credentialToggleEligible(*m.selectedAccount) {
+			hints = append(hints, hint("Ctrl+K", localization.Get("hint_keepass_toggle")))
+		}
+		return append(hints, hint("Esc", localization.Get("hint_cancel")), hint("Ctrl+Q", localization.Get("hint_quit")))
 	case constants.ExportAccountView:
 		enter := localization.Get("hint_continue")
 		if m.vaultActionPreview {
 			enter = localization.Get("hint_export")
 		}
-		return []navigationHint{hint("Enter", enter), hint("Esc", localization.Get("hint_cancel")), hint("Ctrl+Q", localization.Get("hint_quit"))}
+		hints := []navigationHint{hint("Enter", enter)}
+		if m.vaultActionStage == 0 && m.selectedAccount != nil && m.credentialToggleEligible(*m.selectedAccount) {
+			hints = append(hints, hint("Ctrl+K", localization.Get("hint_keepass_toggle")))
+		}
+		return append(hints, hint("Esc", localization.Get("hint_cancel")), hint("Ctrl+Q", localization.Get("hint_quit")))
+	case constants.KeePassSettingsView:
+		state := m.keepassSettings
+		if state == nil {
+			return []navigationHint{hint("Esc", localization.Get("hint_back")), hint("Ctrl+Q", localization.Get("hint_quit"))}
+		}
+		if state.busy {
+			return []navigationHint{hint("Esc", localization.Get("hint_cancel")), hint("Ctrl+Q", localization.Get("hint_quit"))}
+		}
+		switch state.stage {
+		case keepassStageMenu:
+			return []navigationHint{hint("Up/Down", localization.Get("hint_select")), hint("Enter", localization.Get("hint_open")), hint("Esc", localization.Get("hint_back")), hint("Ctrl+Q", localization.Get("hint_quit"))}
+		case keepassStagePath:
+			return []navigationHint{hint("Enter", localization.Get("hint_continue")), hint("Tab", localization.Get("hint_complete")), hint("Up/Down", localization.Get("hint_suggestions")), hint("Esc", localization.Get("hint_back")), hint("Ctrl+Q", localization.Get("hint_quit"))}
+		case keepassStagePendingList:
+			return []navigationHint{hint("Up/Down", localization.Get("hint_select")), hint("Enter", localization.Get("hint_open")), hint("Esc", localization.Get("hint_back")), hint("Ctrl+Q", localization.Get("hint_quit"))}
+		case keepassStageRetryPath:
+			return []navigationHint{hint("Enter", localization.Get("hint_continue")), hint("Tab", localization.Get("hint_complete")), hint("Up/Down", localization.Get("hint_suggestions")), hint("Esc", localization.Get("hint_back")), hint("Ctrl+Q", localization.Get("hint_quit"))}
+		case keepassStageRetryPassword:
+			hints := []navigationHint{hint("Enter", localization.Get("hint_continue"))}
+			if state.retryAllowsKeePass() {
+				hints = append(hints, hint("Ctrl+K", localization.Get("hint_keepass_toggle")))
+			}
+			return append(hints, hint("Esc", localization.Get("hint_back")), hint("Ctrl+Q", localization.Get("hint_quit")))
+		default:
+			return []navigationHint{hint("Enter", localization.Get("hint_continue")), hint("Esc", localization.Get("hint_back")), hint("Ctrl+Q", localization.Get("hint_quit"))}
+		}
+	case constants.KeePassAccountView:
+		state := m.keepassAccount
+		if state == nil {
+			return []navigationHint{hint("Esc", localization.Get("hint_back")), hint("Ctrl+Q", localization.Get("hint_quit"))}
+		}
+		if state.busy {
+			return []navigationHint{hint("Esc", localization.Get("hint_cancel")), hint("Ctrl+Q", localization.Get("hint_quit"))}
+		}
+		if state.stage == keepassAccountStagePassword {
+			hints := []navigationHint{hint("Enter", localization.Get("hint_continue"))}
+			if state.hasBackup {
+				hints = append(hints, hint("Ctrl+K", localization.Get("hint_keepass_toggle")))
+			}
+			return append(hints, hint("Esc", localization.Get("hint_back")), hint("Ctrl+Q", localization.Get("hint_quit")))
+		}
+		return []navigationHint{hint("Up/Down", localization.Get("hint_select")), hint("Enter", localization.Get("hint_open")), hint("Esc", localization.Get("hint_back")), hint("Ctrl+Q", localization.Get("hint_quit"))}
+	case constants.NativeTransferView:
+		if m.nativeTransfer != nil && m.nativeTransfer.phase == nativeTransferPassword && m.credentialToggleEligible(m.nativeTransfer.account) {
+			return []navigationHint{hint("Enter", localization.Get("hint_confirm")), hint("Ctrl+K", localization.Get("hint_keepass_toggle")), hint("Esc", localization.Get("hint_cancel")), hint("Ctrl+Q", localization.Get("hint_quit"))}
+		}
+		return []navigationHint{hint("Enter", localization.Get("hint_confirm")), hint("Esc", localization.Get("hint_cancel")), hint("Ctrl+Q", localization.Get("hint_quit"))}
+	case constants.PersonalSignView:
+		if m.personalSign != nil && m.personalSign.phase == personalSignPassword && m.credentialToggleEligible(m.personalSign.account) {
+			return []navigationHint{hint("Enter", localization.Get("hint_confirm")), hint("Ctrl+K", localization.Get("hint_keepass_toggle")), hint("Esc", localization.Get("hint_cancel")), hint("Ctrl+Q", localization.Get("hint_quit"))}
+		}
+		return []navigationHint{hint("Esc", localization.Get("hint_back")), hint("Ctrl+Q", localization.Get("hint_quit"))}
+	case constants.EIP712SignView:
+		if m.eip712Sign != nil && m.eip712Sign.phase == eip712SignPassword && m.credentialToggleEligible(m.eip712Sign.account) {
+			return []navigationHint{hint("Enter", localization.Get("hint_confirm")), hint("Ctrl+K", localization.Get("hint_keepass_toggle")), hint("Esc", localization.Get("hint_cancel")), hint("Ctrl+Q", localization.Get("hint_quit"))}
+		}
+		return []navigationHint{hint("Esc", localization.Get("hint_back")), hint("Ctrl+Q", localization.Get("hint_quit"))}
+	case constants.ContractCallView:
+		if m.contractCall != nil && m.contractCall.phase == contractCallPassword && m.credentialToggleEligible(m.contractCall.account) {
+			return []navigationHint{hint("Enter", localization.Get("hint_confirm")), hint("Ctrl+K", localization.Get("hint_keepass_toggle")), hint("Esc", localization.Get("hint_cancel")), hint("Ctrl+Q", localization.Get("hint_quit"))}
+		}
+		return []navigationHint{hint("Esc", localization.Get("hint_back")), hint("Ctrl+Q", localization.Get("hint_quit"))}
 	case constants.DefaultView:
 		return []navigationHint{hint("Up/Down", localization.Get("hint_select")), hint("Enter", localization.Get("hint_open")), hint("Ctrl+Q", localization.Get("hint_quit"))}
 	case constants.ConfigurationView, constants.ImportMethodSelectionView, constants.LanguageSelectionView, constants.NetworkMenuView, constants.NetworkListView:

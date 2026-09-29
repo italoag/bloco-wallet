@@ -68,8 +68,7 @@ func recoveryDriveToConfirm(t *testing.T, model *CLIModel, word string) tea.Cmd 
 
 func recoveryDeliverResult(t *testing.T, model *CLIModel, cmd tea.Cmd) {
 	t.Helper()
-	msg := cmd()
-	model.Update(msg)
+	feedCmdResult(model, cmd, 0)
 }
 
 func TestRecoveryKeyDisabledForWatchOnly(t *testing.T) {
@@ -345,8 +344,9 @@ func TestRecoveryCancelAfterCompletedRevealDestroysResult(t *testing.T) {
 	model.initRecovery()
 	state := model.recovery
 	cmd := recoveryDriveToConfirm(t, model, "REVEAL")
-	msg := cmd()
-	result, ok := msg.(recoveryResultMsg)
+	msgs := cmdResultMsgs(t, cmd)
+	require.NotEmpty(t, msgs)
+	result, ok := msgs[0].(recoveryResultMsg)
 	require.True(t, ok)
 	require.Nil(t, result.err)
 	require.NotNil(t, result.material)
@@ -354,7 +354,9 @@ func TestRecoveryCancelAfterCompletedRevealDestroysResult(t *testing.T) {
 
 	model.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	require.True(t, state.cancelling && state.exitAfterResult)
-	model.Update(msg)
+	for _, resultMsg := range msgs {
+		model.Update(resultMsg)
+	}
 	for _, b := range raw {
 		assert.Zero(t, b, "cancelled reveal result must be destroyed")
 	}
@@ -378,11 +380,15 @@ func TestRecoveryCtrlQWhileBusyQuitsAfterResult(t *testing.T) {
 	state.destination.SetValue(destination)
 	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	cmd := recoveryDriveToConfirm(t, model, "EXPORT")
-	msg := cmd()
+	msgs := cmdResultMsgs(t, cmd)
+	require.NotEmpty(t, msgs)
 	_, quitCmd := model.Update(tea.KeyMsg{Type: tea.KeyCtrlQ})
 	assert.Nil(t, quitCmd, "busy export must wait for the result instead of quitting")
 	assert.True(t, state.cancelling && state.quitAfterResult)
-	_, final := model.Update(msg)
+	_, final := model.Update(msgs[0])
+	for _, rest := range msgs[1:] {
+		model.Update(rest)
+	}
 	require.NotNil(t, final)
 	assert.Nil(t, model.recovery)
 	assert.Contains(t, model.lastOperationNotice, destination, "completed export must be reported even after ctrl+q")
@@ -407,10 +413,13 @@ func TestRecoveryBlurDuringBusyExportKeepsOutcome(t *testing.T) {
 	state.destination.SetValue(destination)
 	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	cmd := recoveryDriveToConfirm(t, model, "EXPORT")
-	msg := cmd()
+	msgs := cmdResultMsgs(t, cmd)
+	require.NotEmpty(t, msgs)
 	model.Update(tea.BlurMsg{})
 	require.True(t, state.busy, "blur must not drop the in-flight export")
-	model.Update(msg)
+	for _, resultMsg := range msgs {
+		model.Update(resultMsg)
+	}
 	assert.False(t, state.busy)
 	assert.Equal(t, recoveryStageMenu, state.stage)
 	assert.Contains(t, model.View(), "Export completed")
@@ -437,8 +446,9 @@ func TestRecoveryCommittedWarningReportedAsCreated(t *testing.T) {
 	state.destination.SetValue(destination)
 	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	cmd := recoveryDriveToConfirm(t, model, "EXPORT")
-	msg := cmd()
-	result, ok := msg.(recoveryResultMsg)
+	msgs := cmdResultMsgs(t, cmd)
+	require.NotEmpty(t, msgs)
+	result, ok := msgs[0].(recoveryResultMsg)
 	require.True(t, ok)
 	require.NoError(t, result.err, "real export must succeed before wrapping")
 	require.FileExists(t, destination)
@@ -848,8 +858,9 @@ func TestRecoveryMismatchedMaterialRejected(t *testing.T) {
 	model.initRecovery()
 	state := model.recovery
 	cmd := recoveryDriveToConfirm(t, model, "REVEAL")
-	msg := cmd()
-	result, ok := msg.(recoveryResultMsg)
+	msgs := cmdResultMsgs(t, cmd)
+	require.NotEmpty(t, msgs)
+	result, ok := msgs[0].(recoveryResultMsg)
 	require.True(t, ok)
 	require.NotNil(t, result.material)
 	raw := result.material.Bytes()
@@ -863,8 +874,9 @@ func TestRecoveryMismatchedMaterialRejected(t *testing.T) {
 	assert.NotContains(t, model.View(), "test test test")
 
 	cmd = recoveryDriveToConfirm(t, model, "REVEAL")
-	msg = cmd()
-	result, ok = msg.(recoveryResultMsg)
+	msgs = cmdResultMsgs(t, cmd)
+	require.NotEmpty(t, msgs)
+	result, ok = msgs[0].(recoveryResultMsg)
 	require.True(t, ok)
 	require.NotNil(t, result.material)
 	raw = result.material.Bytes()

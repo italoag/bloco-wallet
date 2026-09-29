@@ -240,7 +240,13 @@ func (cm *ConfigurationManager) buildConfigStruct() (*Config, error) {
 			TransactionAuthorizationMode: cm.viper.GetString("security.transaction_authorization_mode"),
 		},
 		NetworkPolicy: NetworkPolicyConfig{AllowedLocalTargets: cm.viper.GetStringSlice("network_policy.allowed_local_targets")},
-		Networks:      make(map[string]Network),
+		KeePass: KeePassConfig{
+			Enabled:  cm.viper.GetBool("keepass.enabled"),
+			Path:     cm.viper.GetString("keepass.path"),
+			TargetID: cm.viper.GetString("keepass.target_id"),
+			VaultID:  cm.viper.GetString("keepass.vault_id"),
+		},
+		Networks: make(map[string]Network),
 	}
 
 	// Load networks from config
@@ -288,6 +294,9 @@ func (cm *ConfigurationManager) buildConfigStruct() (*Config, error) {
 		cfg.LocaleDir = filepath.Join(cfg.AppDir, "locale")
 	} else {
 		cfg.LocaleDir = expandPath(rawLocaleDir, homeDir)
+	}
+	if rawKeePassPath := strings.TrimSpace(cfg.KeePass.Path); rawKeePassPath != "" {
+		cfg.KeePass.Path = expandPath(rawKeePassPath, homeDir)
 	}
 
 	// Handle legacy environment variables - these override the config file values

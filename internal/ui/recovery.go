@@ -67,6 +67,10 @@ type recoveryResultMsg struct {
 	export      bool
 }
 
+func (recoveryResultMsg) MarshalJSON() ([]byte, error) {
+	return nil, errors.New("recovery result messages are not serializable")
+}
+
 func (recoveryResultMsg) String() string {
 	return "[redacted recovery result]"
 }
@@ -194,6 +198,8 @@ func (m *CLIModel) recoveryPrivacyWipe(status string) {
 }
 
 func (m *CLIModel) clearRecovery() {
+	m.credentialUseKeePass = false
+
 	if m.recovery == nil {
 		return
 	}
@@ -395,6 +401,13 @@ func (m *CLIModel) updateRecovery(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		default:
+			if key.String() == "ctrl+k" && state.stage == recoveryStagePassword && m.credentialToggleEligible(state.account) {
+				m.credentialUseKeePass = !m.credentialUseKeePass
+				if m.credentialUseKeePass {
+					state.password.SetValue("")
+				}
+				return m, nil
+			}
 			if key.String() == "enter" {
 				return m.advanceRecovery()
 			}
@@ -441,7 +454,7 @@ func (m *CLIModel) advanceRecovery() (tea.Model, tea.Cmd) {
 		state.password.Focus()
 		return m, nil
 	case recoveryStagePassword:
-		if state.password.Value() == "" {
+		if state.password.Value() == "" && (!m.credentialUseKeePass || !m.credentialToggleEligible(state.account)) {
 			state.err = localization.Get("recovery_err_password_required")
 			return m, nil
 		}
@@ -464,7 +477,8 @@ func (m *CLIModel) advanceRecovery() (tea.Model, tea.Cmd) {
 			state.err = localization.T("recovery_err_type_exact", map[string]interface{}{"Token": expected})
 			return m, nil
 		}
-		return m, m.startRecovery(action)
+		useKeePass := m.credentialUseKeePass && m.credentialToggleEligible(state.account)
+		return m, m.submitWithCredential(useKeePass, func() tea.Cmd { return m.startRecovery(action) })
 	}
 	return m, nil
 }
@@ -474,7 +488,7 @@ func (m *CLIModel) startRecovery(action recoveryAction) tea.Cmd {
 	m.recoveryOperationID++
 	state.operationID = m.recoveryOperationID
 	operationID := state.operationID
-	ctx, cancel := context.WithTimeout(context.Background(), canonicalImportTimeout)
+	authCtx, cancel, op := m.credentialWorkerContext(canonicalImportTimeout)
 	state.cancel = cancel
 	state.busy = true
 	state.cancelling = false
@@ -491,34 +505,53 @@ func (m *CLIModel) startRecovery(action recoveryAction) tea.Cmd {
 		destination = state.destination.Value()
 	}
 	kind := action.kind
-	return func() tea.Msg {
+	useKeePass := m.credentialUseKeePass && m.credentialToggleEligible(state.account)
+	worker := func() tea.Msg {
 		defer cancel()
 		defer clear(password)
-		request := wallet.RecoverySecretRequest{
-			AccountID:        accountID,
-			ConfirmAccountID: accountID,
-			Password:         password,
-			Kind:             kind,
+		if op != nil {
+			defer op.Close()
+		}
+		run := func(resolved []byte) (material *wallet.RecoveryMaterial, err error) {
+			request := wallet.RecoverySecretRequest{
+				AccountID:        accountID,
+				ConfirmAccountID: accountID,
+				Password:         resolved,
+				Kind:             kind,
+			}
+			if destination != "" {
+				return nil, vault.ExportRecoverySecret(authCtx, wallet.RecoveryExportRequest{
+					RecoverySecretRequest: request,
+					Destination:           destination,
+				})
+			}
+			return vault.RevealRecoverySecret(authCtx, request)
+		}
+		var material *wallet.RecoveryMaterial
+		var err error
+		if useKeePass {
+			err = runWithAccountCredential(authCtx, op, accountID, nil, true, func(resolved []byte) error {
+				material, err = run(resolved)
+				return err
+			})
+		} else {
+			material, err = run(password)
 		}
 		if destination != "" {
-			err := vault.ExportRecoverySecret(ctx, wallet.RecoveryExportRequest{
-				RecoverySecretRequest: request,
-				Destination:           destination,
-			})
 			return recoveryResultMsg{operationID: operationID, accountID: accountID, destination: destination, err: err, export: true}
 		}
-		material, err := vault.RevealRecoverySecret(ctx, request)
-		if err != nil || ctx.Err() != nil {
+		if err != nil || authCtx.Err() != nil {
 			if material != nil {
 				material.Destroy()
 				material = nil
 			}
 			if err == nil {
-				err = ctx.Err()
+				err = authCtx.Err()
 			}
 		}
 		return recoveryResultMsg{operationID: operationID, accountID: accountID, material: material, err: err}
 	}
+	return tea.Sequence(worker, func() tea.Msg { return credentialOpDoneMsg{op: op} })
 }
 
 func recoveryErrorText(err error) string {
@@ -682,7 +715,7 @@ func (m *CLIModel) recoveryPageLayout() recoveryPageLayout {
 		footer.WriteString(state.destination.View() + "\n")
 	case recoveryStagePassword:
 		lines = append(lines, wrap(localization.Get("recovery_placeholder_password")+":")...)
-		footer.WriteString(state.password.View() + "\n")
+		footer.WriteString(state.password.View() + "\n" + m.credentialMethodLabel(m.credentialToggleEligible(state.account)) + "\n")
 	case recoveryStageConfirmation:
 		lines = append(lines, wrap(localization.T("recovery_confirm_action", map[string]interface{}{"Action": localization.Get(action.labelKey)}))...)
 		lines = append(lines, "")

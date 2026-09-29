@@ -16,11 +16,12 @@ const (
 )
 
 type KeystoreBatchItem struct {
-	Name           string
-	KeystoreJSON   []byte
-	SourcePassword []byte
-	SourcePath     string
-	PreflightErr   error
+	Name                   string
+	KeystoreJSON           []byte
+	SourcePassword         []byte
+	SourcePasswordFromFile bool
+	SourcePath             string
+	PreflightErr           error
 }
 
 type BatchImportProgress struct {
@@ -29,6 +30,7 @@ type BatchImportProgress struct {
 	Imported        int
 	AlreadyImported int
 	Failed          int
+	BackupPending   int
 }
 
 type KeystoreBatchProgress = BatchImportProgress
@@ -45,6 +47,7 @@ type BatchImportResult struct {
 	Index           int
 	Summary         *AccountSummary
 	AlreadyImported bool
+	BackupPending   bool
 	Err             error
 }
 
@@ -95,6 +98,9 @@ func runCanonicalBatch(ctx context.Context, items []canonicalBatchWorkItem, stor
 			progress.AlreadyImported++
 		default:
 			progress.Imported++
+			if results[index].BackupPending {
+				progress.BackupPending++
+			}
 		}
 		onProgress(progress)
 	}
@@ -150,6 +156,12 @@ func runCanonicalBatch(ctx context.Context, items []canonicalBatchWorkItem, stor
 						results[index].AlreadyImported = true
 						return
 					}
+					var pendingErr *CredentialBackupPendingError
+					if errors.As(err, &pendingErr) {
+						results[index].Summary = &summary
+						results[index].BackupPending = true
+						return
+					}
 					if err != nil {
 						results[index].Err = fmt.Errorf("batch item %d: %w", index, err)
 						return
@@ -187,6 +199,7 @@ func (vault *WalletVault) ImportKeystoreBatch(ctx context.Context, request Keyst
 					Name:                   item.Name,
 					KeystoreJSON:           item.KeystoreJSON,
 					SourcePassword:         item.SourcePassword,
+					SourcePath:             item.SourcePath,
 					StoragePassword:        request.StoragePassword,
 					ConfirmStoragePassword: request.ConfirmStoragePassword,
 				})

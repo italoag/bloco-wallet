@@ -31,6 +31,10 @@ func canonicalExpandHome(value string) string {
 }
 
 func canonicalPathSuggestions(value string, directoriesOnly bool) ([]string, error) {
+	return pathSuggestions(value, directoriesOnly, ".json")
+}
+
+func pathSuggestions(value string, directoriesOnly bool, extensions ...string) ([]string, error) {
 	if value == "" {
 		return nil, nil
 	}
@@ -75,7 +79,17 @@ func canonicalPathSuggestions(value string, directoriesOnly bool) ([]string, err
 			if directoriesOnly {
 				continue
 			}
-			if !entryType.IsRegular() || !strings.EqualFold(filepath.Ext(name), ".json") {
+			if !entryType.IsRegular() {
+				continue
+			}
+			matched := false
+			for _, extension := range extensions {
+				if strings.EqualFold(filepath.Ext(name), extension) {
+					matched = true
+					break
+				}
+			}
+			if !matched {
 				continue
 			}
 			candidate = filepath.Join(dirPart, name)
