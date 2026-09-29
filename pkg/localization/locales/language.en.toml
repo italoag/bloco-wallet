@@ -3134,6 +3134,8 @@ other = "Vault or configuration changed; reload and retry"
 other = "Operation cancelled"
 [keepass_err_failed]
 other = "KeePass operation failed"
+[keepass_err_durability]
+other = "Vault changes were installed, but durability could not be confirmed. Backup remains pending; retry to confirm it."
 [keepass_err_unavailable]
 other = "Credential backup service is not available"
 [passwords_do_not_match]
@@ -3143,7 +3145,10 @@ other = "Passwords do not match"
 other = "Remove credential backup: {{.Status}}"
 
 [backup_suspended_resume]
-other = "Backup suspended. Resume it from the account details with a fresh storage password."
+other = "Backup suspended. Resume it from the account details with the existing storage password."
+
+[keepass_confirmation_reauth]
+other = "KeePass authentication expired. Enter the existing wallet password to resume backup confirmation."
 
 [canonical_import_committed_notice]
 other = "Import committed to the vault."

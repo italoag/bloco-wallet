@@ -10,9 +10,7 @@ Evidence correction: the previous G10 evidence is invalidated. Formatting/vet fo
 
 Known unresolved integration check: G16 currently includes the repository-wide network-boundary test which flags vendored testify request helpers. No exclusions or policy changes are authorized to make it pass. Keep this gate unmet until properly resolved; do not claim full completion on the strength of narrower tests.
 
-Owner-approved publication: publish the KDBX integration on a feature branch for PR/CI review, leaving G16 active and recording its resolution as follow-up work. This deferral is not a passing check or authorization to weaken the control. See docs/gokeepasslib-decoder-hardening.md for reproduction and follow-up acceptance criteria.
-
-ABANDON: G16 Owner explicitly deferred this known vendored-test-helper conflict to a future correction while authorizing commit/push and PR review. The test and CI controls remain active and unchanged; global-suite success is not claimed.
+Publication history: the owner initially authorized publishing the feature branch with G16 deferred. PR #55 now exists at commit 36d15f0. The owner subsequently required all failures and review findings to be addressed; the previous G16 deferral is withdrawn. G16 remains required and unmet, with the network and sandbox controls unchanged. Production release publication is not authorized by this verification request.
 
 - [x] G0: The acceptance runner rejects missing, skipped, failed, malformed, and interrupted test evidence while accepting a valid positive control
   CHECK: node scripts/verify-kdbx-gates.mjs G0
@@ -108,6 +106,17 @@ ABANDON: G16 Owner explicitly deferred this known vendored-test-helper conflict 
   CHECK: node scripts/verify-kdbx-gates.mjs G18
   EXPECT: KDBX_GATE_OK G18
   EVIDENCE: automatic-evidence=v1; definition-sha256=25c57074f9bc3dc5e20906623907bc2de1b7f93f24ce56c4886e209574f27a08; exit=0; EXPECT=matched; output-sha256=bf405138ca61d11ffe69615bf75ba68d908c1e8c7a43416a2eb694519aaa6a38; output-bytes=17; shell=/bin/sh; cwd=/Users/t798157/Projects/bloco/bloco-wallet; path=176f9420c573/76 entries
+
+- [ ] G20: Home expansion stays inside a temporary home, fresh confirmation cannot activate an unqueued account, successful backup refreshes status, and durability warnings preserve pending intent and committed metadata
+  CHECK: node scripts/verify-kdbx-gates.mjs G20
+  EXPECT: KDBX_GATE_OK G20
+  EVIDENCE: pending
+
+- [ ] G21: Remote CI for the correction commit passes tests, native build matrix and release-equivalent production verification without disabled guards or publishing a release
+  EVIDENCE: pending
+
+- [ ] G22: Every Copilot and Devin finding on the correction commit has been reviewed and addressed or explicitly escalated with supporting evidence
+  EVIDENCE: pending
 
 - [x] G19: Affected Go packages pass vet, the parent passes lint, workflow syntax validates, and both staged and unstaged diffs are whitespace-clean
   CHECK: node scripts/verify-kdbx-gates.mjs G19

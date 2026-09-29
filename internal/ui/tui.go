@@ -1250,7 +1250,18 @@ func (m *CLIModel) updateCreateWalletBackup(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 				needsOp := m.credentialBackupEnabled() && (m.credentialOperation == nil || m.credentialOperation.Context().Err() != nil)
-				return m, m.submitWithCredential(needsOp, func() tea.Cmd { return m.startVaultConfirmBackup() })
+				if needsOp {
+					accountID := m.backupChallenge.AccountID
+					m.suspendPendingVaultBackup()
+					if m.backupChallenge != nil {
+						return m, nil
+					}
+					m.clearCredentialOperation()
+					m.initResumeBackup(accountID)
+					m.createPasswordError = localization.Get("keepass_confirmation_reauth")
+					return m, nil
+				}
+				return m, m.startVaultConfirmBackup()
 			}
 			confirmation := strings.Join(strings.Fields(m.backupConfirmationInput.Value()), " ")
 			if !wallet.SecureCompare(confirmation, m.mnemonic) {

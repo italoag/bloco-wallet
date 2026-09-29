@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -29,7 +30,7 @@ func TestKeePassConfigLoadConfigRoundTrip(t *testing.T) {
 	writeKeePassConfig(t, appDir, `
 [keepass]
 enabled = true
-path = "`+vaultPath+`"
+path = `+strconv.Quote(vaultPath)+`
 target_id = "`+keepassTestTarget+`"
 vault_id = "`+keepassTestVault+`"
 `)
@@ -44,6 +45,9 @@ vault_id = "`+keepassTestVault+`"
 
 func TestKeePassConfigLoadConfigExpandsHome(t *testing.T) {
 	appDir := t.TempDir()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	writeKeePassConfig(t, appDir, `
 [keepass]
 enabled = false
@@ -54,10 +58,6 @@ vault_id = "`+keepassTestVault+`"
 	cfg, err := LoadConfig(appDir)
 	if err != nil {
 		t.Fatalf("load: %v", err)
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		t.Fatal(err)
 	}
 	if cfg.KeePass.Path != filepath.Join(home, "vault.kdbx") {
 		t.Fatalf("path not expanded: %q", cfg.KeePass.Path)
@@ -74,7 +74,7 @@ func TestKeePassConfigManagerRoundTrip(t *testing.T) {
 	writeKeePassConfig(t, appDir, `
 [keepass]
 enabled = true
-path = "`+vaultPath+`"
+path = `+strconv.Quote(vaultPath)+`
 target_id = "`+keepassTestTarget+`"
 vault_id = "`+keepassTestVault+`"
 `)

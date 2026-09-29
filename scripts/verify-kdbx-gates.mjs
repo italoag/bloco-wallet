@@ -122,7 +122,7 @@ function checkPublication(env) {
 
 const gate = process.argv[2];
 if (!gate || process.argv.length !== 3) {
-  console.error('Usage: node scripts/verify-kdbx-gates.mjs G0..G19');
+  console.error('Usage: node scripts/verify-kdbx-gates.mjs G0..G20');
   process.exit(2);
 }
 let home;
@@ -162,6 +162,10 @@ try {
       for (const goos of ['windows', 'linux']) {
         command('go', ['test', '-c', '-o', join(home, `${goos}-keepass.test`), './internal/keepass'], { ...env, CGO_ENABLED: '0', GOOS: goos, GOARCH: 'amd64' });
       }
+    } else if (gate === 'G20') {
+      goTests('./pkg/config', ['TestKeePassConfigLoadConfigExpandsHome'], env);
+      goTests('./internal/wallet', ['TestTestsNeverWriteOutsideSandbox', 'TestCredentialBackupFreshConfirmationRequiresQueuedAccount', 'TestCredentialBackupCommittedWarningsRemainRecoverable'], env, { race: true });
+      goTests('./internal/ui', ['TestKeePassUIExpiredCreationReauthenticates', 'TestKeePassUIBackupRefreshesAccountStatus', 'TestKeePassUIDurabilityWarningLocalized'], env, { race: true });
     } else if (gate === 'G19') {
       command('go', ['vet', './internal/keepass', './internal/wallet', './internal/storage', './internal/ui', './pkg/config'], env);
       command('golangci-lint', ['run', '--timeout=5m'], env);

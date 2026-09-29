@@ -548,6 +548,11 @@ func (vault *WalletVault) confirmBackup(ctx context.Context, challengeID string,
 		if confirmedAddress != "" && !addressesEqual(confirmedAddress, account.Address) {
 			return ErrBackupConfirmationFailed
 		}
+		if credentialOp != nil {
+			if err := credentialOp.refreshQueuedAccount(accountID, account.EnvelopeGeneration, account.Revision, account.AuthorizationEpoch); err != nil {
+				return err
+			}
+		}
 		account.State = AccountStateActive
 		account.UpdatedAt = vault.options.Now().UTC()
 		if err := transaction.UpdateAccount(ctx, account); err != nil {

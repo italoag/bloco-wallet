@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"blocowallet/internal/constants"
 	"blocowallet/internal/keepass"
@@ -885,6 +886,8 @@ var errKeePassDigestMismatch = errors.New("credential artifact digest mismatch")
 
 func keepassActionErrorKey(err error) string {
 	switch {
+	case keepass.IsCommitted(err):
+		return "keepass_err_durability"
 	case errors.Is(err, errKeePassDigestMismatch):
 		return "keepass_err_digest"
 	case errors.Is(err, keepass.ErrAuthentication):
@@ -1104,12 +1107,6 @@ func (state *keepassAccountState) setErrKey(key string, params map[string]interf
 	state.errParams = params
 }
 
-func (state *keepassAccountState) setErr(err error) {
-	state.errKey = ""
-	state.errParams = nil
-	state.err = safeError(err)
-}
-
 func (state *keepassAccountState) errText() string {
 	if state.errKey != "" {
 		return localization.T(state.errKey, state.errParams)
@@ -1176,12 +1173,14 @@ func (m *CLIModel) updateKeePassAccount(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if state.quitAfterResult {
 			return m, tea.Quit
 		}
+		if message.report != nil {
+			state.report = message.report
+		}
 		if message.err != nil {
-			state.setErr(message.err)
+			state.setErrKey(keepassActionErrorKey(message.err), nil)
 			return m, nil
 		}
 		state.rows = message.rows
-		state.report = message.report
 		state.hasBackup = false
 		for _, row := range message.rows {
 			if row.ItemID == "account" && row.State == wallet.CredentialBackupStateSynced {
@@ -1192,6 +1191,9 @@ func (m *CLIModel) updateKeePassAccount(msg tea.Msg) (tea.Model, tea.Cmd) {
 			state.noticeKey = "keepass_retry_done"
 			state.noticeParams = map[string]interface{}{"Saved": message.report.AccountsSaved + message.report.FilesSaved, "Deleted": message.report.Deleted}
 			state.notice = ""
+			state.stage = keepassAccountStageMenu
+			state.password.SetValue("")
+			m.credentialUseKeePass = false
 		}
 		return m, nil
 	case keepassActionMsg:
@@ -1293,6 +1295,7 @@ func (m *CLIModel) updateKeePassAccountPassword(key tea.KeyMsg) (tea.Model, tea.
 			return m, nil
 		}
 		accountID := state.account.AccountID
+		service := m.credentialService
 		m.uiOperationID++
 		state.generation = m.uiOperationID
 		generation := state.generation
@@ -1316,7 +1319,13 @@ func (m *CLIModel) updateKeePassAccountPassword(key tea.KeyMsg) (tea.Model, tea.
 					return keepassActionMsg{err: err, generation: generation}
 				}
 				report, syncErr := op.Sync(ctx)
-				return keepassStatusMsg{accountID: accountID, report: &report, err: syncErr, generation: generation}
+				var rows []wallet.CredentialBackupState
+				if syncErr == nil && service != nil {
+					statusCtx, statusCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+					rows, syncErr = service.Status(statusCtx, accountID)
+					statusCancel()
+				}
+				return keepassStatusMsg{accountID: accountID, rows: rows, report: &report, err: syncErr, generation: generation}
 			}, func() tea.Msg {
 				return credentialOpDoneMsg{op: op}
 			})

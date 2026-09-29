@@ -1323,3 +1323,313 @@ func TestCredentialBackupServiceGuards(t *testing.T) {
 		t.Fatalf("expected ErrCredentialBackupUnavailable, got %v", err)
 	}
 }
+
+func TestCredentialBackupFreshConfirmationRequiresQueuedAccount(t *testing.T) {
+	fixture := newCredentialFixture(t)
+	password := []byte("storage-password-1")
+	op1, ctx1 := fixture.begin(t)
+	summary, challenge, err := fixture.vault.Create(ctx1, CreateAccountRequest{Name: "acct", Password: password})
+	if err != nil {
+		t.Fatal(err)
+	}
+	op1.Close()
+
+	op2, ctx2 := fixture.begin(t)
+	defer op2.Close()
+	answers := make(map[int]string, len(challenge.RequiredWordIndices))
+	for _, index := range challenge.RequiredWordIndices {
+		answers[index] = challenge.Words[index]
+	}
+	if _, err := fixture.vault.ConfirmBackup(ctx2, challenge.ChallengeID, answers); err == nil {
+		t.Fatal("confirmation without a queued credential must fail")
+	}
+	account, err := fixture.repo.GetAccount(context.Background(), summary.AccountID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if account.State != AccountStatePendingBackup {
+		t.Fatalf("account must remain pending, got %s", account.State)
+	}
+	if rows := fixture.repo.pendingRows(t, fixture.binding.TargetID, fixture.binding.VaultID); len(rows) != 1 {
+		t.Fatalf("expected the queued ledger row preserved, got %d pending", len(rows))
+	}
+	if _, _, err := fixture.vault.ResumeBackup(ctx2, summary.AccountID, []byte("wrong-storage-password")); err == nil {
+		t.Fatal("resume with a wrong password must fail")
+	}
+	account, err = fixture.repo.GetAccount(context.Background(), summary.AccountID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if account.State != AccountStatePendingBackup {
+		t.Fatalf("wrong-password resume must not activate, got %s", account.State)
+	}
+	if err := fixture.vault.SuspendBackup(challenge.ChallengeID); err != nil {
+		t.Fatal(err)
+	}
+	resumed, challenge2, err := fixture.vault.ResumeBackup(ctx2, summary.AccountID, password)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resumed.AccountID != summary.AccountID {
+		t.Fatalf("resumed wrong account %+v", resumed)
+	}
+	activated := confirmChallenge(t, fixture.vault, ctx2, challenge2)
+	if activated.AccountID != summary.AccountID || activated.State != AccountStateActive {
+		t.Fatalf("unexpected activation %+v", activated)
+	}
+	report, err := op2.Sync(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.AccountsSaved != 1 || report.Pending != 0 {
+		t.Fatalf("unexpected report %+v", report)
+	}
+	if rows := fixture.repo.pendingRows(t, fixture.binding.TargetID, fixture.binding.VaultID); len(rows) != 0 {
+		t.Fatalf("expected all rows synced, got %d pending", len(rows))
+	}
+	op3, _ := fixture.begin(t)
+	defer op3.Close()
+	if got := keystoreEntryPassword(t, fixture, op3, summary.AccountID); !bytes.Equal(got, password) {
+		t.Fatal("stored credential password mismatch")
+	}
+}
+
+type committedWarningStore struct {
+	credentialStoreOperation
+	cause        error
+	onUpsert     bool
+	onRemove     bool
+	upsertCalls  int
+	lastRecordLn int
+}
+
+func (store *committedWarningStore) Upsert(ctx context.Context, records []keepass.Record) (keepass.CommitResult, error) {
+	store.upsertCalls++
+	store.lastRecordLn = len(records)
+	result, err := store.credentialStoreOperation.Upsert(ctx, records)
+	if err == nil && result.Committed && store.onUpsert {
+		return result, &keepass.CommittedWarning{Cause: store.cause}
+	}
+	return result, err
+}
+
+func (store *committedWarningStore) RemoveAccount(ctx context.Context, accountID string) (keepass.CommitResult, error) {
+	result, err := store.credentialStoreOperation.RemoveAccount(ctx, accountID)
+	if err == nil && result.Committed && store.onRemove {
+		return result, &keepass.CommittedWarning{Cause: store.cause}
+	}
+	return result, err
+}
+
+func installWarningStore(op *CredentialBackupOperation, store *committedWarningStore) {
+	op.mu.Lock()
+	defer op.mu.Unlock()
+	store.credentialStoreOperation = op.store
+	op.store = store
+}
+
+func TestCredentialBackupCommittedWarningsRemainRecoverable(t *testing.T) {
+	sentinel := errors.New("synthetic durability detail")
+
+	t.Run("upsert", func(t *testing.T) {
+		fixture := newCredentialFixture(t)
+		op1, ctx1 := fixture.begin(t)
+		summaryA := createConfirmedAccount(t, fixture, ctx1, []byte("storage-password-1"))
+		if _, err := op1.Sync(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+
+		op2, ctx2 := fixture.begin(t)
+		passwordB := []byte("storage-password-2")
+		summaryB := createConfirmedAccount(t, fixture, ctx2, passwordB)
+		wrapper := &committedWarningStore{cause: sentinel, onUpsert: true}
+		installWarningStore(op2, wrapper)
+		report, syncErr := op2.Sync(context.Background())
+		var pendingErr *CredentialBackupPendingError
+		if !errors.As(syncErr, &pendingErr) {
+			t.Fatalf("expected CredentialBackupPendingError, got %v", syncErr)
+		}
+		var warning *keepass.CommittedWarning
+		if !errors.As(syncErr, &warning) {
+			t.Fatalf("expected CommittedWarning, got %v", syncErr)
+		}
+		code := ""
+		for _, failure := range report.Failures {
+			if failure.AccountID == summaryB.AccountID {
+				code = failure.Code
+			}
+		}
+		if code != "durability_unconfirmed" {
+			t.Fatalf("expected durability_unconfirmed, got %q (%+v)", code, report.Failures)
+		}
+		if len(report.BackupPaths) == 0 {
+			t.Fatal("committed backup path must be preserved in the report")
+		}
+		if rows := fixture.repo.pendingRows(t, fixture.binding.TargetID, fixture.binding.VaultID); len(rows) != 1 || rows[0].AccountID != summaryB.AccountID {
+			t.Fatalf("ledger must retain the pending row, got %+v", rows)
+		}
+
+		inspect, _ := fixture.begin(t)
+		listing, err := inspect.store.List(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		installed := 0
+		for _, meta := range listing {
+			if meta.Ref.AccountID == summaryB.AccountID {
+				installed++
+			}
+		}
+		if installed != 1 {
+			t.Fatalf("upserted entry must exist despite warning, got %+v", listing)
+		}
+		inspect.Close()
+
+		op3, _ := fixture.begin(t)
+		if err := op3.BackupAccount(context.Background(), summaryB.AccountID, passwordB); err != nil {
+			t.Fatal(err)
+		}
+		report3, err := op3.Sync(context.Background())
+		if err != nil {
+			t.Fatalf("retry sync must succeed, got %+v %v", report3, err)
+		}
+		if report3.AccountsSaved != 1 || report3.Pending != 0 {
+			t.Fatalf("unexpected retry report %+v", report3)
+		}
+		op4, _ := fixture.begin(t)
+		defer op4.Close()
+		listing, err = op4.store.List(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(listing) != 2 {
+			t.Fatalf("retry must not duplicate or orphan entries, got %+v", listing)
+		}
+		for _, meta := range listing {
+			if meta.Ref.AccountID != summaryA.AccountID && meta.Ref.AccountID != summaryB.AccountID {
+				t.Fatalf("unexpected vault entry %+v", meta)
+			}
+		}
+	})
+
+	t.Run("delete", func(t *testing.T) {
+		fixture := newCredentialFixture(t)
+		op1, ctx1 := fixture.begin(t)
+		password := []byte("storage-password-1")
+		summary := createConfirmedAccount(t, fixture, ctx1, password)
+		if _, err := op1.Sync(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+
+		op2, ctx2 := fixture.begin(t)
+		if err := fixture.vault.DeleteAccount(ctx2, DeleteAccountRequest{
+			AccountID:              summary.AccountID,
+			ConfirmAccountID:       summary.AccountID,
+			Password:               password,
+			RemoveCredentialBackup: true,
+			ConfirmBackupAccountID: summary.AccountID,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		wrapper := &committedWarningStore{cause: sentinel, onRemove: true}
+		installWarningStore(op2, wrapper)
+		report, syncErr := op2.Sync(context.Background())
+		var pendingErr *CredentialBackupPendingError
+		if !errors.As(syncErr, &pendingErr) {
+			t.Fatalf("expected CredentialBackupPendingError, got %v", syncErr)
+		}
+		var warning *keepass.CommittedWarning
+		if !errors.As(syncErr, &warning) {
+			t.Fatalf("expected CommittedWarning, got %v", syncErr)
+		}
+		code := ""
+		for _, failure := range report.Failures {
+			if failure.AccountID == summary.AccountID {
+				code = failure.Code
+			}
+		}
+		if code != "durability_unconfirmed" {
+			t.Fatalf("expected durability_unconfirmed, got %q (%+v)", code, report.Failures)
+		}
+		if len(report.BackupPaths) == 0 {
+			t.Fatal("committed backup path must be preserved in the report")
+		}
+		pending := fixture.repo.pendingRows(t, fixture.binding.TargetID, fixture.binding.VaultID)
+		if len(pending) == 0 {
+			t.Fatal("ledger must retain the delete_pending rows")
+		}
+		for _, row := range pending {
+			if row.State != CredentialBackupStateDeletePending {
+				t.Fatalf("expected delete_pending row, got %+v", row)
+			}
+		}
+
+		inspect, _ := fixture.begin(t)
+		listing, err := inspect.store.List(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, meta := range listing {
+			if meta.Ref.AccountID == summary.AccountID {
+				t.Fatalf("deleted entry must be absent despite warning, got %+v", listing)
+			}
+		}
+		inspect.Close()
+
+		opRetry, _ := fixture.begin(t)
+		retryWrapper := &committedWarningStore{cause: sentinel, onUpsert: true}
+		installWarningStore(opRetry, retryWrapper)
+		if err := opRetry.RetryDeletion(context.Background(), summary.AccountID, summary.AccountID); err != nil {
+			t.Fatal(err)
+		}
+		reportRetry, retryErr := opRetry.Sync(context.Background())
+		if !errors.As(retryErr, &pendingErr) {
+			t.Fatalf("unconfirmed durable rewrite must stay pending, got %v", retryErr)
+		}
+		if !errors.As(retryErr, &warning) {
+			t.Fatalf("expected CommittedWarning from the rewrite, got %v", retryErr)
+		}
+		if retryWrapper.upsertCalls == 0 || retryWrapper.lastRecordLn != 0 {
+			t.Fatalf("not-found removal must trigger an empty durable rewrite, calls=%d records=%d", retryWrapper.upsertCalls, retryWrapper.lastRecordLn)
+		}
+		if reportRetry.Pending == 0 || reportRetry.Deleted != 0 {
+			t.Fatalf("unconfirmed rewrite must not be acked, got %+v", reportRetry)
+		}
+		if len(reportRetry.BackupPaths) == 0 {
+			t.Fatal("rewrite backup path must be preserved in the report")
+		}
+		stillPending := fixture.repo.pendingRows(t, fixture.binding.TargetID, fixture.binding.VaultID)
+		if len(stillPending) == 0 {
+			t.Fatal("ledger must retain the delete_pending rows after unconfirmed rewrite")
+		}
+		for _, row := range stillPending {
+			if row.State != CredentialBackupStateDeletePending {
+				t.Fatalf("expected delete_pending row, got %+v", row)
+			}
+		}
+
+		op3, _ := fixture.begin(t)
+		if err := op3.RetryDeletion(context.Background(), summary.AccountID, summary.AccountID); err != nil {
+			t.Fatal(err)
+		}
+		report3, err := op3.Sync(context.Background())
+		if err != nil {
+			t.Fatalf("retry sync must succeed, got %+v %v", report3, err)
+		}
+		if report3.Deleted != 1 || report3.Pending != 0 {
+			t.Fatalf("unexpected retry report %+v", report3)
+		}
+		if rows := fixture.repo.pendingRows(t, fixture.binding.TargetID, fixture.binding.VaultID); len(rows) != 0 {
+			t.Fatalf("expected ledger acked, got %+v", rows)
+		}
+		op4, _ := fixture.begin(t)
+		defer op4.Close()
+		listing, err = op4.store.List(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(listing) != 0 {
+			t.Fatalf("expected empty vault after deletion retry, got %+v", listing)
+		}
+	})
+}

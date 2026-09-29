@@ -344,6 +344,16 @@ func (s *CredentialBackupService) MarshalJSON() ([]byte, error) {
 	return nil, errCredentialSerialization
 }
 
+type credentialStoreOperation interface {
+	Preflight(context.Context) error
+	Upsert(context.Context, []keepass.Record) (keepass.CommitResult, error)
+	RemoveAccount(context.Context, string) (keepass.CommitResult, error)
+	WithPassword(context.Context, keepass.Ref, uint64, func([]byte) error) error
+	WithFilePassword(context.Context, string, string, func([]byte) error) error
+	List(context.Context) ([]keepass.Metadata, error)
+	Close()
+}
+
 type CredentialBackupOperation struct {
 	service    *CredentialBackupService
 	id         string
@@ -352,7 +362,7 @@ type CredentialBackupOperation struct {
 
 	ctx    context.Context
 	cancel context.CancelFunc
-	store  *keepass.Operation
+	store  credentialStoreOperation
 
 	stopAfterFunc func() bool
 
@@ -867,6 +877,7 @@ func (op *CredentialBackupOperation) Sync(ctx context.Context) (CredentialBackup
 			pendingDelete[row.AccountID] = append(pendingDelete[row.AccountID], row)
 		}
 	}
+	var commitErr error
 	for accountID, rows := range pendingDelete {
 		if _, queued := deletions[accountID]; !queued || len(rows) == 0 {
 			continue
@@ -882,12 +893,20 @@ func (op *CredentialBackupOperation) Sync(ctx context.Context) (CredentialBackup
 			continue
 		}
 		result, err := op.store.RemoveAccount(ctx, accountID)
-		if err != nil && !errors.Is(err, keepass.ErrNotFound) {
-			failure(accountID, "", "remove_failed")
-			continue
+		if errors.Is(err, keepass.ErrNotFound) {
+			result, err = op.store.Upsert(ctx, nil)
 		}
 		if result.BackupPath != "" {
 			report.BackupPaths = append(report.BackupPaths, result.BackupPath)
+		}
+		if err != nil {
+			code := "remove_failed"
+			if keepass.IsCommitted(err) {
+				code = "durability_unconfirmed"
+			}
+			failure(accountID, "", code)
+			commitErr = errors.Join(commitErr, err)
+			continue
 		}
 		ackFailed := false
 		for _, row := range rows {
@@ -969,7 +988,6 @@ func (op *CredentialBackupOperation) Sync(ctx context.Context) (CredentialBackup
 		})
 		rows = append(rows, pendingRow{key: key, file: file, ledger: ledger, built: account})
 	}
-	var commitErr error
 	if len(rows) > 0 {
 		vault.lifecycle.Lock()
 		if vault.closed {
@@ -1012,16 +1030,18 @@ func (op *CredentialBackupOperation) Sync(ctx context.Context) (CredentialBackup
 			validRecords = append(validRecords, records[index])
 		}
 		var backupPath string
+		var upsertErr error
 		if len(validRecords) > 0 {
 			result, err := op.store.Upsert(ctx, validRecords)
 			backupPath = result.BackupPath
-			commitErr = err
+			upsertErr = err
+			commitErr = errors.Join(commitErr, upsertErr)
 		}
 		vault.lifecycle.Unlock()
 		if backupPath != "" {
 			report.BackupPaths = append(report.BackupPaths, backupPath)
 		}
-		if commitErr == nil {
+		if upsertErr == nil {
 			for _, row := range validRows {
 				if err := repository.ConfirmCredentialBackup(ctx, row.key, row.ledger.OperationID, row.ledger.Generation); err != nil {
 					failure(row.key.AccountID, row.key.ItemID, "ack_conflict")
@@ -1034,8 +1054,12 @@ func (op *CredentialBackupOperation) Sync(ctx context.Context) (CredentialBackup
 				}
 			}
 		} else {
+			code := "commit_failed"
+			if keepass.IsCommitted(upsertErr) {
+				code = "durability_unconfirmed"
+			}
 			for _, row := range validRows {
-				failure(row.key.AccountID, row.key.ItemID, "commit_failed")
+				failure(row.key.AccountID, row.key.ItemID, code)
 			}
 		}
 	}

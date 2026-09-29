@@ -3135,6 +3135,8 @@ other = "La bóveda o configuración cambió; recargue y reintente"
 other = "Operación cancelada"
 [keepass_err_failed]
 other = "Falló la operación KeePass"
+[keepass_err_durability]
+other = "Los cambios de la bóveda se instalaron, pero no se pudo confirmar la durabilidad. La copia de seguridad sigue pendiente; reintente para confirmarla."
 [keepass_err_unavailable]
 other = "Servicio de copia de credenciales no disponible"
 [passwords_do_not_match]
@@ -3144,7 +3146,10 @@ other = "Las contraseñas no coinciden"
 other = "Eliminar copia de credencial: {{.Status}}"
 
 [backup_suspended_resume]
-other = "Copia de seguridad suspendida. Reanúdela desde los detalles de la cuenta con una nueva contraseña de almacenamiento."
+other = "Copia de seguridad suspendida. Reanúdela desde los detalles de la cuenta con la contraseña de almacenamiento actual."
+
+[keepass_confirmation_reauth]
+other = "La autenticación de KeePass expiró. Introduzca la contraseña actual de la cartera para reanudar la confirmación de la copia de seguridad."
 
 [canonical_import_committed_notice]
 other = "Importación confirmada en la bóveda."

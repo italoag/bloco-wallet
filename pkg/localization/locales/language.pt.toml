@@ -3135,6 +3135,8 @@ other = "Cofre ou configuração alterados; recarregue e tente novamente"
 other = "Operação cancelada"
 [keepass_err_failed]
 other = "Falha na operação KeePass"
+[keepass_err_durability]
+other = "As alterações do cofre foram instaladas, mas a durabilidade não pôde ser confirmada. O backup permanece pendente; tente novamente para confirmá-lo."
 [keepass_err_unavailable]
 other = "Serviço de backup de credenciais indisponível"
 [passwords_do_not_match]
@@ -3144,7 +3146,10 @@ other = "As senhas não coincidem"
 other = "Remover backup de credencial: {{.Status}}"
 
 [backup_suspended_resume]
-other = "Backup suspenso. Retome nos detalhes da conta com uma nova senha de armazenamento."
+other = "Backup suspenso. Retome nos detalhes da conta com a senha de armazenamento atual."
+
+[keepass_confirmation_reauth]
+other = "A autenticação KeePass expirou. Digite a senha atual da carteira para retomar a confirmação do backup."
 
 [canonical_import_committed_notice]
 other = "Importação confirmada no cofre."

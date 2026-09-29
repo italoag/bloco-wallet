@@ -200,7 +200,7 @@ Fuzzing and passing fixtures provide regression evidence, not proof of complete 
 
 ### Parent-repository blockers and unperformed checks
 
-The Bloco global suite is **not green**. The owner has explicitly authorized publishing the KDBX integration for PR/CI review with G16 deferred to a future correction, not marked as passed.
+The Bloco global suite is **not green**. The owner initially authorized publishing the KDBX integration for PR/CI review with G16 deferred, not passed. After reviewing PR #55 results, the owner required all failures to be addressed; that deferral is now withdrawn. G16 remains a mandatory unmet check, and the network-boundary control remains unchanged.
 
 `TestRPCGatewayOwnsAllOutboundTransports` walks the repository tree and flags `http.NewRequest(` in `third_party/gokeepasslib/vendor/github.com/stretchr/testify/assert/http_assertions.go`. The helper constructs a request in memory, uses `httptest.NewRecorder`, and invokes the supplied handler directly; it does not send that request through an HTTP client. The lexical guard does not distinguish this helper from application transport code.
 
@@ -227,6 +227,14 @@ Creating a GitHub tracking issue was attempted through both GraphQL and REST. Th
 The earlier `TestPasswordPopupModel_View` mismatch (`Enter/Esc` versus `ENTER/ESC`) was a separate patch-only validation failure reproduced at Bloco commit `3e1a32b`. It has since been corrected during UI integration, and G11's complete UI suite passed. It is not the current G16 conflict. The parent-suite failure must not be reported as a full-suite pass; the passing local acceptance evidence is recorded in `GATES.md`.
 
 At patch-only validation, no remote CI or clean remote submodule checkout had been run because the patched commit was still unpublished. Publication has since succeeded, as recorded below; publication alone does not establish a clean-checkout or CI result. No Docker image was built in that validation; its dependency-copy order and workflow syntax were reviewed. That validation did not exercise real hardware/wallet flows, native Windows/Linux execution, or wallet-facing KDBX integration.
+
+### PR #55 corrective validation
+
+The initial remote CI run also detected `TestTestsNeverWriteOutsideSandbox` rejecting `os.UserHomeDir()` in the new configuration test. That test now binds `HOME` and `USERPROFILE` to a temporary directory; the sandbox guard is unchanged. Native Windows paths in configuration fixtures are quoted for TOML.
+
+Review corrections require queued credentials before account activation, route expired creation authentication through password re-entry and a fresh backup challenge, and refresh the account ledger status after successful backup. Installed-but-durability-unconfirmed writes retain pending intents and expose a distinct localized warning with backup paths. Retrying a deletion whose entry is already absent performs a durable rewrite before acknowledging the ledger; reading an absent entry alone is insufficient.
+
+The named G20 regressions passed, including race checks. The complete local `make test-production` run passed every other package but failed `TestRPCGatewayOwnsAllOutboundTransports`; it is not a green release gate. Cross-builds succeeded for Linux amd64/arm64, Darwin amd64/arm64, and Windows amd64. The Darwin arm64 binary executed `--version` and `release-smoke` successfully under an isolated application home. These results do not establish native execution on other platforms, a successful remote build matrix, or a published release.
 
 `govulncheck` remains a GitHub Actions-only verification step in this project and will not be executed locally.
 

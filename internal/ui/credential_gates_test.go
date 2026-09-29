@@ -15,6 +15,7 @@ import (
 
 	"blocowallet/internal/constants"
 	"blocowallet/internal/evm"
+	"blocowallet/internal/keepass"
 	"blocowallet/internal/wallet"
 	"blocowallet/pkg/config"
 	"blocowallet/pkg/localization"
@@ -1381,4 +1382,201 @@ func TestKeePassUIStaleResults(t *testing.T) {
 	require.NotNil(t, oldOp)
 	assert.Error(t, oldOp.Context().Err(), "stale operation must be cancelled and closed")
 	assert.Equal(t, "for account b", model.personalSign.message.Value())
+}
+
+func TestKeePassUIExpiredCreationReauthenticates(t *testing.T) {
+	model, vault, _, _ := newCredentialUITestModel(t, true)
+	model.initCreateWallet()
+	model.nameInput.SetValue("expired-create")
+	pressKey(model, "enter")
+	pressKey(model, "enter")
+	pressKey(model, "enter")
+	pressKey(model, "enter")
+	pressKey(model, "enter")
+	require.Equal(t, constants.CreateWalletView, model.currentView)
+	model.passwordInput.SetValue("expired storage pw 1")
+	pressKey(model, "enter")
+	model.createPasswordConfirmationInput.SetValue("expired storage pw 1")
+	pressKey(model, "enter")
+	require.NotNil(t, model.credentialPrompt)
+	unlockMasterViaUpdate(t, model, gatesMaster)
+
+	require.Equal(t, constants.CreateWalletBackupView, model.currentView)
+	require.NotNil(t, model.backupChallenge)
+	accountID := model.backupChallenge.AccountID
+	challenge := model.backupChallenge
+
+	require.NotNil(t, model.credentialOperation)
+	model.credentialOperation.Close()
+	require.Error(t, model.credentialOperation.Context().Err())
+
+	answers := make([]string, 0, len(challenge.RequiredWordIndices))
+	for _, index := range challenge.RequiredWordIndices {
+		answers = append(answers, challenge.Words[index])
+	}
+	model.backupConfirmationInput.SetValue(strings.Join(answers, " "))
+	pressKey(model, "enter")
+
+	require.Equal(t, constants.CreateWalletView, model.currentView, "expired credential must reroute to re-auth, not activate")
+	assert.Nil(t, model.backupChallenge)
+	assert.Equal(t, accountID, model.resumeBackupAccountID)
+	assert.Equal(t, localization.Get("keepass_confirmation_reauth"), model.createPasswordError)
+	assert.Nil(t, model.credentialPrompt)
+	assert.Nil(t, model.credentialOperation)
+	assert.Zero(t, model.createPasswordStage)
+
+	stillPending := func() {
+		t.Helper()
+		accounts, err := vault.ListAccounts(context.Background())
+		require.NoError(t, err)
+		found := false
+		for _, account := range accounts {
+			if account.AccountID == accountID {
+				found = true
+				assert.Equal(t, wallet.AccountStatePendingBackup, account.State)
+			}
+		}
+		require.True(t, found, "pending account must still exist")
+	}
+	stillPending()
+
+	model.passwordInput.SetValue("expired storage pw 1")
+	pressKey(model, "enter")
+	require.NotNil(t, model.credentialPrompt, "re-auth must request a fresh master prompt")
+	pressKey(model, "esc")
+	assert.Nil(t, model.credentialPrompt)
+	assert.Nil(t, model.credentialOperation)
+	stillPending()
+
+	model.passwordInput.SetValue("expired storage pw 1")
+	pressKey(model, "enter")
+	require.NotNil(t, model.credentialPrompt)
+	unlockMasterViaUpdate(t, model, gatesMaster)
+
+	require.Equal(t, constants.CreateWalletBackupView, model.currentView)
+	require.NotNil(t, model.backupChallenge)
+	require.Equal(t, accountID, model.backupChallenge.AccountID)
+	fresh := model.backupChallenge
+	freshAnswers := make([]string, 0, len(fresh.RequiredWordIndices))
+	for _, index := range fresh.RequiredWordIndices {
+		freshAnswers = append(freshAnswers, fresh.Words[index])
+	}
+	model.backupConfirmationInput.SetValue(strings.Join(freshAnswers, " "))
+	driveCmds(model, pressKey(model, "enter"))
+
+	require.NotNil(t, model.selectedAccount)
+	assert.Equal(t, accountID, model.selectedAccount.AccountID)
+	assert.Equal(t, wallet.AccountStateActive, model.selectedAccount.State)
+	pending, err := model.credentialService.Pending(context.Background())
+	require.NoError(t, err)
+	assert.Empty(t, pending)
+
+	op, err := model.credentialService.Begin(context.Background(), []byte(gatesMaster))
+	require.NoError(t, err)
+	defer op.Close()
+	var stored []byte
+	require.NoError(t, op.WithAccountPassword(context.Background(), accountID, func(password []byte) error {
+		stored = append([]byte(nil), password...)
+		return nil
+	}))
+	assert.Equal(t, []byte("expired storage pw 1"), stored)
+}
+
+func TestKeePassUIBackupRefreshesAccountStatus(t *testing.T) {
+	model, _, _, _ := newCredentialUITestModel(t, false)
+	summary := createActiveAccount(t, model, "status-refresh", "refresh storage pw 1")
+	model.loadConfigFn = func() (*config.Config, error) { return model.currentConfig, nil }
+	model.saveConfigFn = func(cfg *config.Config) error {
+		model.currentConfig = cfg
+		model.balanceConfig = cfg
+		return nil
+	}
+
+	model.initKeePassSettings()
+	state := model.keepassSettings
+	require.NotNil(t, state)
+	pressKey(model, "enter")
+	state.pathInput.SetValue(filepath.Join(model.balanceConfig.AppDir, "status-refresh.kdbx"))
+	pressKey(model, "enter")
+	state.masterInput.SetValue("ui status master 9")
+	pressKey(model, "enter")
+	state.confirmInput.SetValue("ui status master 9")
+	pressKey(model, "enter")
+	state.consentInput.SetValue("ENABLE")
+	driveCmds(model, pressKey(model, "enter"))
+	require.True(t, model.credentialBackupEnabled())
+
+	model.initKeePassAccount(summary)
+	accountState := model.keepassAccount
+	require.NotNil(t, accountState)
+	pressKey(model, "enter")
+	require.Equal(t, keepassAccountStagePassword, accountState.stage)
+	accountState.password.SetValue("refresh storage pw 1")
+	driveCmds(model, pressKey(model, "enter"))
+	require.NotNil(t, model.credentialPrompt)
+	typeRunesViaUpdate(model, "ui status master 9")
+	driveCmds(model, pressKey(model, "enter"))
+	require.Nil(t, model.credentialPrompt)
+
+	require.Equal(t, keepassAccountStageMenu, accountState.stage, "successful backup must return to the menu")
+	assert.True(t, accountState.hasBackup, "refreshed status must expose the synced backup")
+	assert.Empty(t, accountState.password.Value())
+	assert.False(t, model.credentialUseKeePass)
+	synced := false
+	for _, row := range accountState.rows {
+		if row.ItemID == "account" && row.State == wallet.CredentialBackupStateSynced {
+			synced = true
+		}
+	}
+	assert.True(t, synced, "expected synced account row, got %+v", accountState.rows)
+
+	pressKey(model, "enter")
+	require.Equal(t, keepassAccountStagePassword, accountState.stage)
+	pressKey(model, "ctrl+k")
+	assert.True(t, model.credentialUseKeePass, "ctrl+k must toggle KeePass when a backup exists")
+	driveCmds(model, pressKey(model, "enter"))
+	require.NotNil(t, model.credentialPrompt, "second backup must request a fresh master prompt")
+	typeRunesViaUpdate(model, "ui status master 9")
+	driveCmds(model, pressKey(model, "enter"))
+	require.Nil(t, model.credentialPrompt)
+	assert.Empty(t, accountState.errText())
+	assert.Equal(t, keepassAccountStageMenu, accountState.stage)
+}
+
+func TestKeePassUIDurabilityWarningLocalized(t *testing.T) {
+	wrapped := &wallet.CredentialBackupPendingError{Cause: &keepass.CommittedWarning{Cause: errors.New("synthetic durability detail")}}
+	assert.Equal(t, "keepass_err_durability", keepassActionErrorKey(wrapped))
+	assert.Equal(t, "keepass_err_durability", keepassActionErrorKey(&keepass.CommittedWarning{Cause: errors.New("synthetic durability detail")}))
+	assert.Equal(t, "keepass_err_durability", keepassActionErrorKey(&keepass.CommittedWarning{Cause: context.Canceled}), "installed data with a cancelled durability probe is still committed")
+	assert.Equal(t, "keepass_err_durability", keepassActionErrorKey(&keepass.CommittedWarning{Cause: keepass.ErrConflict}), "installed data with a conflicted durability probe is still committed")
+
+	model, _, _, _ := newCredentialUITestModel(t, true)
+	summary := createActiveAccount(t, model, "durability", "durability storage pw")
+	model.initKeePassAccount(summary)
+	state := model.keepassAccount
+	require.NotNil(t, state)
+	previous := localization.GetCurrentLanguage()
+	t.Cleanup(func() { localization.SetCurrentLanguage(previous) })
+
+	for _, lang := range []string{"en", "pt", "es"} {
+		localization.SetCurrentLanguage(lang)
+		model.refreshLocalizedUI()
+		report := &wallet.CredentialBackupReport{BackupPaths: []string{filepath.Join(t.TempDir(), "vault.kdbx.bak")}}
+		_, _ = model.updateKeePassAccount(keepassStatusMsg{
+			accountID:  summary.AccountID,
+			report:     report,
+			err:        wrapped,
+			generation: state.generation,
+		})
+		rendered := state.errText()
+		assert.Contains(t, rendered, localization.Get("keepass_err_durability"), "durability warning must be localized in %s", lang)
+		assert.NotContains(t, rendered, "synthetic durability detail", "raw sentinel must not leak in %s", lang)
+		require.NotNil(t, state.report, "backup path metadata must be retained for %s", lang)
+		assert.NotEmpty(t, state.report.BackupPaths)
+		assert.Contains(t, model.viewKeePassAccount(), state.report.BackupPaths[0], "preserved backup path must be visible in %s", lang)
+		assert.False(t, state.hasBackup, "warning must not fabricate a synced backup in %s", lang)
+		assert.Empty(t, state.notice, "warning must not fabricate a success notice in %s", lang)
+	}
+	localization.SetCurrentLanguage("en")
+	model.refreshLocalizedUI()
 }
