@@ -3203,7 +3203,7 @@ other = "sincronizado"
 other = "Senha de armazenamento da carteira"
 
 [vault_export_committed]
-other = "Arquivo de exportação gravado em {{.Path}}, mas a sincronização do backup ainda está pendente."
+other = "Arquivo de exportação gravado em {{.Path}}."
 
 [vault_password_rotated]
 other = "Senha de armazenamento alterada."

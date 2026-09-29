@@ -508,6 +508,10 @@ func TestKeePassUIRotateAndExport(t *testing.T) {
 
 	assert.Equal(t, constants.WalletDetailsView, model.currentView)
 	assert.FileExists(t, destination)
+	committedNotice := localization.T("vault_export_committed", map[string]interface{}{"Path": safeInline(destination)})
+	assert.Equal(t, committedNotice, model.lastOperationNotice)
+	assert.NotContains(t, model.lastOperationNotice, localization.Get("keepass_backup_pending_notice"))
+	assert.NotContains(t, model.lastOperationNotice, localization.Get("recovery_status_export_warning"))
 	pending, err := model.credentialService.Pending(context.Background())
 	require.NoError(t, err)
 	assert.Empty(t, pending)
@@ -1579,4 +1583,79 @@ func TestKeePassUIDurabilityWarningLocalized(t *testing.T) {
 	}
 	localization.SetCurrentLanguage("en")
 	model.refreshLocalizedUI()
+}
+
+func TestKeePassUIExportOutcomeNotices(t *testing.T) {
+	secret := "synthetic-export-warning-detail"
+	exportPath := filepath.Join(t.TempDir(), "outcome.json")
+	previous := localization.GetCurrentLanguage()
+	t.Cleanup(func() { localization.SetCurrentLanguage(previous) })
+
+	for _, lang := range []string{"en", "pt", "es"} {
+		model, _, _, _ := newCredentialUITestModel(t, true)
+		localization.SetCurrentLanguage(lang)
+		require.Equal(t, lang, localization.GetCurrentLanguage())
+		model.refreshLocalizedUI()
+
+		committed := localization.T("vault_export_committed", map[string]interface{}{"Path": safeInline(exportPath)})
+		warning := localization.T("recovery_status_export_warning", map[string]interface{}{"Path": safeInline(exportPath)})
+		pendingNote := localization.Get("keepass_backup_pending_notice")
+
+		cases := []struct {
+			name    string
+			msg     vaultActionResultMsg
+			want    string
+			without []string
+		}{
+			{"success", vaultActionResultMsg{exportCommitted: true, exportPath: exportPath}, committed, []string{pendingNote, warning}},
+			{"warning", vaultActionResultMsg{exportCommitted: true, exportPath: exportPath, exportWarning: errors.New(secret)}, warning, []string{pendingNote, secret, committed}},
+			{"pending", vaultActionResultMsg{exportCommitted: true, exportPath: exportPath, pending: true}, committed + " — " + pendingNote, []string{warning}},
+			{"warning and pending", vaultActionResultMsg{exportCommitted: true, exportPath: exportPath, exportWarning: errors.New(secret), pending: true}, warning + " — " + pendingNote, []string{secret}},
+			{"committed post-commit error", vaultActionResultMsg{exportCommitted: true, exportPath: exportPath, err: errors.New(secret)}, warning, []string{secret}},
+			{"uncommitted error", vaultActionResultMsg{export: true, err: errors.New(secret)}, "", nil},
+		}
+		for _, tc := range cases {
+			model.initVaultAction(true)
+			operationID, _ := model.beginVaultBusy("vault")
+			tc.msg.operationID = operationID
+			tc.msg.exportPath = exportPath
+			model.lastOperationNotice = ""
+			_, _ = model.Update(tc.msg)
+			if tc.want == "" {
+				assert.Empty(t, model.lastOperationNotice, "%s/%s: uncommitted error must not produce a completion notice", lang, tc.name)
+				assert.NotEmpty(t, model.vaultActionError)
+				continue
+			}
+			assert.Equal(t, tc.want, model.lastOperationNotice, "%s/%s", lang, tc.name)
+			for _, banned := range tc.without {
+				assert.NotContains(t, model.lastOperationNotice, banned, "%s/%s", lang, tc.name)
+			}
+		}
+
+		model.currentView = constants.ListWalletsView
+		for _, tc := range cases {
+			stale := tc.msg
+			stale.operationID = model.uiOperationID + 900
+			stale.exportPath = exportPath
+			model.lastOperationNotice = ""
+			_, _ = model.Update(stale)
+			assert.Equal(t, constants.ListWalletsView, model.currentView, "%s/%s: stale result must not navigate", lang, tc.name)
+			if tc.want == "" {
+				assert.Empty(t, model.lastOperationNotice, "%s/%s: stale uncommitted error must not produce a notice", lang, tc.name)
+				continue
+			}
+			assert.Equal(t, tc.want, model.lastOperationNotice, "%s/%s stale", lang, tc.name)
+			for _, banned := range tc.without {
+				assert.NotContains(t, model.lastOperationNotice, banned, "%s/%s stale", lang, tc.name)
+			}
+		}
+	}
+	localization.SetCurrentLanguage("en")
+
+	secretMsg := vaultActionResultMsg{exportCommitted: true, exportPath: exportPath, exportWarning: errors.New(secret)}
+	assert.NotContains(t, fmt.Sprintf("%v", secretMsg), secret)
+	assert.NotContains(t, fmt.Sprintf("%#v", secretMsg), secret)
+	data, err := json.Marshal(secretMsg)
+	assert.Error(t, err)
+	assert.Nil(t, data)
 }

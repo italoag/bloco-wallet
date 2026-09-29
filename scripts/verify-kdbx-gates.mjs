@@ -165,7 +165,7 @@ try {
     } else if (gate === 'G20') {
       goTests('./pkg/config', ['TestKeePassConfigLoadConfigExpandsHome'], env);
       goTests('./internal/wallet', ['TestTestsNeverWriteOutsideSandbox', 'TestCredentialBackupFreshConfirmationRequiresQueuedAccount', 'TestCredentialBackupCommittedWarningsRemainRecoverable'], env, { race: true });
-      goTests('./internal/ui', ['TestKeePassUIExpiredCreationReauthenticates', 'TestKeePassUIBackupRefreshesAccountStatus', 'TestKeePassUIDurabilityWarningLocalized'], env, { race: true });
+      goTests('./internal/ui', ['TestKeePassUIExpiredCreationReauthenticates', 'TestKeePassUIBackupRefreshesAccountStatus', 'TestKeePassUIDurabilityWarningLocalized', 'TestKeePassUIExportOutcomeNotices'], env, { race: true });
     } else if (gate === 'G19') {
       command('go', ['vet', './internal/keepass', './internal/wallet', './internal/storage', './internal/ui', './pkg/config'], env);
       command('golangci-lint', ['run', '--timeout=5m'], env);

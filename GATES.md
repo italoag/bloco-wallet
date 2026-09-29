@@ -107,7 +107,7 @@ Publication history: the owner initially authorized publishing the feature branc
   EXPECT: KDBX_GATE_OK G18
   EVIDENCE: automatic-evidence=v1; definition-sha256=25c57074f9bc3dc5e20906623907bc2de1b7f93f24ce56c4886e209574f27a08; exit=0; EXPECT=matched; output-sha256=bf405138ca61d11ffe69615bf75ba68d908c1e8c7a43416a2eb694519aaa6a38; output-bytes=17; shell=/bin/sh; cwd=/Users/t798157/Projects/bloco/bloco-wallet; path=176f9420c573/76 entries
 
-- [ ] G20: Home expansion stays inside a temporary home, fresh confirmation cannot activate an unqueued account, successful backup refreshes status, and durability warnings preserve pending intent and committed metadata
+- [ ] G20: Home expansion is isolated, fresh confirmation requires queued credentials, backup status refreshes immediately, durability warnings preserve pending intents, and export notices distinguish committed files from warnings and pending synchronization
   CHECK: node scripts/verify-kdbx-gates.mjs G20
   EXPECT: KDBX_GATE_OK G20
   EVIDENCE: pending

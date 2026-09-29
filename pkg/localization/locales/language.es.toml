@@ -3203,7 +3203,7 @@ other = "sincronizado"
 other = "Contraseña de almacenamiento de la billetera"
 
 [vault_export_committed]
-other = "Archivo de exportación escrito en {{.Path}}, pero la sincronización de la copia de seguridad sigue pendiente."
+other = "Archivo de exportación escrito en {{.Path}}."
 
 [vault_password_rotated]
 other = "Contraseña de almacenamiento actualizada."

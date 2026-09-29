@@ -3202,7 +3202,7 @@ other = "synced"
 other = "Wallet storage password"
 
 [vault_export_committed]
-other = "Export file written to {{.Path}}, but the backup sync is still pending."
+other = "Export file written to {{.Path}}."
 
 [vault_password_rotated]
 other = "Storage password rotated."

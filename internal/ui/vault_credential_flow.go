@@ -48,6 +48,7 @@ type vaultActionResultMsg struct {
 	export          bool
 	exportCommitted bool
 	exportPath      string
+	exportWarning   error
 	err             error
 	pending         bool
 	op              *wallet.CredentialBackupOperation
@@ -186,6 +187,7 @@ func (m *CLIModel) startVaultAction(export bool) tea.Cmd {
 		defer clear(confirmPassword)
 		var exportCommitted bool
 		var exportPath string
+		var exportWarning error
 		core := func(resolved []byte) error {
 			if export {
 				handle, unlockErr := vault.Unlock(ctx, accountID, resolved)
@@ -212,10 +214,15 @@ func (m *CLIModel) startVaultAction(export bool) tea.Cmd {
 				if exportErr == nil || wallet.IsExportCommitted(exportErr) {
 					exportCommitted = true
 					exportPath = destination
+					exportWarning = exportErr
 					exportErr = nil
 				}
-				if lockErr := vault.Lock(handle); lockErr != nil && !exportCommitted {
-					exportErr = lockErr
+				if lockErr := vault.Lock(handle); lockErr != nil {
+					if exportCommitted {
+						exportWarning = errors.Join(exportWarning, lockErr)
+					} else {
+						exportErr = errors.Join(exportErr, lockErr)
+					}
 				}
 				return exportErr
 			}
@@ -230,12 +237,16 @@ func (m *CLIModel) startVaultAction(export bool) tea.Cmd {
 				err = nil
 			}
 		}
+		if exportCommitted && err != nil {
+			exportWarning = errors.Join(exportWarning, err)
+			err = nil
+		}
 		if err == nil && op != nil {
 			if _, syncErr := op.Sync(ctx); syncErr != nil {
 				pending = true
 			}
 		}
-		return vaultActionResultMsg{operationID: operationID, export: export, exportCommitted: exportCommitted, exportPath: exportPath, err: err, pending: pending, op: op}
+		return vaultActionResultMsg{operationID: operationID, export: export, exportCommitted: exportCommitted, exportPath: exportPath, exportWarning: exportWarning, err: err, pending: pending, op: op}
 	}
 }
 
@@ -349,28 +360,36 @@ func (m *CLIModel) handleBackupConfirmResult(msg backupConfirmResultMsg) (tea.Mo
 	return m, m.refreshWalletsTable()
 }
 
+func vaultActionNotice(msg vaultActionResultMsg) string {
+	var notice string
+	switch {
+	case msg.exportCommitted && (msg.exportWarning != nil || msg.err != nil):
+		notice = localization.T("recovery_status_export_warning", map[string]interface{}{"Path": safeInline(msg.exportPath)})
+	case msg.exportCommitted:
+		notice = localization.T("vault_export_committed", map[string]interface{}{"Path": safeInline(msg.exportPath)})
+	case msg.export:
+		notice = localization.Get("vault_export_done")
+	default:
+		notice = localization.Get("vault_password_rotated")
+	}
+	if msg.pending {
+		notice += " — " + localization.Get("keepass_backup_pending_notice")
+	}
+	return notice
+}
+
 func (m *CLIModel) handleVaultActionResult(msg vaultActionResultMsg) (tea.Model, tea.Cmd) {
 	if msg.operationID != m.uiOperationID || (m.vaultBusyOwner != "vault" && m.vaultBusyOwner != "") {
 		m.discardCredentialOperation(msg.op)
-		if msg.err == nil {
-			switch {
-			case msg.exportCommitted:
-				m.lastOperationNotice = localization.T("vault_export_committed", map[string]interface{}{"Path": safeInline(msg.exportPath)})
-			case msg.export:
-				m.lastOperationNotice = localization.Get("vault_export_done")
-			default:
-				m.lastOperationNotice = localization.Get("vault_password_rotated")
-			}
-			if msg.pending {
-				m.lastOperationNotice = m.lastOperationNotice + " — " + localization.Get("keepass_backup_pending_notice")
-			}
+		if msg.err == nil || msg.exportCommitted {
+			m.lastOperationNotice = vaultActionNotice(msg)
 			return m, m.refreshWalletsTable()
 		}
 		return m, nil
 	}
 	m.finishVaultBusy()
 	m.discardCredentialOperation(msg.op)
-	if msg.err != nil {
+	if msg.err != nil && !msg.exportCommitted {
 		m.vaultActionError = safeError(msg.err)
 		m.currentPasswordInput.SetValue("")
 		m.newPasswordInput.SetValue("")
@@ -384,17 +403,7 @@ func (m *CLIModel) handleVaultActionResult(msg vaultActionResultMsg) (tea.Model,
 		}
 		return m, nil
 	}
-	switch {
-	case msg.exportCommitted:
-		m.lastOperationNotice = localization.T("vault_export_committed", map[string]interface{}{"Path": safeInline(msg.exportPath)})
-	case msg.export:
-		m.lastOperationNotice = localization.Get("vault_export_done")
-	default:
-		m.lastOperationNotice = localization.Get("vault_password_rotated")
-	}
-	if msg.pending {
-		m.lastOperationNotice = m.lastOperationNotice + " — " + localization.Get("keepass_backup_pending_notice")
-	}
+	m.lastOperationNotice = vaultActionNotice(msg)
 	m.credentialUseKeePass = false
 	m.currentView = constants.WalletDetailsView
 	m.refreshWalletDetailsComponents()
