@@ -15,7 +15,7 @@ env:
 jobs:
   preflight:
     name: Test Candidate Image
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
     steps:
@@ -69,7 +69,7 @@ jobs:
   build:
     name: Build Docker Image
     needs: preflight
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
       packages: write
@@ -161,7 +161,7 @@ jobs:
 
   multi-arch-test:
     name: Multi-Architecture Test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs: build
     if: github.event_name != 'pull_request'
     strategy:
@@ -190,7 +190,7 @@ jobs:
 
   cleanup:
     name: Cleanup Old Images
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs: [build, multi-arch-test]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
