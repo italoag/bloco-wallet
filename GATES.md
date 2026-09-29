@@ -8,9 +8,9 @@ Execution: sequential checks from this repository root, with synthetic wallets a
 
 Evidence correction: the previous G10 evidence is invalidated. Formatting/vet followed by an unconditional success echo did not prove localization, sanitization, or UI behavior. Broad go-test filters could also pass while required tests were absent. The new runner requires each named test to run and pass, rejects skipped required cases, checks package/process outcomes, and emits a success marker only after all assertions complete.
 
-Known unresolved integration check: G16 currently includes the repository-wide network-boundary test which flags vendored testify request helpers. No exclusions or policy changes are authorized to make it pass. Keep this gate unmet until properly resolved; do not claim full completion on the strength of narrower tests.
+G16 network-boundary scope: the guard scans the root module's first-party Go sources and skips only an explicitly declared Git submodule when its own go.mod identifies a different module. Directory names such as vendor and third_party are not exemptions, and the gateway exception is restricted to internal/blockchain/rpc_gateway.go. Positive and negative classification fixtures are part of the guard test.
 
-Publication history: the owner initially authorized publishing the feature branch with G16 deferred. PR #55 now exists at commit 36d15f0. The owner subsequently required all failures and review findings to be addressed; the previous G16 deferral is withdrawn. G16 remains required and unmet, with the network and sandbox controls unchanged. Production release publication is not authorized by this verification request.
+Publication history: the owner initially authorized publishing the feature branch with G16 deferred. PR #55 exists at commit da88ce6. The owner subsequently required all failures and review findings to be addressed; the classification correction is now implemented locally and G16 is being reverified. Production release publication is not authorized by this verification request.
 
 - [x] G0: The acceptance runner rejects missing, skipped, failed, malformed, and interrupted test evidence while accepting a valid positive control
   CHECK: node scripts/verify-kdbx-gates.mjs G0
@@ -92,10 +92,10 @@ Publication history: the owner initially authorized publishing the feature branc
   EXPECT: KDBX_GATE_OK G15
   EVIDENCE: automatic-evidence=v1; definition-sha256=36f0671a2f5c58f365e9c0f5816d37de2c58690dffe41f4f15b1dd160dac53cc; exit=0; EXPECT=matched; output-sha256=20f9dbee8d5703b965186239d90494ce4c2c2c303fe3fccb4e96178157630f05; output-bytes=17; shell=/bin/sh; cwd=/Users/t798157/Projects/bloco/bloco-wallet; path=176f9420c573/76 entries
 
-- [ ] G16: The entire parent-repository short test suite passes with the network-boundary control unchanged
+- [x] G16: The entire parent-repository short test suite passes with the network-boundary control unchanged
   CHECK: node scripts/verify-kdbx-gates.mjs G16
   EXPECT: KDBX_GATE_OK G16
-  EVIDENCE: pending
+  EVIDENCE: automatic-evidence=v1; definition-sha256=b83b52aaa2c3632aba0c8800f48334e572dcd65369387a5f49689ac7127ce2e2; exit=0; EXPECT=matched; output-sha256=e7ab14d7a8ef30248cc61fe1f05bab38f2ed64aa3fd1b2cb489bc81ac59385ed; output-bytes=17; shell=/bin/sh; cwd=/Users/t798157/Projects/bloco/bloco-wallet; path=176f9420c573/76 entries
 
 - [x] G17: The published SSH branch, local submodule HEAD, configured SSH URL, and Go replacement all identify the reviewed patched dependency
   CHECK: node scripts/verify-kdbx-gates.mjs G17
@@ -107,10 +107,10 @@ Publication history: the owner initially authorized publishing the feature branc
   EXPECT: KDBX_GATE_OK G18
   EVIDENCE: automatic-evidence=v1; definition-sha256=25c57074f9bc3dc5e20906623907bc2de1b7f93f24ce56c4886e209574f27a08; exit=0; EXPECT=matched; output-sha256=bf405138ca61d11ffe69615bf75ba68d908c1e8c7a43416a2eb694519aaa6a38; output-bytes=17; shell=/bin/sh; cwd=/Users/t798157/Projects/bloco/bloco-wallet; path=176f9420c573/76 entries
 
-- [ ] G20: Home expansion is isolated, fresh confirmation requires queued credentials, backup status refreshes immediately, durability warnings preserve pending intents, and export notices distinguish committed files from warnings and pending synchronization
+- [x] G20: Home expansion is isolated, fresh confirmation requires queued credentials, backup status refreshes immediately, durability warnings preserve pending intents, and export notices distinguish committed files from warnings and pending synchronization
   CHECK: node scripts/verify-kdbx-gates.mjs G20
   EXPECT: KDBX_GATE_OK G20
-  EVIDENCE: pending
+  EVIDENCE: automatic-evidence=v1; definition-sha256=f950457e476e0f8060e3884aee470b4fc07644f3331c6c470039073a53d9a2ef; exit=0; EXPECT=matched; output-sha256=d1da7b27c6c7e19107d499ad7ed43bdc88575b9572d2a393854fceb3b66f0451; output-bytes=17; shell=/bin/sh; cwd=/Users/t798157/Projects/bloco/bloco-wallet; path=176f9420c573/76 entries
 
 - [ ] G21: Remote CI for the correction commit passes tests, native build matrix and release-equivalent production verification without disabled guards or publishing a release
   EVIDENCE: pending

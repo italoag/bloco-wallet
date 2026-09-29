@@ -198,33 +198,27 @@ The final interoperability test uses AES-256, Argon2d with 64 MiB / three iterat
 
 Fuzzing and passing fixtures provide regression evidence, not proof of complete coverage or absence of vulnerabilities.
 
-### Parent-repository blockers and unperformed checks
+### Parent-repository network-boundary validation
 
-The Bloco global suite is **not green**. The owner initially authorized publishing the KDBX integration for PR/CI review with G16 deferred, not passed. After reviewing PR #55 results, the owner required all failures to be addressed; that deferral is now withdrawn. G16 remains a mandatory unmet check, and the network-boundary control remains unchanged.
+The initial G16 failure was a scope-classification defect: the guard scanned the root tree and treated an explicitly vendored dependency inside the `third_party/gokeepasslib` Git submodule as first-party code. The flagged `testify` helper constructs a request in memory with `httptest.NewRecorder`; it does not send an outbound request.
 
-`TestRPCGatewayOwnsAllOutboundTransports` walks the repository tree and flags `http.NewRequest(` in `third_party/gokeepasslib/vendor/github.com/stretchr/testify/assert/http_assertions.go`. The helper constructs a request in memory, uses `httptest.NewRecorder`, and invokes the supplied handler directly; it does not send that request through an HTTP client. The lexical guard does not distinguish this helper from application transport code.
+The guard now reads the root module identity and `.gitmodules`, skips only a declared submodule whose own `go.mod` identifies a different module, and continues scanning all other Go files. This is not a directory-name exemption: first-party fixtures under `vendor` and `third_party` are deliberately detected. A same-named `rpc_gateway.go` outside `internal/blockchain/rpc_gateway.go` is also detected. The exact approved gateway path is the only exception.
 
-Reproduce with initialized submodules:
+Regression coverage in `internal/blockchain/network_boundary_test.go` proves:
+
+- forbidden transport calls in first-party files fail the scan;
+- `vendor` and undeclared `third_party` paths remain covered;
+- the declared external KeePass submodule is classified separately;
+- only the exact gateway path is exempt.
+
+The controls remain active and unchanged in intent: no skipped test, scanner suppression, blanket vendor exclusion, or `continue-on-error` workaround was introduced. The corrected local oracle passes:
 
 ```sh
-go test -short ./internal/blockchain -run '^TestRPCGatewayOwnsAllOutboundTransports$' -count=1 -v
+go test ./internal/blockchain -run '^Test(RPCGatewayOwnsAllOutboundTransports|NetworkBoundaryScannerClassifiesModuleOwnership)$' -count=1
 node scripts/verify-kdbx-gates.mjs G16
 ```
 
-The test and CI controls remain active and unchanged. No directory exclusion, scanner suppression, skipped test, or `continue-on-error` workaround was introduced. The current build matrix depends on the test job, so this failure may also cause build jobs to be skipped.
-
-Follow-up acceptance criteria:
-
-- Review and document the architecture control's first-party/dependency boundary.
-- Preserve forbidden-call detection in all first-party source, including platform/build-tag variants.
-- Do not exempt code solely because a directory is named `vendor` or `third_party`.
-- Add positive and negative regression fixtures for dependency classification and forbidden first-party calls.
-- Restrict the gateway exception to its approved path rather than any file named `rpc_gateway.go`.
-- Re-run the guard, full parent suite, and CI after the reviewed correction; update G16 evidence without treating deferral as success.
-
-Creating a GitHub tracking issue was attempted through both GraphQL and REST. The REST POST returned HTTP 403 with an HTML `Noncompliant action` / `Access Denied` response and `X-Direct-Response: true`; REST reads succeeded. The issue was not created, so this repository record is the current follow-up until issue creation is available.
-
-The earlier `TestPasswordPopupModel_View` mismatch (`Enter/Esc` versus `ENTER/ESC`) was a separate patch-only validation failure reproduced at Bloco commit `3e1a32b`. It has since been corrected during UI integration, and G11's complete UI suite passed. It is not the current G16 conflict. The parent-suite failure must not be reported as a full-suite pass; the passing local acceptance evidence is recorded in `GATES.md`.
+The new commit must still complete remote CI before release claims are made. The initial remote failure also included the now-corrected sandbox test; that issue was fixed by binding HOME/USERPROFILE to a temporary directory. The separate GitHub tracking issue attempt remains blocked by HTTP 403 on issue creation, so the PR and this document retain the record.
 
 At patch-only validation, no remote CI or clean remote submodule checkout had been run because the patched commit was still unpublished. Publication has since succeeded, as recorded below; publication alone does not establish a clean-checkout or CI result. No Docker image was built in that validation; its dependency-copy order and workflow syntax were reviewed. That validation did not exercise real hardware/wallet flows, native Windows/Linux execution, or wallet-facing KDBX integration.
 
@@ -234,17 +228,17 @@ The initial remote CI run also detected `TestTestsNeverWriteOutsideSandbox` reje
 
 Review corrections require queued credentials before account activation, route expired creation authentication through password re-entry and a fresh backup challenge, and refresh the account ledger status after successful backup. Installed-but-durability-unconfirmed writes retain pending intents and expose a distinct localized warning with backup paths. Retrying a deletion whose entry is already absent performs a durable rewrite before acknowledging the ledger; reading an absent entry alone is insufficient.
 
-The named G20 regressions passed, including race checks. The complete local `make test-production` run passed every other package but failed `TestRPCGatewayOwnsAllOutboundTransports`; it is not a green release gate. Cross-builds succeeded for Linux amd64/arm64, Darwin amd64/arm64, and Windows amd64. The Darwin arm64 binary executed `--version` and `release-smoke` successfully under an isolated application home. These results do not establish native execution on other platforms, a successful remote build matrix, or a published release.
+The named G20 regressions passed, including race checks. The prior local `make test-production` run at f955d1f passed every other package but failed the now-corrected network-boundary classification. The corrected G16 oracle passes locally; a fresh full production run and remote CI for the correction commit are still required before release claims. Cross-builds succeeded for Linux amd64/arm64, Darwin amd64/arm64, and Windows amd64. The Darwin arm64 binary executed `--version` and `release-smoke` successfully under an isolated application home. These results do not establish native execution on other platforms or a published release.
 
 `govulncheck` remains a GitHub Actions-only verification step in this project and will not be executed locally.
 
 ## Submodule and publication lifecycle
 
-The submodule path is `third_party/gokeepasslib`. The patch branch is `fix/bounded-kdbx-decoding`, based on upstream commit `4fa52e497f7956e7c874da8f2b7a06f049627ccf`. The investigated parser code matches the release; using the existing newer upstream base preserves its dependency updates and consistent vendor tree rather than downgrading dependencies. The original reproduction still identifies the release separately. The reviewed local patch commit is `257926a46375a14b21dde8a0b5f507fd0259ec5e`; the parent gitlink is staged at that exact commit, but the parent repository has not been committed.
+The submodule path is `third_party/gokeepasslib`. The patch branch is `fix/bounded-kdbx-decoding`, based on upstream commit `4fa52e497f7956e7c874da8f2b7a06f049627ccf`. The investigated parser code matches the release; using the existing newer upstream base preserves its dependency updates and consistent vendor tree rather than downgrading dependencies. The original reproduction still identifies the release separately. The reviewed local patch commit is `257926a46375a14b21dde8a0b5f507fd0259ec5e`; the parent gitlink is included in PR #55.
 
-The user created the fork `italoag/gokeepasslib` and authorized publication. HTTPS Git push returned HTTP 403, but the SSH push succeeded. Branch `fix/bounded-kdbx-decoding` now points to `257926a46375a14b21dde8a0b5f507fd0259ec5e`, independently confirmed with `git ls-remote git@github.com:italoag/gokeepasslib.git refs/heads/fix/bounded-kdbx-decoding`. `.gitmodules` uses that SSH URL. No PR has been opened and the parent Bloco repository has not been pushed.
+The user created the fork `italoag/gokeepasslib` and authorized publication. HTTPS Git push returned HTTP 403, but the SSH push succeeded. Branch `fix/bounded-kdbx-decoding` now points to `257926a46375a14b21dde8a0b5f507fd0259ec5e`, independently confirmed with `git ls-remote git@github.com:italoag/gokeepasslib.git refs/heads/fix/bounded-kdbx-decoding`. `.gitmodules` uses that SSH URL. The parent Bloco changes are published on PR #55; neither repository has been merged or released.
 
-A Git submodule stores a commit pointer, not an embedded copy of that commit in the parent repository. Until the patch commit is pushed to the referenced fork, another machine cannot fetch it from that URL. A successful local build must not be reported as a successful fresh remote checkout or CI run.
+A Git submodule stores a commit pointer, not an embedded copy of that commit in the parent repository. The patched dependency is reachable from the referenced fork, but a local build must not be reported as a successful remote CI run or native execution on every target platform.
 
 Once publication is explicitly requested:
 
