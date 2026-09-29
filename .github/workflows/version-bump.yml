@@ -8,6 +8,7 @@ on:
 permissions:
   contents: write
   pull-requests: read
+  actions: write
 
 jobs:
   bump:
@@ -63,3 +64,11 @@ jobs:
         run: |
           git tag "$NEW_TAG"
           git push origin "$NEW_TAG"
+
+      - name: Dispatch release workflow
+        # Tags pushed with GITHUB_TOKEN never trigger `on: push: tags`, so the
+        # Release workflow must be started explicitly via workflow_dispatch.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NEW_TAG: ${{ steps.next.outputs.version }}
+        run: gh workflow run release.yml --ref main -f tag="$NEW_TAG"
