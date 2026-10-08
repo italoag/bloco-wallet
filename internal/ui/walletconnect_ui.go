@@ -9,6 +9,7 @@ import (
 
 	"blocowallet/internal/constants"
 	"blocowallet/internal/walletconnect"
+	"blocowallet/pkg/localization"
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
@@ -51,13 +52,13 @@ type walletConnectKeyMap struct {
 
 func newWalletConnectKeyMap() walletConnectKeyMap {
 	return walletConnectKeyMap{
-		Up:      key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "previous")),
-		Down:    key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "next")),
-		Select:  key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "select")),
-		Revoke:  key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "revoke session")),
-		Approve: key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "approve proposal")),
-		Reject:  key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "reject proposal")),
-		Back:    key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
+		Up:      key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", localization.Get("wc_previous"))),
+		Down:    key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", localization.Get("wc_next"))),
+		Select:  key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", localization.Get("wc_select"))),
+		Revoke:  key.NewBinding(key.WithKeys("r"), key.WithHelp("r", localization.Get("wc_revoke"))),
+		Approve: key.NewBinding(key.WithKeys("a"), key.WithHelp("a", localization.Get("wc_approve"))),
+		Reject:  key.NewBinding(key.WithKeys("x"), key.WithHelp("x", localization.Get("wc_reject"))),
+		Back:    key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", localization.Get("hist_back"))),
 	}
 }
 
@@ -204,7 +205,7 @@ func (model *CLIModel) walletConnectHandleRequest(session *walletconnect.Session
 func (model *CLIModel) viewWalletConnect() string {
 	state := model.walletConnect
 	if state == nil {
-		return "WalletConnect is unavailable."
+		return localization.Get("wc_unavailable")
 	}
 	title := lipgloss.NewStyle().Bold(true).Render("WalletConnect v2")
 	var builder strings.Builder
@@ -216,58 +217,66 @@ func (model *CLIModel) viewWalletConnect() string {
 	switch state.phase {
 	case walletConnectList:
 		if len(state.sessions) == 0 {
-			builder.WriteString("No active sessions for this account.\n\nPair a dApp to begin.")
+			builder.WriteString(localization.Get("wc_no_sessions"))
 		} else {
-			builder.WriteString("Active sessions:\n")
+			builder.WriteString(localization.Get("wc_active_sessions") + "\n")
 			for index, session := range state.sessions {
 				marker := "  "
 				if index == state.selected {
 					marker = "> "
 				}
 				expires := time.UnixMilli(session.ExpiresAt).Format("2006-01-02 15:04")
-				_, _ = fmt.Fprintf(&builder, "%s%s — expires %s\n", marker, safeShort(session.PeerName), expires)
+				_, _ = builder.WriteString(marker + safeShort(session.PeerName) + localization.T("wc_session_expires", map[string]interface{}{"Time": expires}) + "\n")
 				chains := sessionChainSummary(session)
 				if chains != "" {
-					_, _ = fmt.Fprintf(&builder, "    chains: %s\n", safeShort(chains))
+					_, _ = builder.WriteString(localization.T("wc_chains_line", map[string]interface{}{"Chains": safeShort(chains)}) + "\n")
 				}
 			}
-			builder.WriteString("\nEnter: session • r: revoke • Esc: back")
+			builder.WriteString("\n" + localization.Get("wc_sessions_hint"))
 		}
 	case walletConnectSession:
 		session := state.sessions[state.selected]
-		_, _ = fmt.Fprintf(&builder, "Session: %s\nTopic: %s\nAccount: %s\nExpires: %s\n",
-			safeShort(session.PeerName), safeShort(session.Topic), safeShort(session.AccountID), time.UnixMilli(session.ExpiresAt).Format("2006-01-02 15:04"))
-		builder.WriteString("\nNamespaces:\n")
+		_, _ = builder.WriteString(localization.T("wc_session_lines", map[string]interface{}{
+			"Peer": safeShort(session.PeerName), "Topic": safeShort(session.Topic), "Account": safeShort(session.AccountID),
+			"Expires": time.UnixMilli(session.ExpiresAt).Format("2006-01-02 15:04"),
+		}) + "\n")
+		builder.WriteString("\n" + localization.Get("wc_namespaces_header") + "\n")
 		for namespace, scope := range session.Namespaces {
-			_, _ = fmt.Fprintf(&builder, "  %s: chains [%s] methods [%s] accounts [%s]\n",
-				safeShort(namespace), safeShort(strings.Join(scope.Chains, ",")), safeShort(strings.Join(scope.Methods, ",")), safeShort(strings.Join(scope.Accounts, ",")))
+			_, _ = builder.WriteString(localization.T("wc_namespace_line", map[string]interface{}{
+				"Ns": safeShort(namespace), "Chains": safeShort(strings.Join(scope.Chains, ",")),
+				"Methods": safeShort(strings.Join(scope.Methods, ",")), "Accounts": safeShort(strings.Join(scope.Accounts, ",")),
+			}) + "\n")
 		}
 		if state.revoke {
-			builder.WriteString("\nThis revokes the session immediately. Enter: confirm • Esc: back")
+			builder.WriteString("\n" + localization.Get("wc_revoke_confirm"))
 		}
 	case walletConnectProposal:
 		proposal := state.proposal
 		if proposal == nil {
-			builder.WriteString("No pending proposal.")
+			builder.WriteString(localization.Get("wc_no_proposal"))
 			break
 		}
-		_, _ = fmt.Fprintf(&builder, "Incoming session proposal from %s\nURL: %s\n",
-			safeShort(proposal.Proposer.Metadata.Name), safeShort(proposal.Proposer.Metadata.URL))
-		builder.WriteString("Required namespaces:\n")
+		_, _ = builder.WriteString(localization.T("wc_proposal_incoming", map[string]interface{}{
+			"Name": safeShort(proposal.Proposer.Metadata.Name), "URL": safeShort(proposal.Proposer.Metadata.URL),
+		}) + "\n")
+		builder.WriteString(localization.Get("wc_required_namespaces") + "\n")
 		for namespace, scope := range proposal.RequiredNamespaces {
-			_, _ = fmt.Fprintf(&builder, "  %s: chains [%s]\n    methods [%s]\n    events [%s]\n",
-				safeShort(namespace), safeShort(strings.Join(scope.Chains, ",")), safeShort(strings.Join(scope.Methods, ",")), safeShort(strings.Join(scope.Events, ",")))
+			_, _ = builder.WriteString(localization.T("wc_namespace_req", map[string]interface{}{
+				"Ns": safeShort(namespace), "Chains": safeShort(strings.Join(scope.Chains, ",")),
+				"Methods": safeShort(strings.Join(scope.Methods, ",")), "Events": safeShort(strings.Join(scope.Events, ",")),
+			}) + "\n")
 		}
-		_, _ = fmt.Fprintf(&builder, "Binding account: %s\n\na: approve • x: reject • Esc: back", safeShort(model.selectedAccount.Address))
+		_, _ = builder.WriteString(localization.T("wc_binding_account", map[string]interface{}{"Account": safeShort(model.selectedAccount.Address)}))
 	case walletConnectRequest:
 		params := state.request
 		if params == nil {
-			builder.WriteString("No pending request.")
+			builder.WriteString(localization.Get("wc_no_request"))
 			break
 		}
-		_, _ = fmt.Fprintf(&builder, "Request from %s\nChain: %s\nMethod: %s\n",
-			safeShort(state.requestSession.PeerName), safeShort(params.ChainID), safeShort(params.Request.Method))
-		builder.WriteString("\nComplete the approval in the wallet's normal signing flow.")
+		_, _ = builder.WriteString(localization.T("wc_request_lines", map[string]interface{}{
+			"Peer": safeShort(state.requestSession.PeerName), "Chain": safeShort(params.ChainID), "Method": safeShort(params.Request.Method),
+		}) + "\n")
+		builder.WriteString("\n" + localization.Get("wc_request_approve"))
 	}
 	return builder.String()
 }

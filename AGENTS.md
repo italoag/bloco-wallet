@@ -29,6 +29,8 @@ go test ./... -v -tags=production         # direct Go
 - Packages: lower-case short names; files use `snake_case.go`.
 - Exported identifiers: `CamelCase`; unexported: `camelCase`. Errors use `error` values, wrap with context.
 - Module imports: start with `blocowallet/...`.
+- Author all user-facing translations in `pkg/localization/locales/language.<code>.toml`; use `localization.Get`/`T`/`TP` in Go and stable IDs for routing. Do not generate or load runtime copies of the official catalogs.
+- Keep wallet-flow navigation and action shortcuts in the shared, context-aware bottom status bar. Do not duplicate shortcut hints inside content panels or above/below tables; displayed shortcuts must match the active input handlers.
 
 ## Testing Guidelines
 - Framework: standard `testing` package; tests co-located as `*_test.go`.

@@ -10,6 +10,7 @@ ARG GOSUMDB=sum.golang.org
 
 WORKDIR /src
 COPY go.mod go.sum ./
+COPY third_party/gokeepasslib/go.mod third_party/gokeepasslib/go.sum ./third_party/gokeepasslib/
 RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \

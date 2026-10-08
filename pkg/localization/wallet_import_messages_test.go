@@ -3,10 +3,6 @@ package localization
 import "testing"
 
 func TestAddWalletImportMessages(t *testing.T) {
-	if Labels == nil {
-		Labels = make(map[string]string)
-	}
-
 	testCases := []struct {
 		name     string
 		lang     string
@@ -22,22 +18,16 @@ func TestAddWalletImportMessages(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			SetCurrentLanguage(tc.lang)
-			for k := range Labels {
-				delete(Labels, k)
-			}
-			AddWalletImportMessages()
-			if Labels[tc.key] != tc.expected {
-				t.Fatalf("expected %q, got %q for key %q in lang %q", tc.expected, Labels[tc.key], tc.key, tc.lang)
+			useLang(t, tc.lang)
+			if Get(tc.key) != tc.expected {
+				t.Fatalf("expected %q, got %q for key %q in lang %q", tc.expected, Get(tc.key), tc.key, tc.lang)
 			}
 		})
 	}
 }
 
 func TestFormatDuplicateImportError(t *testing.T) {
-	SetCurrentLanguage("en")
-	Labels = make(map[string]string)
-	AddWalletImportMessages()
+	useLang(t, "en")
 
 	msg := FormatDuplicateImportError("mnemonic", "mnemonic", "0xABC")
 	if msg == "" {
@@ -55,9 +45,7 @@ func TestFormatDuplicateImportError(t *testing.T) {
 }
 
 func TestGetNoMnemonicAvailableMessage(t *testing.T) {
-	SetCurrentLanguage("pt")
-	Labels = make(map[string]string)
-	AddWalletImportMessages()
+	useLang(t, "pt")
 
 	msg := GetNoMnemonicAvailableMessage("private_key")
 	if msg != "Mnemônica não disponível (importada via chave privada)" {

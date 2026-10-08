@@ -10,7 +10,7 @@ import (
 	"gorm.io/gorm"
 )
 
-const latestSchemaVersion uint = 15
+const latestSchemaVersion uint = 16
 
 type schemaMigration struct {
 	Version   uint      `gorm:"primaryKey"`
@@ -96,6 +96,9 @@ func runMigrations(database *gorm.DB, includeLegacy bool) error {
 			{version: 13, apply: migrateFIDO2Credentials},
 			{version: 14, apply: migrateWalletConnectSessions},
 			{version: 15, apply: migrateSafeProposals},
+			{version: 16, apply: func(tx *gorm.DB) error {
+				return tx.AutoMigrate(&wallet.CredentialBackupState{})
+			}},
 		}
 		for _, migration := range migrations {
 			if _, exists := applied[migration.version]; exists {

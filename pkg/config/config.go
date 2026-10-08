@@ -26,9 +26,17 @@ type Config struct {
 	Database      DatabaseConfig
 	Security      SecurityConfig
 	NetworkPolicy NetworkPolicyConfig
+	KeePass       KeePassConfig
 	Networks      map[string]Network
 	revision      [32]byte
 	hasRevision   bool
+}
+
+type KeePassConfig struct {
+	Enabled  bool
+	Path     string
+	TargetID string
+	VaultID  string
 }
 
 // DatabaseConfig holds database-specific configuration
@@ -149,7 +157,13 @@ func LoadConfig(appDir string) (*Config, error) {
 			TransactionAuthorizationMode: v.GetString("security.transaction_authorization_mode"),
 		},
 		NetworkPolicy: NetworkPolicyConfig{AllowedLocalTargets: v.GetStringSlice("network_policy.allowed_local_targets")},
-		Networks:      make(map[string]Network),
+		KeePass: KeePassConfig{
+			Enabled:  v.GetBool("keepass.enabled"),
+			Path:     v.GetString("keepass.path"),
+			TargetID: v.GetString("keepass.target_id"),
+			VaultID:  v.GetString("keepass.vault_id"),
+		},
+		Networks: make(map[string]Network),
 	}
 
 	// Load networks from config
@@ -204,6 +218,9 @@ func LoadConfig(appDir string) (*Config, error) {
 		cfg.LocaleDir = filepath.Join(cfg.AppDir, "locale")
 	} else {
 		cfg.LocaleDir = expandPath(rawLocaleDir, homeDir)
+	}
+	if rawKeePassPath := strings.TrimSpace(cfg.KeePass.Path); rawKeePassPath != "" {
+		cfg.KeePass.Path = expandPath(rawKeePassPath, homeDir)
 	}
 
 	// Backward-compatibility for legacy env variables with BLOCO_WALLET_ prefix.

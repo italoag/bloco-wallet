@@ -6,12 +6,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"path/filepath"
 )
 
 type EncryptedAccountImportRequest struct {
 	Name                   string
 	ExportJSON             []byte
 	ExportPassword         []byte
+	SourcePath             string
 	StoragePassword        []byte
 	ConfirmStoragePassword []byte
 }
@@ -47,7 +49,17 @@ func (vault *WalletVault) ImportEncryptedAccount(ctx context.Context, request En
 		return AccountSummary{}, err
 	}
 	defer clear(secret.PrivateKey)
-	return vault.importCanonicalSecret(ctx, request.Name, secret, request.StoragePassword, request.ConfirmStoragePassword)
+	artifact := credentialArtifact{
+		Kind:       credentialKindEncryptedFile,
+		Name:       "imported-backup.json",
+		Ciphertext: request.ExportJSON,
+		Password:   request.ExportPassword,
+	}
+	if request.SourcePath != "" {
+		artifact.Path = request.SourcePath
+		artifact.Name = filepath.Base(request.SourcePath)
+	}
+	return vault.importCanonicalSecret(ctx, request.Name, secret, request.StoragePassword, request.ConfirmStoragePassword, artifact)
 }
 
 func (vault *WalletVault) openEncryptedAccountExport(ctx context.Context, data, exportPassword []byte) (EncryptedAccountExportV1, canonicalSecretV1, error) {

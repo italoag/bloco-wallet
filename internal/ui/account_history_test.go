@@ -54,9 +54,9 @@ func (reader *fakeHistoryReader) Analytics(context.Context, evm.AnalyticsQuery) 
 }
 
 func TestAccountHistoryLoadsPaginatesAndKeepsViewPure(t *testing.T) {
-	previousLabels := localization.Labels
-	localization.Labels = map[string]string{"wallet_details_title": "Wallet Details", "select_wallet_prompt": "Select wallet", "version": "0.2.0", "main_menu_title": "Main Menu"}
-	t.Cleanup(func() { localization.Labels = previousLabels })
+	previousLanguage := localization.GetCurrentLanguage()
+	localization.SetCurrentLanguage("en")
+	t.Cleanup(func() { localization.SetCurrentLanguage(previousLanguage) })
 	reader := &fakeHistoryReader{}
 	model := &CLIModel{
 		width: 120, height: 30, styles: createStyles(),
@@ -104,9 +104,9 @@ func TestAccountHistoryLoadsPaginatesAndKeepsViewPure(t *testing.T) {
 }
 
 func TestAccountHistoryIgnoresStaleResultAfterBack(t *testing.T) {
-	previousLabels := localization.Labels
-	localization.Labels = map[string]string{"wallet_details_title": "Wallet Details", "select_wallet_prompt": "Select wallet"}
-	t.Cleanup(func() { localization.Labels = previousLabels })
+	previousLanguage := localization.GetCurrentLanguage()
+	localization.SetCurrentLanguage("en")
+	t.Cleanup(func() { localization.SetCurrentLanguage(previousLanguage) })
 	reader := &fakeHistoryReader{}
 	model := &CLIModel{width: 120, height: 30, styles: createStyles(), historyReader: reader, currentView: constants.WalletDetailsView, selectedAccount: &wallet.AccountSummary{
 		AccountID: "11111111-1111-4111-8111-111111111111", Address: "0x1111111111111111111111111111111111111111", State: wallet.AccountStateActive,

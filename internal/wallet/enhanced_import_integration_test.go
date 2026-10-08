@@ -13,9 +13,9 @@ import (
 
 func TestEnhancedImportIntegration(t *testing.T) {
 	// Initialize localization system
-	localization.Labels = make(map[string]string)
+	previousLanguage := localization.GetCurrentLanguage()
 	localization.SetCurrentLanguage("en")
-	localization.AddEnhancedImportMessages()
+	t.Cleanup(func() { localization.SetCurrentLanguage(previousLanguage) })
 
 	// Create temporary directory for test files
 	tempDir, err := os.MkdirTemp("", "enhanced_import_test")
@@ -208,9 +208,9 @@ func TestEnhancedImportIntegration(t *testing.T) {
 
 func TestPasswordFileManagerWithEnhancedErrors(t *testing.T) {
 	// Initialize localization system
-	localization.Labels = make(map[string]string)
+	previousLanguage := localization.GetCurrentLanguage()
 	localization.SetCurrentLanguage("en")
-	localization.AddEnhancedImportMessages()
+	t.Cleanup(func() { localization.SetCurrentLanguage(previousLanguage) })
 
 	// Create temporary directory for test files
 	tempDir, err := os.MkdirTemp("", "password_file_test")
@@ -317,9 +317,9 @@ func TestPasswordFileManagerWithEnhancedErrors(t *testing.T) {
 
 func TestBatchImportServiceWithErrorAggregation(t *testing.T) {
 	// Initialize localization system
-	localization.Labels = make(map[string]string)
+	previousLanguage := localization.GetCurrentLanguage()
 	localization.SetCurrentLanguage("en")
-	localization.AddEnhancedImportMessages()
+	t.Cleanup(func() { localization.SetCurrentLanguage(previousLanguage) })
 
 	// Create temporary directory for test files
 	tempDir, err := os.MkdirTemp("", "batch_import_test")
@@ -432,9 +432,9 @@ func TestLocalizationIntegration(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.language+"_"+tc.key, func(t *testing.T) {
 			// Initialize localization for specific language
-			localization.Labels = make(map[string]string)
+			previousLanguage := localization.GetCurrentLanguage()
 			localization.SetCurrentLanguage(tc.language)
-			localization.AddEnhancedImportMessages()
+			t.Cleanup(func() { localization.SetCurrentLanguage(previousLanguage) })
 
 			// Test message retrieval
 			message := localization.GetEnhancedImportErrorMessage(tc.key)
@@ -445,9 +445,9 @@ func TestLocalizationIntegration(t *testing.T) {
 
 func TestErrorRecoveryWorkflow(t *testing.T) {
 	// Initialize localization system
-	localization.Labels = make(map[string]string)
+	previousLanguage := localization.GetCurrentLanguage()
 	localization.SetCurrentLanguage("en")
-	localization.AddEnhancedImportMessages()
+	t.Cleanup(func() { localization.SetCurrentLanguage(previousLanguage) })
 
 	// Test complete error recovery workflow
 	aggregator := NewErrorAggregator(3)

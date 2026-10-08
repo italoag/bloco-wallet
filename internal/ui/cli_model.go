@@ -3,6 +3,7 @@ package ui
 import (
 	"blocowallet/internal/blockchain"
 	"blocowallet/internal/evm"
+	"blocowallet/internal/keepass"
 	"blocowallet/internal/wallet"
 	"blocowallet/pkg/config"
 	"context"
@@ -25,6 +26,7 @@ type CLIModel struct {
 	selectedMenu                    int
 	wallets                         []wallet.Wallet
 	accounts                        []wallet.AccountSummary
+	accountTableIDs                 []string
 	walletCount                     int
 	selectedWallet                  *wallet.Wallet
 	selectedAccount                 *wallet.AccountSummary
@@ -63,7 +65,6 @@ type CLIModel struct {
 	nativeTransfer                  *nativeTransferState
 	nativeTransferGeneration        uint64
 	transactionNotice               string
-	deletingWallet                  *wallet.Wallet
 	err                             error
 	nameInput                       textinput.Model
 	createWordCountInput            textinput.Model
@@ -98,6 +99,10 @@ type CLIModel struct {
 	lastOperationNotice             string
 	canonicalImport                 *canonicalImportState
 	canonicalOperationID            uint64
+	accountDeletion                 *accountDeletionState
+	accountDeletionID               uint64
+	recovery                        *recoveryState
+	recoveryOperationID             uint64
 	walletTable                     table.Model
 	width                           int
 	height                          int
@@ -108,15 +113,36 @@ type CLIModel struct {
 	walletDetailsKeys               WalletDetailsKeyMap
 	styles                          Styles
 	// fontsList         []string         // Lista de nomes de fontes carregadas do arquivo externo - currently unused
-	selectedFont      *tdf.TheDrawFont // Fonte selecionada aleatoriamente
-	fontInfo          *tdf.FontInfo    // Informação da fonte selecionada
-	dialogButtonIndex int              // 0 = Confirmar, 1 = Cancelar
-	currentConfig     *config.Config   // Configuração atual da aplicação
+	selectedFont  *tdf.TheDrawFont // Fonte selecionada aleatoriamente
+	fontInfo      *tdf.FontInfo    // Informação da fonte selecionada
+	currentConfig *config.Config   // Configuração atual da aplicação
 
 	// Network components
 	networkListComponent NetworkListComponent // Componente de lista de redes
 	addNetworkComponent  AddNetworkComponent  // Componente de adição de rede
 	editingNetworkKey    string               // Chave da rede sendo editada
+
+	// localeLanguage tracks the localization language the rendered model was
+	// built with; Update refreshes visible labels when it drifts.
+	localeLanguage string
+
+	credentialService    *wallet.CredentialBackupService
+	credentialStore      *keepass.Store
+	credentialOperation  *wallet.CredentialBackupOperation
+	credentialCancel     context.CancelFunc
+	credentialPrompt     *credentialPromptState
+	credentialGeneration uint64
+	credentialUseKeePass bool
+	keepassSettings      *keepassSettingsState
+	keepassAccount       *keepassAccountState
+	uiOperationID        uint64
+	vaultBusy            bool
+	vaultBusyCancelling  bool
+	vaultQuitAfterResult bool
+	vaultCancel          context.CancelFunc
+	vaultBusyOwner       string
+	loadConfigFn         func() (*config.Config, error)
+	saveConfigFn         func(*config.Config) error
 }
 
 // SetCurrentView sets the current view

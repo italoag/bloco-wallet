@@ -2,9 +2,11 @@ package ui
 
 import (
 	"context"
+	"errors"
 
 	"blocowallet/internal/blockchain"
 	"blocowallet/pkg/config"
+	"blocowallet/pkg/localization"
 	"fmt"
 )
 
@@ -59,7 +61,7 @@ func (nm *NetworkManager) AddNetworkWithClassificationContext(ctx context.Contex
 	// Load current configuration
 	cfg, err := nm.configManager.LoadConfiguration()
 	if err != nil {
-		return nil, fmt.Errorf("failed to load configuration: %w", err)
+		return nil, localization.WrapError("net_err_load_config", err)
 	}
 
 	// Initialize Networks map if it's nil
@@ -69,12 +71,12 @@ func (nm *NetworkManager) AddNetworkWithClassificationContext(ctx context.Contex
 
 	resolvedEndpoint, err := network.ResolveRPCEndpoint(config.EnvironmentCredentialProvider{})
 	if err != nil {
-		return nil, fmt.Errorf("failed to resolve RPC endpoint: %w", err)
+		return nil, localization.WrapError("net_err_resolve_rpc", err)
 	}
 	// Classify the network
 	classification, err := nm.classificationService.ClassifyNetworkContext(ctx, int(network.ChainID), network.Name, resolvedEndpoint)
 	if err != nil {
-		return nil, fmt.Errorf("failed to classify network: %w", err)
+		return nil, localization.WrapError("net_err_classify", err)
 	}
 
 	// If the network is standard and we have chain info, enhance the network data
@@ -101,7 +103,7 @@ func (nm *NetworkManager) AddNetworkWithClassificationContext(ctx context.Contex
 
 	// Check if network already exists
 	if _, exists := cfg.Networks[classification.Key]; exists {
-		return nil, fmt.Errorf("network with key '%s' already exists", classification.Key)
+		return nil, errors.New(localization.T("net_err_already_exists", map[string]interface{}{"Key": classification.Key}))
 	}
 
 	if err := ctx.Err(); err != nil {
@@ -112,7 +114,7 @@ func (nm *NetworkManager) AddNetworkWithClassificationContext(ctx context.Contex
 
 	// Save the configuration
 	if err := saveNetworkConfiguration(nm.configManager, cfg); err != nil {
-		return nil, fmt.Errorf("failed to save configuration: %w", err)
+		return nil, localization.WrapError("net_err_save_config", err)
 	}
 
 	return classification, nil
@@ -130,7 +132,7 @@ func (nm *NetworkManager) UpdateNetworkContext(ctx context.Context, key string, 
 	// Load current configuration
 	cfg, err := nm.configManager.LoadConfiguration()
 	if err != nil {
-		return fmt.Errorf("failed to load configuration: %w", err)
+		return localization.WrapError("net_err_load_config", err)
 	}
 
 	// Initialize Networks map if it's nil
@@ -140,17 +142,17 @@ func (nm *NetworkManager) UpdateNetworkContext(ctx context.Context, key string, 
 
 	// Check if network exists
 	if _, exists := cfg.Networks[key]; !exists {
-		return fmt.Errorf("network with key '%s' not found", key)
+		return errors.New(localization.T("net_err_key_not_found", map[string]interface{}{"Key": key}))
 	}
 
 	resolvedEndpoint, err := network.ResolveRPCEndpoint(config.EnvironmentCredentialProvider{})
 	if err != nil {
-		return fmt.Errorf("failed to resolve RPC endpoint: %w", err)
+		return localization.WrapError("net_err_resolve_rpc", err)
 	}
 	// Classify the updated network to determine if the key should change
 	classification, err := nm.classificationService.ClassifyNetworkContext(ctx, int(network.ChainID), network.Name, resolvedEndpoint)
 	if err != nil {
-		return fmt.Errorf("failed to classify updated network: %w", err)
+		return localization.WrapError("net_err_classify_updated", err)
 	}
 
 	network.RegistryListed = classification.Type == blockchain.NetworkTypeStandard
@@ -180,7 +182,7 @@ func (nm *NetworkManager) UpdateNetworkContext(ctx context.Context, key string, 
 
 		// Check if the new key already exists
 		if _, exists := cfg.Networks[classification.Key]; exists {
-			return fmt.Errorf("cannot update network: a network with key '%s' already exists", classification.Key)
+			return errors.New(localization.T("net_err_update_exists", map[string]interface{}{"Key": classification.Key}))
 		}
 
 		// Add with the new key
@@ -192,7 +194,7 @@ func (nm *NetworkManager) UpdateNetworkContext(ctx context.Context, key string, 
 
 	// Save the configuration
 	if err := saveNetworkConfiguration(nm.configManager, cfg); err != nil {
-		return fmt.Errorf("failed to save configuration: %w", err)
+		return localization.WrapError("net_err_save_config", err)
 	}
 
 	return nil
@@ -203,7 +205,7 @@ func (nm *NetworkManager) RemoveNetwork(key string) error {
 	// Load current configuration
 	cfg, err := nm.configManager.LoadConfiguration()
 	if err != nil {
-		return fmt.Errorf("failed to load configuration: %w", err)
+		return localization.WrapError("net_err_load_config", err)
 	}
 
 	// Initialize Networks map if it's nil
@@ -213,7 +215,7 @@ func (nm *NetworkManager) RemoveNetwork(key string) error {
 
 	// Check if network exists
 	if _, exists := cfg.Networks[key]; !exists {
-		return fmt.Errorf("network with key '%s' not found", key)
+		return errors.New(localization.T("net_err_key_not_found", map[string]interface{}{"Key": key}))
 	}
 
 	// Remove the network
@@ -221,7 +223,7 @@ func (nm *NetworkManager) RemoveNetwork(key string) error {
 
 	// Save the configuration
 	if err := saveNetworkConfiguration(nm.configManager, cfg); err != nil {
-		return fmt.Errorf("failed to save configuration: %w", err)
+		return localization.WrapError("net_err_save_config", err)
 	}
 
 	return nil
@@ -232,7 +234,7 @@ func (nm *NetworkManager) LoadNetworks() (map[string]config.Network, error) {
 	// Load configuration using ConfigurationManager
 	cfg, err := nm.configManager.LoadConfiguration()
 	if err != nil {
-		return nil, fmt.Errorf("failed to load configuration: %w", err)
+		return nil, localization.WrapError("net_err_load_config", err)
 	}
 
 	// Initialize Networks map if it's nil
@@ -247,12 +249,12 @@ func (nm *NetworkManager) LoadNetworks() (map[string]config.Network, error) {
 func (nm *NetworkManager) GetNetwork(key string) (*config.Network, error) {
 	networks, err := nm.LoadNetworks()
 	if err != nil {
-		return nil, fmt.Errorf("failed to load networks: %w", err)
+		return nil, localization.WrapError("net_err_load_networks", err)
 	}
 
 	network, exists := networks[key]
 	if !exists {
-		return nil, fmt.Errorf("network with key '%s' not found", key)
+		return nil, errors.New(localization.T("net_err_key_not_found", map[string]interface{}{"Key": key}))
 	}
 
 	return &network, nil
@@ -262,7 +264,7 @@ func (nm *NetworkManager) GetNetwork(key string) (*config.Network, error) {
 func (nm *NetworkManager) ListNetworks() (map[string]NetworkInfo, error) {
 	networks, err := nm.LoadNetworks()
 	if err != nil {
-		return nil, fmt.Errorf("failed to load networks: %w", err)
+		return nil, localization.WrapError("net_err_load_networks", err)
 	}
 
 	result := make(map[string]NetworkInfo)
@@ -274,20 +276,17 @@ func (nm *NetworkManager) ListNetworks() (map[string]NetworkInfo, error) {
 			nType = blockchain.NetworkTypeStandard
 			source = "stored_registry_claim"
 		}
-		tracking := "unknown/not checked now"
-		if network.Tracking != "" {
-			tracking = "previously observed " + network.Tracking
-		}
 		result[key] = NetworkInfo{
 			Network:             network,
 			Type:                nType,
 			IsValidated:         false,
 			PreviouslyValidated: network.IdentityValidated,
-			CurrentHealth:       "not checked",
-			PrivacyTracking:     tracking,
-			QuorumConfidence:    "none (single provider)",
-			Source:              source,
-			ChainInfo:           nil,
+			// Presentation-independent codes/raw values; resolved at render.
+			CurrentHealth:    "unchecked",
+			PrivacyTracking:  network.Tracking,
+			QuorumConfidence: "single_provider",
+			Source:           source,
+			ChainInfo:        nil,
 		}
 	}
 
@@ -312,7 +311,7 @@ func (nm *NetworkManager) MigrateExistingNetworks() error {
 	// Load current configuration
 	cfg, err := nm.configManager.LoadConfiguration()
 	if err != nil {
-		return fmt.Errorf("failed to load configuration: %w", err)
+		return localization.WrapError("net_err_load_config", err)
 	}
 
 	// Initialize Networks map if it's nil
@@ -351,7 +350,7 @@ func (nm *NetworkManager) MigrateExistingNetworks() error {
 	if migrationNeeded {
 		cfg.Networks = newNetworks
 		if err := saveNetworkConfiguration(nm.configManager, cfg); err != nil {
-			return fmt.Errorf("failed to save migrated configuration: %w", err)
+			return localization.WrapError("net_err_save_migrated", err)
 		}
 	}
 

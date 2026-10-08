@@ -1,10 +1,10 @@
 package ui
 
 import (
-	"fmt"
 	"strings"
 
 	"blocowallet/internal/constants"
+	"blocowallet/pkg/localization"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -35,7 +35,7 @@ type PasswordPopupResult struct {
 // NewPasswordPopupModel creates a new password popup model
 func NewPasswordPopupModel(keystoreFile string, maxRetries int) PasswordPopupModel {
 	ti := textinput.New()
-	ti.Placeholder = "Enter keystore password..."
+	ti.Placeholder = localization.Get("popup_keystore_password_placeholder")
 	ti.Focus()
 	ti.CharLimit = constants.PasswordCharLimit
 	ti.Width = 40
@@ -94,12 +94,12 @@ func (m PasswordPopupModel) View() string {
 	title := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("205")).
-		Render("Password Required")
+		Render(localization.Get("popup_title"))
 
 	// Keystore filename
 	filename := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("241")).
-		Render(fmt.Sprintf("File: %s", safeShort(m.keystoreFile)))
+		Render(localization.T("popup_file_label", map[string]interface{}{"File": safeShort(m.keystoreFile)}))
 
 	// Retry counter if there have been attempts
 	retryInfo := ""
@@ -108,11 +108,11 @@ func (m PasswordPopupModel) View() string {
 		if remaining > 0 {
 			retryInfo = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("214")).
-				Render(fmt.Sprintf("Attempts remaining: %d", remaining))
+				Render(localization.T("popup_attempts_remaining", map[string]interface{}{"Count": remaining}))
 		} else {
 			retryInfo = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("196")).
-				Render("Maximum attempts reached")
+				Render(localization.Get("popup_max_attempts"))
 		}
 	}
 
@@ -121,13 +121,13 @@ func (m PasswordPopupModel) View() string {
 	if m.errorMessage != "" {
 		errorMsg = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("196")).
-			Render(fmt.Sprintf("Error: %s", safeInline(m.errorMessage)))
+			Render(localization.T("popup_error_label", map[string]interface{}{"Error": safeInline(m.errorMessage)}))
 	}
 
 	// Instructions
 	instructions := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("244")).
-		Render("Enter: Confirm • Esc: Cancel • Ctrl+S: Skip file")
+		Render(localization.Get("popup_instructions"))
 
 	// Build the content
 	content := []string{title, "", filename}

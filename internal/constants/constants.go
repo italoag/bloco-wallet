@@ -30,7 +30,10 @@ const (
 	LanguageSelectionView     = "language_selection"
 	NetworkListView           = "network_list"
 	AddNetworkView            = "add_network"
+	RecoveryView              = "recovery"
 	SafeView                  = "safe"
+	KeePassSettingsView       = "keepass_settings"
+	KeePassAccountView        = "keepass_account"
 	StyleWidth                = 46
 	StyleMargin               = 1
 	SplashDuration            = 2 * time.Second

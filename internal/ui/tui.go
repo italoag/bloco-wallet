@@ -32,17 +32,17 @@ func determineWalletType(w wallet.Wallet) string {
 	// Use ImportMethod as primary source of truth
 	switch wallet.ImportMethod(w.ImportMethod) {
 	case wallet.ImportMethodMnemonic:
-		return localization.Labels["imported_mnemonic"]
+		return localization.Get("imported_mnemonic")
 	case wallet.ImportMethodPrivateKey:
-		return localization.Labels["imported_private_key"]
+		return localization.Get("imported_private_key")
 	case wallet.ImportMethodKeystore:
-		return localization.Labels["imported_keystore"]
+		return localization.Get("imported_keystore")
 	default:
 		// Fallback to old logic for backward compatibility with wallets missing ImportMethod
 		if w.Mnemonic == nil {
-			return localization.Labels["imported_private_key"]
+			return localization.Get("imported_private_key")
 		}
-		return localization.Labels["imported_mnemonic"]
+		return localization.Get("imported_mnemonic")
 	}
 }
 
@@ -100,6 +100,7 @@ func NewCLIModel(vault *wallet.WalletVault) (*CLIModel, error) {
 		styles:              createStyles(),
 		displayTime:         time.Now(),
 		walletConnectEvents: make(chan tea.Msg, 64),
+		localeLanguage:      localization.GetCurrentLanguage(),
 	}
 
 	if err := initializeFont(model); err != nil {
@@ -334,9 +335,27 @@ func clockTickCmd() tea.Cmd {
 	})
 }
 
-func (m *CLIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *CLIModel) Update(msg tea.Msg) (updated tea.Model, command tea.Cmd) {
+	defer func() {
+		state := m.recovery
+		if state == nil {
+			return
+		}
+		if m.currentView == constants.RecoveryView && m.err == nil && m.selectedAccount != nil && m.selectedAccount.AccountID == state.account.AccountID {
+			return
+		}
+		hadMaterial := state.material != nil
+		m.clearRecovery()
+		if hadMaterial {
+			command = tea.Batch(command, tea.ClearScreen)
+		}
+	}()
 	if msg == nil {
 		return m, nil
+	}
+	if lang := localization.GetCurrentLanguage(); lang != m.localeLanguage {
+		m.localeLanguage = lang
+		m.refreshLocalizedUI()
 	}
 	switch message := msg.(type) {
 	case walletConnectProposalMsg:
@@ -345,6 +364,27 @@ func (m *CLIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case walletConnectRequestMsg:
 		m.walletConnectHandleRequest(message.session, message.params)
 		return m, waitForWalletConnectEvent(m.walletConnectEvents)
+	case credentialOpenedMsg:
+		return m.handleCredentialOpened(message)
+	case credentialOpDoneMsg:
+		if m.credentialOperation == message.op {
+			m.clearCredentialOperation()
+		}
+		return m, nil
+	case vaultCreateResultMsg:
+		return m.handleVaultCreateResult(message)
+	case backupConfirmResultMsg:
+		return m.handleBackupConfirmResult(message)
+	case vaultActionResultMsg:
+		return m.handleVaultActionResult(message)
+	}
+	if m.credentialPrompt != nil && (m.credentialPrompt.ownerView != m.currentView || m.credentialPrompt.owner != m.credentialOwner()) {
+		m.clearCredentialPrompt()
+	}
+	if m.credentialPrompt != nil {
+		if key, ok := msg.(tea.KeyMsg); ok && key.String() != "ctrl+q" {
+			return m.updateCredentialPrompt(msg)
+		}
 	}
 	if preparedMessage, ok := msg.(nativePreparedMsg); ok && preparedMessage.prepared != nil {
 		if m.currentView != constants.NativeTransferView || m.nativeTransfer == nil || preparedMessage.generation != m.nativeTransfer.generation || m.nativeTransfer.phase != nativeTransferPreparing {
@@ -353,7 +393,7 @@ func (m *CLIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	if submittedMessage, ok := msg.(nativeSubmittedMsg); ok && submittedMessage.result.Hash != (common.Hash{}) {
 		if m.currentView != constants.NativeTransferView || m.nativeTransfer == nil || submittedMessage.generation != m.nativeTransfer.generation || m.nativeTransfer.phase != nativeTransferSubmitting {
-			m.transactionNotice = "Transaction submitted or outcome pending: " + safeShort(submittedMessage.result.Hash.Hex())
+			m.transactionNotice = localization.T("transaction_submitted_notice", map[string]interface{}{"Hash": safeShort(submittedMessage.result.Hash.Hex())})
 			if m.selectedAccount != nil {
 				m.refreshWalletDetailsComponents()
 			}
@@ -365,6 +405,13 @@ func (m *CLIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if keyMsg, ok := msg.(tea.KeyMsg); ok {
 		switch keyMsg.String() {
 		case "esc":
+			if m.vaultBusy {
+				m.cancelVaultWorker()
+				return m, nil
+			}
+			if m.currentView == constants.RecoveryView && m.recovery != nil {
+				return m.updateRecovery(msg)
+			}
 			if m.currentView == constants.CanonicalImportView {
 				if m.canonicalImport != nil && m.canonicalImport.busy {
 					if m.canonicalImport.cancel != nil {
@@ -379,6 +426,21 @@ func (m *CLIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if m.currentView == constants.RotatePasswordView || m.currentView == constants.ExportAccountView {
 				m.clearVaultActionInputs()
+				m.currentView = constants.WalletDetailsView
+				return m, nil
+			}
+			if m.currentView == constants.KeePassSettingsView || m.currentView == constants.KeePassAccountView {
+				if m.currentView == constants.KeePassSettingsView {
+					if m.keepassSettings != nil && (m.keepassSettings.busy || m.keepassSettings.stage != keepassStageMenu) {
+						return m.updateKeePassSettings(msg)
+					}
+					m.clearKeePassSettings()
+					m.currentView = constants.ConfigurationView
+					return m, nil
+				}
+				if m.keepassAccount != nil {
+					return m.updateKeePassAccount(msg)
+				}
 				m.currentView = constants.WalletDetailsView
 				return m, nil
 			}
@@ -416,6 +478,9 @@ func (m *CLIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.currentView = constants.NetworkMenuView
 				return m, nil
 			}
+			if m.currentView == constants.ListWalletsView && m.accountDeletion != nil {
+				return m.updateAccountDeletion(msg)
+			}
 			if m.currentView != constants.DefaultView && m.currentView != constants.SplashView {
 				if m.currentView == constants.CreateWalletNameView || m.currentView == constants.CreateWalletOptionsView || m.currentView == constants.CreateWalletBackupView || m.currentView == constants.CreateWalletView {
 					if err := m.cancelPendingVaultBackup(); err != nil {
@@ -448,13 +513,64 @@ func (m *CLIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "ctrl+q":
 			cancelPrepared := nativeCancelPreparedCommand(m.nativeTransfer)
+			m.clearCredentialOperation()
+			if m.keepassSettings != nil {
+				if m.keepassSettings.busy {
+					if m.keepassSettings.cancel != nil {
+						m.keepassSettings.cancel()
+					}
+					m.keepassSettings.cancelling = true
+					m.keepassSettings.quitAfterResult = true
+					return m, nil
+				}
+				m.clearKeePassSettings()
+				m.currentView = constants.ConfigurationView
+			}
+			if m.keepassAccount != nil {
+				if m.keepassAccount.busy {
+					if m.keepassAccount.cancel != nil {
+						m.keepassAccount.cancel()
+					}
+					m.keepassAccount.quitAfterResult = true
+					return m, nil
+				}
+				m.keepassAccount = nil
+			}
+			if m.vaultBusy {
+				m.cancelVaultWorker()
+				m.vaultQuitAfterResult = true
+				return m, nil
+			}
 			m.clearBalanceState()
 			m.clearNativeTransfer()
+			if m.accountDeletion != nil {
+				if m.accountDeletion.busy {
+					if m.accountDeletion.cancel != nil {
+						m.accountDeletion.cancel()
+					}
+					m.accountDeletion.cancelling = true
+					m.accountDeletion.quitAfterResult = true
+					return m, nil
+				}
+				m.clearAccountDeletion()
+			}
+			if m.recovery != nil {
+				if m.recovery.busy {
+					if m.recovery.cancel != nil {
+						m.recovery.cancel()
+					}
+					m.recovery.cancelling = true
+					m.recovery.quitAfterResult = true
+					return m, nil
+				}
+				m.clearRecovery()
+			}
 			if m.currentView == constants.CanonicalImportView && m.canonicalImport != nil && m.canonicalImport.busy {
 				if m.canonicalImport.cancel != nil {
 					m.canonicalImport.cancel()
 				}
 				m.canonicalImport.cancelling = true
+				m.canonicalImport.quitAfterResult = true
 				return m, nil
 			}
 			if err := m.cancelPendingVaultBackup(); err != nil {
@@ -481,6 +597,13 @@ func (m *CLIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case clockTickMsg:
 		m.displayTime = time.Time(msg)
+		if now := time.Now(); now.After(m.displayTime) {
+			m.displayTime = now
+		}
+		if m.recovery != nil && m.recovery.stage == recoveryStageRevealed && (m.recovery.expiresAt.IsZero() || !m.displayTime.Before(m.recovery.expiresAt)) {
+			m.recoveryPrivacyWipe(localization.Get("recovery_status_expired"))
+			return m, tea.Batch(clockTickCmd(), tea.ClearScreen)
+		}
 		return m, clockTickCmd()
 	case balanceFetchMsg:
 		if msg.operationID != m.balanceOperationID || m.selectedAccount == nil || msg.accountID != m.selectedAccount.AccountID {
@@ -499,7 +622,7 @@ func (m *CLIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.balanceError = strings.Join(messages, "; ")
 		} else if len(msg.balances) == 0 {
-			m.balanceError = "No active networks with validated providers"
+			m.balanceError = localization.Get("balance_no_networks")
 		} else {
 			m.balanceError = ""
 		}
@@ -511,10 +634,20 @@ func (m *CLIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		clear(msg.data)
 		clearCanonicalBatchItems(msg.batchItems)
+		clearCanonicalMnemonicItems(msg.mnemonicItems)
 		return m, nil
 	case canonicalCommitResultMsg:
 		if m.currentView == constants.CanonicalImportView && m.canonicalImport != nil {
 			return m.updateCanonicalImport(msg)
+		}
+		m.discardCredentialOperation(msg.op)
+		if msg.err == nil || msg.backupPending {
+			notice := localization.Get("canonical_import_committed_notice")
+			if msg.backupPending {
+				notice += " — " + localization.Get("keepass_backup_pending_notice")
+			}
+			m.lastOperationNotice = notice
+			return m, m.refreshWalletsTable()
 		}
 		return m, nil
 	case canonicalSourcePasswordMsg:
@@ -522,6 +655,68 @@ func (m *CLIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateCanonicalImport(msg)
 		}
 		clear(msg.password)
+		return m, nil
+	case accountDeletedMsg:
+		if m.accountDeletion == nil || msg.operationID != m.accountDeletion.operationID {
+			return m, nil
+		}
+		return m.updateAccountDeletion(msg)
+	case recoveryResultMsg:
+		if m.currentView != constants.RecoveryView || m.recovery == nil || !m.recovery.busy || msg.operationID != m.recovery.operationID || msg.accountID != m.recovery.account.AccountID {
+			if msg.material != nil {
+				msg.material.Destroy()
+			}
+			if msg.export && (msg.err == nil || wallet.IsExportCommitted(msg.err)) {
+				m.lastOperationNotice = localization.T("recovery_notice_export_created", map[string]interface{}{"Path": safeInline(msg.destination)})
+			}
+			return m, nil
+		}
+		return m.updateRecovery(msg)
+	case recoveryExpiredMsg:
+		if m.currentView != constants.RecoveryView || m.recovery == nil {
+			return m, nil
+		}
+		return m.updateRecovery(msg)
+	case tea.BlurMsg:
+		m.clearCredentialOperation()
+		if m.keepassSettings != nil {
+			if m.keepassSettings.busy && m.keepassSettings.cancel != nil {
+				m.keepassSettings.cancel()
+				m.keepassSettings.cancelling = true
+			}
+			m.wipeKeePassSettingsSecrets()
+			m.keepassSettings.retryPathInput.SetValue("")
+			m.keepassSettings.pathInput.Blur()
+			m.keepassSettings.masterInput.Blur()
+			m.keepassSettings.confirmInput.Blur()
+			m.keepassSettings.consentInput.Blur()
+			m.keepassSettings.retryPathInput.Blur()
+		}
+		if m.keepassAccount != nil {
+			if m.keepassAccount.busy && m.keepassAccount.cancel != nil {
+				m.keepassAccount.cancel()
+			}
+			m.keepassAccount.password.SetValue("")
+			m.keepassAccount.password.Blur()
+		}
+		if m.accountDeletion != nil {
+			m.accountDeletion.password.SetValue("")
+		}
+		if m.canonicalImport != nil && m.canonicalImport.busy && m.canonicalImport.cancel != nil {
+			m.canonicalImport.cancel()
+			m.canonicalImport.cancelling = true
+		}
+		if m.vaultBusy && m.vaultCancel != nil {
+			m.vaultCancel()
+			m.vaultBusyCancelling = true
+		}
+		if m.Vault != nil && m.backupChallenge != nil && !m.vaultBusy {
+			m.suspendPendingVaultBackup()
+		}
+		if m.recovery != nil {
+			m.recoveryPrivacyWipe(localization.Get("focus_lost_hidden"))
+			return m, tea.ClearScreen
+		}
 		return m, nil
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
@@ -546,6 +741,13 @@ func (m *CLIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Atualizar dimensões da tabela
 		if m.currentView == constants.ListWalletsView {
 			m.updateTableDimensions()
+		}
+		if m.recovery != nil {
+			m.recoveryResizeInputs()
+			if m.width < 80 || m.height < 24 {
+				m.recoveryPrivacyWipe(localization.Get("too_small_hidden"))
+				return m, tea.ClearScreen
+			}
 		}
 		return m, nil
 
@@ -629,6 +831,8 @@ func (m *CLIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateVaultAction(msg, false)
 	case constants.ExportAccountView:
 		return m.updateVaultAction(msg, true)
+	case constants.RecoveryView:
+		return m.updateRecovery(msg)
 	case constants.ConfigurationView:
 		return m.updateConfigMenu(msg)
 	case constants.LanguageSelectionView:
@@ -641,6 +845,10 @@ func (m *CLIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateAddNetwork(msg)
 	case constants.SafeView:
 		return m.updateSafeView(msg)
+	case constants.KeePassSettingsView:
+		return m.updateKeePassSettings(msg)
+	case constants.KeePassAccountView:
+		return m.updateKeePassAccount(msg)
 	default:
 		m.currentView = constants.DefaultView
 		return m, nil
@@ -649,18 +857,20 @@ func (m *CLIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *CLIModel) View() string {
 	if m.err != nil {
-		label := safeShort(localization.Labels["error_title"])
-		if label == "" {
-			label = "Error"
-		}
+		label := safeShort(localization.Get("error_title"))
 		return m.styles.ErrorStyle.Render(label + ": " + safeError(m.err))
 	}
 
+	if m.credentialPrompt != nil {
+		return m.renderMainView()
+	}
 	switch m.currentView {
 	case constants.SplashView:
 		return m.renderSplash()
 	case constants.ListWalletsView:
 		return m.renderListWalletsWithLayout()
+	case constants.RecoveryView:
+		return m.viewRecovery()
 	default:
 		return m.renderMainView()
 	}
@@ -668,26 +878,31 @@ func (m *CLIModel) View() string {
 
 // renderListWalletsWithLayout renderiza a tela de listagem de carteiras com o layout completo
 func (m *CLIModel) renderListWalletsWithLayout() string {
-	if m.width < 100 || m.height < 24 {
-		return m.renderCompactTerminal()
+	if m.width < 80 || m.height < 16 {
+		return m.renderTerminalSizeHint(80, 16)
 	}
-	// Renderizar o cabeçalho da mesma forma que renderMainView
-	renderedLogo := renderHeaderLogo()
+	var headerContent string
+	if m.width < 120 || m.height < 32 {
+		headerContent = "BLOCO Wallet | " + localization.T("version_label", map[string]interface{}{"Version": m.displayVersion()})
+	} else {
+		// Renderizar o cabeçalho da mesma forma que renderMainView
+		renderedLogo := renderHeaderLogo()
 
-	headerLeft := lipgloss.JoinVertical(
-		lipgloss.Left,
-		renderedLogo,
-		fmt.Sprintf("Version: %s", m.displayVersion()),
-	)
+		headerLeft := lipgloss.JoinVertical(
+			lipgloss.Left,
+			renderedLogo,
+			localization.T("version_label", map[string]interface{}{"Version": m.displayVersion()}),
+		)
 
-	menuItems := m.renderMenuItems()
-	menuGrid := lipgloss.JoinVertical(lipgloss.Left, menuItems...)
+		menuItems := m.renderMenuItems()
+		menuGrid := lipgloss.JoinVertical(lipgloss.Left, menuItems...)
 
-	// Montar header
-	headerGap := m.width - lipgloss.Width(headerLeft) - lipgloss.Width(menuGrid) - m.styles.Header.GetHorizontalFrameSize()
-	headerContent := lipgloss.JoinVertical(lipgloss.Left, headerLeft, menuGrid)
-	if headerGap >= 2 {
-		headerContent = lipgloss.JoinHorizontal(lipgloss.Top, headerLeft, lipgloss.NewStyle().Width(headerGap).Render(""), menuGrid)
+		// Montar header
+		headerGap := m.width - lipgloss.Width(headerLeft) - lipgloss.Width(menuGrid) - m.styles.Header.GetHorizontalFrameSize()
+		headerContent = lipgloss.JoinVertical(lipgloss.Left, headerLeft, menuGrid)
+		if headerGap >= 2 {
+			headerContent = lipgloss.JoinHorizontal(lipgloss.Top, headerLeft, lipgloss.NewStyle().Width(headerGap).Render(""), menuGrid)
+		}
 	}
 
 	// Renderizar header com altura fixa
@@ -759,9 +974,12 @@ func (m *CLIModel) renderMenuItems() []string {
 }
 
 func (m *CLIModel) getContentView() string {
+	if m.credentialPrompt != nil {
+		return m.viewCredentialPrompt()
+	}
 	switch m.currentView {
 	case constants.DefaultView:
-		return localization.Labels["welcome_message"]
+		return localization.Get("welcome_message")
 	case constants.CreateWalletNameView:
 		return m.viewCreateWalletName()
 	case constants.CreateWalletOptionsView:
@@ -808,8 +1026,12 @@ func (m *CLIModel) getContentView() string {
 		return m.viewAddNetwork()
 	case constants.SafeView:
 		return m.viewSafe()
+	case constants.KeePassSettingsView:
+		return m.viewKeePassSettings()
+	case constants.KeePassAccountView:
+		return m.viewKeePassAccount()
 	default:
-		return localization.Labels["unknown_state"]
+		return localization.Get("unknown_state")
 	}
 }
 
@@ -834,18 +1056,18 @@ func (m *CLIModel) updateMenu(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.selectedMenu += 2
 			}
 		case "enter":
-			switch m.menuItems[m.selectedMenu].title {
-			case localization.Labels["create_new_wallet"]:
+			switch m.menuItems[m.selectedMenu].action {
+			case "create_wallet":
 				m.initCreateWallet()
-			case localization.Labels["import_wallet"]:
+			case "import_wallet":
 				m.initImportWallet()
-			case localization.Labels["list_wallets"]:
+			case "list_wallets":
 				m.initListWallets()
-			case "Safe multisig":
+			case "safe":
 				m.initSafeView()
-			case localization.Labels["configuration"]:
+			case "configuration":
 				m.initConfigMenu()
-			case tea.KeyCtrlX.String(), "q", localization.Labels["exit"]:
+			case "exit":
 				return m, tea.Quit
 			}
 		case tea.KeyCtrlX.String(), "q":
@@ -867,7 +1089,7 @@ func (m *CLIModel) updateCreateWalletName(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			name := strings.TrimSpace(m.nameInput.Value())
 			if name == "" {
-				m.err = errors.Wrap(fmt.Errorf("o nome da wallet não pode estar vazio"), 0)
+				m.err = errors.Wrap(fmt.Errorf("%s", localization.Get("wallet_name_empty_err")), 0)
 				if wrappedErr, ok := m.err.(*errors.Error); ok {
 					log.Println(wrappedErr.ErrorStack())
 				} else {
@@ -934,7 +1156,7 @@ func (m *CLIModel) updateCreateWalletOptions(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if keyMessage, ok := msg.(tea.KeyMsg); ok && keyMessage.String() == "enter" {
 		selected, ok := m.createOptionList.SelectedItem().(createOptionItem)
 		if !ok {
-			m.createPasswordError = "Select an option before continuing"
+			m.createPasswordError = localization.Get("create_select_required")
 			return m, nil
 		}
 		switch m.createOptionsStage {
@@ -969,6 +1191,12 @@ func (m *CLIModel) updateCreateWalletOptions(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *CLIModel) updateCreateWalletBackup(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m.vaultBusy {
+		if key, ok := msg.(tea.KeyMsg); ok && key.String() == "esc" {
+			m.cancelVaultWorker()
+		}
+		return m, nil
+	}
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -979,40 +1207,19 @@ func (m *CLIModel) updateCreateWalletBackup(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.currentView = constants.DefaultView
 					return m, nil
 				}
-				provided := strings.Fields(m.backupConfirmationInput.Value())
-				if len(provided) != len(m.backupChallenge.RequiredWordIndices) {
-					m.backupError = localization.Labels["mnemonic_mismatch"]
-					m.backupConfirmationInput.SetValue("")
+				needsOp := m.credentialBackupEnabled() && (m.credentialOperation == nil || m.credentialOperation.Context().Err() != nil)
+				if needsOp {
+					accountID := m.backupChallenge.AccountID
+					m.suspendPendingVaultBackup()
+					if m.backupChallenge != nil {
+						return m, nil
+					}
+					m.clearCredentialOperation()
+					m.initResumeBackup(accountID)
+					m.createPasswordError = localization.Get("keepass_confirmation_reauth")
 					return m, nil
 				}
-				m.backupWordAnswers = make(map[int]string, len(provided))
-				for position, index := range m.backupChallenge.RequiredWordIndices {
-					m.backupWordAnswers[index] = provided[position]
-				}
-				active, err := m.Vault.ConfirmBackup(context.Background(), m.backupChallenge.ChallengeID, m.backupWordAnswers)
-				if err != nil {
-					m.backupError = err.Error()
-					m.backupPassphraseInput.SetValue("")
-					return m, nil
-				}
-				for index := range m.backupChallenge.Words {
-					m.backupChallenge.Words[index] = ""
-				}
-				m.backupPassphraseInput.SetValue("")
-				m.backupPathInput.SetValue("")
-				m.backupLanguageInput.SetValue("")
-				m.backupWordAnswers = nil
-				m.backupMaterialStage = 0
-				m.backupChallenge = nil
-				m.pendingAccount = nil
-				m.resumeBackupAccountID = ""
-				m.selectedAccount = &active
-				m.initWalletDetailsComponents()
-				m.backupError = ""
-				m.backupConfirmationInput.SetValue("")
-				m.nameInput.SetValue("")
-				m.currentView = constants.WalletDetailsView
-				return m, m.refreshWalletsTable()
+				return m, m.startVaultConfirmBackup()
 			}
 			m.err = errors.Wrap(fmt.Errorf("wallet vault is required"), 0)
 			m.currentView = constants.DefaultView
@@ -1044,6 +1251,12 @@ func (m *CLIModel) updateCreateWalletBackup(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *CLIModel) updateCreateWalletPassword(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m.vaultBusy {
+		if key, ok := msg.(tea.KeyMsg); ok && key.String() == "esc" {
+			m.cancelVaultWorker()
+		}
+		return m, nil
+	}
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -1059,21 +1272,8 @@ func (m *CLIModel) updateCreateWalletPassword(msg tea.Msg) (tea.Model, tea.Cmd) 
 				return m, nil
 			}
 			if m.Vault != nil && m.resumeBackupAccountID != "" {
-				passwordBytes := []byte(password)
-				summary, challenge, err := m.Vault.ResumeBackup(context.Background(), m.resumeBackupAccountID, passwordBytes)
-				clear(passwordBytes)
-				m.passwordInput.SetValue("")
-				if err != nil {
-					m.createPasswordError = err.Error()
-					return m, nil
-				}
-				m.pendingAccount = &summary
-				m.backupChallenge = &challenge
-				m.initBackupMaterialInputs()
-				m.backupConfirmationInput.SetValue("")
-				m.backupConfirmationInput.Focus()
-				m.currentView = constants.CreateWalletBackupView
-				return m, nil
+				needsOp := m.credentialBackupEnabled()
+				return m, m.submitWithCredential(needsOp, func() tea.Cmd { return m.startVaultCreate() })
 			}
 			if m.Vault != nil && m.createPasswordStage == 0 {
 				m.passwordInput.Blur()
@@ -1082,7 +1282,7 @@ func (m *CLIModel) updateCreateWalletPassword(msg tea.Msg) (tea.Model, tea.Cmd) 
 				return m, nil
 			}
 			if m.Vault != nil && !wallet.SecureCompare(password, m.createPasswordConfirmationInput.Value()) {
-				m.createPasswordError = "Storage password confirmation does not match"
+				m.createPasswordError = localization.Get("password_confirm_mismatch")
 				m.passwordInput.SetValue("")
 				m.createPasswordConfirmationInput.SetValue("")
 				m.createPasswordConfirmationInput.Blur()
@@ -1091,39 +1291,17 @@ func (m *CLIModel) updateCreateWalletPassword(msg tea.Msg) (tea.Model, tea.Cmd) 
 				return m, nil
 			}
 
-			if m.Vault == nil {
-				m.err = errors.Wrap(fmt.Errorf("wallet vault is required"), 0)
-				m.currentView = constants.DefaultView
-				return m, nil
-			}
 			name := strings.TrimSpace(m.nameInput.Value())
-			passwordBytes := []byte(password)
-			wordCount, _ := strconv.Atoi(m.createWordCountInput.Value())
-			summary, challenge, err := m.Vault.Create(context.Background(), wallet.CreateAccountRequest{
-				Name:            name,
-				Password:        passwordBytes,
-				WordCount:       wordCount,
-				BIP39Language:   wallet.BIP39Language(strings.ToLower(strings.ReplaceAll(m.createLanguageInput.Value(), "-", "_"))),
-				BIP39Passphrase: m.createPassphraseInput.Value(),
-				DerivationPath:  m.createDerivationPathInput.Value(),
-			})
-			clear(passwordBytes)
-			m.createPassphraseInput.SetValue("")
-			m.passwordInput.SetValue("")
-			m.createPasswordConfirmationInput.SetValue("")
-			m.createPasswordStage = 0
-			m.createPasswordError = ""
-			if err != nil {
-				m.err = errors.Wrap(err, 0)
-				m.currentView = constants.DefaultView
-				return m, nil
+			if m.Vault != nil {
+				if name == "" {
+					m.err = errors.Wrap(errors.New(localization.Get("all_words_required")), 0)
+					return m, nil
+				}
+				needsOp := m.credentialBackupEnabled()
+				return m, m.submitWithCredential(needsOp, func() tea.Cmd { return m.startVaultCreate() })
 			}
-			m.pendingAccount = &summary
-			m.backupChallenge = &challenge
-			m.initBackupMaterialInputs()
-			m.backupConfirmationInput.SetValue("")
-			m.backupConfirmationInput.Focus()
-			m.currentView = constants.CreateWalletBackupView
+			m.err = errors.Wrap(fmt.Errorf("wallet vault is required"), 0)
+			m.currentView = constants.DefaultView
 			return m, nil
 		case "esc":
 			// Go back to name input
@@ -1159,24 +1337,24 @@ func (m *CLIModel) updateImportMethodSelection(msg tea.Msg) (tea.Model, tea.Cmd)
 				m.selectedMenu++
 			}
 		case "enter":
-			switch m.selectedMenu {
-			case 0:
+			switch importMenu[m.selectedMenu].action {
+			case "mnemonic":
 				m.initCanonicalImport(wallet.ImportMethodMnemonic)
-			case 1:
+			case "private_key":
 				m.initCanonicalImport(wallet.ImportMethodPrivateKey)
-			case 2:
+			case "keystore":
 				m.initCanonicalImport(wallet.ImportMethodKeystore)
-			case 3:
+			case "keystore_batch":
 				m.initCanonicalBatchImport()
-			case 4:
+			case "mnemonic_batch":
 				m.initCanonicalImport(canonicalMnemonicBatchMethod)
-			case 5:
+			case "private_key_batch":
 				m.initCanonicalImport(canonicalPrivateKeyBatchMethod)
-			case 6:
+			case "bloco_encrypted":
 				m.initCanonicalImport(canonicalEncryptedMethod)
-			case 7:
+			case "watch_only":
 				m.initCanonicalImport(wallet.ImportMethodWatchOnly)
-			case 8:
+			case "back":
 				m.clearImportSecrets()
 				m.menuItems = NewMenu()
 				m.selectedMenu = 0
@@ -1208,20 +1386,24 @@ func (m *CLIModel) updateConfigMenu(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "enter":
 			// Usar o menu de configuração para determinar a ação baseada na seleção
-			switch m.selectedMenu {
-			case 0: // Primeira opção: Redes
+			switch configMenu[m.selectedMenu].action {
+			case "networks":
 				// Mostrar o submenu de redes
 				m.menuItems = NewNetworkMenu()
 				m.selectedMenu = 0
 				m.currentView = constants.NetworkMenuView
 				return m, nil
 
-			case 1: // Segunda opção: Idioma
+			case "language":
 				// Implementar a lógica para configurar idioma
 				m.initLanguageSelection()
 				return m, nil
 
-			case 2: // Terceira opção: Voltar ao menu principal
+			case "keepass":
+				m.initKeePassSettings()
+				return m, nil
+
+			case "back":
 				m.menuItems = NewMenu() // Recarregar o menu principal
 				m.selectedMenu = 0      // Resetar a seleção
 				m.currentView = constants.DefaultView
@@ -1262,6 +1444,8 @@ func (m *CLIModel) cancelPendingVaultBackup() error {
 }
 
 func (m *CLIModel) clearVaultActionInputs() {
+	m.credentialUseKeePass = false
+
 	m.currentPasswordInput.SetValue("")
 	m.newPasswordInput.SetValue("")
 	m.confirmPasswordInput.SetValue("")
@@ -1277,12 +1461,13 @@ func (m *CLIModel) clearImportSecrets() {
 }
 
 func (m *CLIModel) selectedAccountFromTable() *wallet.AccountSummary {
-	selectedRow := m.walletTable.SelectedRow()
-	if len(selectedRow) == 0 {
+	cursor := m.walletTable.Cursor()
+	if cursor < 0 || cursor >= len(m.accountTableIDs) || cursor >= len(m.walletTable.Rows()) {
 		return nil
 	}
+	accountID := m.accountTableIDs[cursor]
 	for index := range m.accounts {
-		if m.accounts[index].AccountID == selectedRow[0] {
+		if m.accounts[index].AccountID == accountID {
 			return &m.accounts[index]
 		}
 	}
@@ -1307,10 +1492,20 @@ func (m *CLIModel) selectedWalletFromTable() *wallet.Wallet {
 }
 
 func (m *CLIModel) updateListWallets(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m.accountDeletion != nil {
+		return m.updateAccountDeletion(msg)
+	}
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "d", "delete":
+			if m.Vault != nil {
+				if selected := m.selectedAccountFromTable(); selected != nil {
+					m.initAccountDeletion(*selected)
+				}
+				return m, nil
+			}
 			m.err = errors.Wrap(wallet.ErrWalletDeletionDisabled, 0)
 			return m, nil
 		case "enter":
@@ -1472,6 +1667,16 @@ func (m *CLIModel) updateWalletDetails(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.initEncryptedExportAction()
 				return m, nil
 			}
+		case key.Matches(msg, m.walletDetailsKeys.KeePass):
+			if m.selectedAccount != nil && m.selectedAccount.SignerKind == wallet.SignerKindSoftware && m.selectedAccount.Capabilities&wallet.CapabilityExportSecret != 0 && (m.selectedAccount.State == wallet.AccountStateActive || m.selectedAccount.State == wallet.AccountStateLocked) && m.credentialBackupEnabled() {
+				m.initKeePassAccount(*m.selectedAccount)
+				return m, m.loadKeePassAccountStatus()
+			}
+		case key.Matches(msg, m.walletDetailsKeys.Recovery):
+			if recoveryAvailable(m.selectedAccount, m.Vault) {
+				m.initRecovery()
+				return m, nil
+			}
 		case key.Matches(msg, m.walletDetailsKeys.Back):
 			m.clearBalanceState()
 			m.walletDetails = nil
@@ -1515,7 +1720,7 @@ func (m *CLIModel) updateVaultAction(msg tea.Msg, export bool) (tea.Model, tea.C
 		}
 		newPassword := m.newPasswordInput.Value()
 		if !wallet.SecureCompare(newPassword, m.confirmPasswordInput.Value()) {
-			m.vaultActionError = "New password confirmation does not match"
+			m.vaultActionError = localization.Get("vault_err_new_password_mismatch")
 			m.currentPasswordInput.SetValue("")
 			m.newPasswordInput.SetValue("")
 			m.confirmPasswordInput.SetValue("")
@@ -1536,67 +1741,24 @@ func (m *CLIModel) updateVaultAction(msg tea.Msg, export bool) (tea.Model, tea.C
 		}
 		if export && !m.vaultActionPreview {
 			if !filepath.IsAbs(m.exportDestinationInput.Value()) {
-				m.vaultActionError = "Export destination must be absolute"
+				m.vaultActionError = localization.Get("vault_err_export_abs")
 				return m, nil
 			}
 			m.vaultActionPreview = true
 			m.vaultActionError = ""
 			return m, nil
 		}
-		currentPasswordBytes := []byte(m.currentPasswordInput.Value())
-		newPasswordBytes := []byte(newPassword)
-		confirmPasswordBytes := []byte(m.confirmPasswordInput.Value())
-		defer clear(currentPasswordBytes)
-		defer clear(newPasswordBytes)
-		defer clear(confirmPasswordBytes)
-		var err error
-		if export {
-			var handle wallet.CapabilityHandle
-			handle, err = m.Vault.Unlock(context.Background(), m.selectedAccount.AccountID, currentPasswordBytes)
-			if err == nil {
-				if m.vaultExportEncrypted {
-					err = m.Vault.ExportEncryptedAccount(context.Background(), wallet.EncryptedAccountExportRequest{
-						Handle:             handle,
-						Destination:        m.exportDestinationInput.Value(),
-						CurrentPassword:    currentPasswordBytes,
-						NewPassword:        newPasswordBytes,
-						ConfirmNewPassword: confirmPasswordBytes,
-					})
-				} else {
-					err = m.Vault.ExportKeystoreV3(context.Background(), wallet.KeystoreV3ExportRequest{
-						Handle:          handle,
-						Destination:     m.exportDestinationInput.Value(),
-						Password:        newPasswordBytes,
-						ConfirmPassword: confirmPasswordBytes,
-					})
-				}
-				if wallet.IsExportCommitted(err) {
-					m.lastOperationNotice = err.Error()
-					err = nil
-				} else if err == nil {
-					m.lastOperationNotice = "Export completed successfully"
-				}
-				lockErr := m.Vault.Lock(handle)
-				if err == nil {
-					err = lockErr
-				}
-			}
-		} else {
-			err = m.Vault.RotatePassword(context.Background(), m.selectedAccount.AccountID, currentPasswordBytes, newPasswordBytes)
-		}
-		if err != nil {
-			m.vaultActionError = err.Error()
-			m.currentPasswordInput.SetValue("")
-			m.newPasswordInput.SetValue("")
-			m.confirmPasswordInput.SetValue("")
-			m.vaultActionStage = 0
-			m.currentPasswordInput.Focus()
+		if m.vaultBusy {
 			return m, nil
 		}
-		m.clearVaultActionInputs()
-		m.currentView = constants.WalletDetailsView
-		m.refreshWalletDetailsComponents()
-		return m, m.refreshWalletsTable()
+		return m, m.submitWithCredential(m.credentialBackupEnabled(), func() tea.Cmd { return m.startVaultAction(export) })
+	}
+	if key, ok := msg.(tea.KeyMsg); ok && key.String() == "ctrl+k" && m.vaultActionStage == 0 && m.selectedAccount != nil && m.credentialToggleEligible(*m.selectedAccount) {
+		m.credentialUseKeePass = !m.credentialUseKeePass
+		if m.credentialUseKeePass {
+			m.currentPasswordInput.SetValue("")
+		}
+		return m, nil
 	}
 	if m.vaultActionPreview {
 		return m, nil
@@ -1615,52 +1777,46 @@ func (m *CLIModel) updateVaultAction(msg tea.Msg, export bool) (tea.Model, tea.C
 	return m, command
 }
 
-func accountTableLayout(width int, accounts []wallet.AccountSummary) ([]table.Column, []table.Row) {
-	available := max(20, width-8)
-	columns := []table.Column{
-		{Title: localization.Labels["id"], Width: 36},
-		{Title: "Nome", Width: 20},
-		{Title: localization.Labels["wallet_type"], Width: 24},
-		{Title: localization.Labels["created_at"], Width: 16},
-		{Title: localization.Labels["ethereum_address"], Width: 42},
+func (m *CLIModel) accountTableWidth() int {
+	return max(1, m.width-m.styles.Content.GetHorizontalFrameSize())
+}
+
+func accountTableLayout(available int, accounts []wallet.AccountSummary) ([]table.Column, []table.Row) {
+	nameTitle := localization.Get("name")
+	typeTitle := localization.Get("wallet_type")
+	createdTitle := localization.Get("created_at")
+	addressTitle := localization.Get("ethereum_address")
+
+	addressWidth := min(42, max(1, available-5))
+	typeWidth, dateWidth := 0, 0
+	visible := 2
+	if available >= 116 {
+		typeWidth, dateWidth = 24, 16
+		visible = 4
+	} else if available >= 90 {
+		typeWidth = 20
+		visible = 3
 	}
-	compactDate := false
-	if available < 100 {
-		columns = []table.Column{
-			{Title: localization.Labels["id"], Width: 1},
-			{Title: "Nome", Width: 8},
-			{Title: localization.Labels["wallet_type"], Width: 10},
-			{Title: localization.Labels["ethereum_address"], Width: 42},
-		}
-	} else if available < 130 {
-		columns = []table.Column{
-			{Title: localization.Labels["id"], Width: 8},
-			{Title: "Nome", Width: 14},
-			{Title: localization.Labels["wallet_type"], Width: 16},
-			{Title: localization.Labels["ethereum_address"], Width: 42},
-		}
-	} else if available < 170 {
-		columns = []table.Column{
-			{Title: localization.Labels["id"], Width: 12},
-			{Title: "Nome", Width: 16},
-			{Title: localization.Labels["wallet_type"], Width: 20},
-			{Title: localization.Labels["created_at"], Width: 10},
-			{Title: localization.Labels["ethereum_address"], Width: 42},
-		}
-		compactDate = true
+	if available < 6 {
+		addressWidth, typeWidth, dateWidth = 0, 0, 0
+		visible = 1
+	}
+	nameWidth := max(1, available-2*visible-addressWidth-typeWidth-dateWidth)
+	if available < 6 {
+		nameWidth = max(0, available-2)
+	}
+
+	columns := []table.Column{
+		{Title: nameTitle, Width: nameWidth},
+		{Title: typeTitle, Width: typeWidth},
+		{Title: createdTitle, Width: dateWidth},
+		{Title: addressTitle, Width: addressWidth},
 	}
 	rows := make([]table.Row, 0, len(accounts))
 	for _, account := range accounts {
 		accountType := fmt.Sprintf("%s / %s", safeShort(string(account.SignerKind)), safeShort(string(account.State)))
-		if len(columns) == 4 {
-			rows = append(rows, table.Row{safeShort(account.AccountID), safeShort(account.Name), accountType, safeShort(account.Address)})
-			continue
-		}
 		createdAt := account.CreatedAt.Format("2006-01-02 15:04")
-		if compactDate {
-			createdAt = account.CreatedAt.Format("2006-01-02")
-		}
-		rows = append(rows, table.Row{safeShort(account.AccountID), safeShort(account.Name), accountType, createdAt, safeShort(account.Address)})
+		rows = append(rows, table.Row{safeShort(account.Name), accountType, createdAt, safeShort(account.Address)})
 	}
 	return columns, rows
 }
@@ -1687,48 +1843,69 @@ func (m *CLIModel) updateTableDimensions() {
 
 	// Definir largura e altura da tabela
 	// Reduzir a largura da tabela para evitar quebra de linha
-	m.walletTable.SetWidth(max(20, m.width-8))
+	m.walletTable.SetWidth(m.accountTableWidth())
 	if len(m.wallets) > 0 || len(m.accounts) > 0 {
 		m.walletTable.SetHeight(contentAreaHeight)
 	}
 
 	if len(m.accounts) > 0 {
-		columns, rows := accountTableLayout(m.width, m.accounts)
+		previousID := ""
+		if selected := m.selectedAccountFromTable(); selected != nil {
+			previousID = selected.AccountID
+		}
+		previousCursor := m.walletTable.Cursor()
+		m.accountTableIDs = make([]string, len(m.accounts))
+		for index := range m.accounts {
+			m.accountTableIDs[index] = m.accounts[index].AccountID
+		}
+		columns, rows := accountTableLayout(m.accountTableWidth(), m.accounts)
 		m.walletTable.SetColumns(columns)
 		m.walletTable.SetRows(rows)
+		cursor := min(previousCursor, len(m.accounts)-1)
+		if previousID != "" {
+			for index := range m.accounts {
+				if m.accounts[index].AccountID == previousID {
+					cursor = index
+					break
+				}
+			}
+		}
+		m.walletTable.GotoTop()
+		m.walletTable.MoveDown(cursor)
 	}
 }
 
 // Funções de inicialização
 
 func (m *CLIModel) initCreateWallet() {
+	m.clearCredentialPrompt()
 	m.backupChallenge = nil
 	m.pendingAccount = nil
 	m.backupError = ""
 
 	// Initialize name input first
 	m.nameInput = textinput.New()
-	m.nameInput.Placeholder = "Digite o nome da wallet"
+	m.nameInput.Placeholder = localization.Get("wallet_name_placeholder")
 	m.nameInput.CharLimit = 50
 	m.nameInput.Width = constants.PasswordWidth
 	m.nameInput.Focus()
 	m.currentView = constants.CreateWalletNameView
 
 	m.createWordCountInput = textinput.New()
-	m.createWordCountInput.Placeholder = "Word count"
+	m.createWordCountInput.Placeholder = localization.Get("word_count_placeholder")
 	m.createWordCountInput.SetValue("12")
 	m.createWordCountInput.CharLimit = 2
 	m.createLanguageInput = textinput.New()
-	m.createLanguageInput.Placeholder = "BIP39 language"
+	m.createLanguageInput.Placeholder = localization.Get("bip39_language_placeholder")
 	m.createLanguageInput.SetValue("english")
 	m.createLanguageInput.CharLimit = 32
 	m.createPassphraseInput = textinput.New()
-	m.createPassphraseInput.Placeholder = "Optional BIP39 passphrase"
+	m.createPassphraseInput.Placeholder = localization.Get("passphrase_optional_placeholder")
 	m.createPassphraseInput.CharLimit = constants.PasswordCharLimit
 	m.createPassphraseInput.EchoMode = textinput.EchoPassword
 	m.createPassphraseInput.EchoCharacter = '•'
 	m.createDerivationPathInput = textinput.New()
-	m.createDerivationPathInput.Placeholder = "EVM derivation path"
+	m.createDerivationPathInput.Placeholder = localization.Get("evm_path_placeholder")
 	m.createDerivationPathInput.SetValue("m/44'/60'/0'/0/0")
 	m.createDerivationPathInput.CharLimit = 255
 	m.createOptionsStage = 0
@@ -1736,7 +1913,7 @@ func (m *CLIModel) initCreateWallet() {
 	m.configureCreateOptionList(0)
 
 	m.backupConfirmationInput = textinput.New()
-	m.backupConfirmationInput.Placeholder = localization.Labels["confirm_mnemonic"]
+	m.backupConfirmationInput.Placeholder = localization.Get("confirm_mnemonic")
 	m.backupConfirmationInput.CharLimit = 512
 	m.backupConfirmationInput.Width = 80
 	m.backupConfirmationInput.EchoMode = textinput.EchoPassword
@@ -1744,7 +1921,7 @@ func (m *CLIModel) initCreateWallet() {
 
 	// Initialize password input (will be used after name is entered)
 	m.passwordInput = textinput.New()
-	m.passwordInput.Placeholder = localization.Labels["enter_password"]
+	m.passwordInput.Placeholder = localization.Get("enter_password")
 	m.passwordInput.CharLimit = constants.PasswordCharLimit
 	m.passwordInput.Width = constants.PasswordWidth
 	m.passwordInput.EchoMode = textinput.EchoPassword
@@ -1753,7 +1930,7 @@ func (m *CLIModel) initCreateWallet() {
 		return validateStoragePasswordInput(s)
 	}
 	m.createPasswordConfirmationInput = textinput.New()
-	m.createPasswordConfirmationInput.Placeholder = "Confirm storage password"
+	m.createPasswordConfirmationInput.Placeholder = localization.Get("confirm_storage_placeholder")
 	m.createPasswordConfirmationInput.CharLimit = constants.PasswordCharLimit
 	m.createPasswordConfirmationInput.Width = constants.PasswordWidth
 	m.createPasswordConfirmationInput.EchoMode = textinput.EchoPassword
@@ -1783,6 +1960,9 @@ func (m *CLIModel) initImportWallet() {
 }
 
 func (m *CLIModel) initAccountList() {
+	m.menuItems = NewMenu()
+	m.selectedMenu = 2
+	m.currentView = constants.ListWalletsView
 	accounts, err := m.Vault.ListAccounts(context.Background())
 	if err != nil {
 		m.err = errors.Wrap(err, 0)
@@ -1790,20 +1970,28 @@ func (m *CLIModel) initAccountList() {
 		return
 	}
 	m.applyAccountList(accounts)
-	m.currentView = constants.ListWalletsView
 }
 
 func (m *CLIModel) applyAccountList(accounts []wallet.AccountSummary) {
+	previousID := ""
+	if selected := m.selectedAccountFromTable(); selected != nil {
+		previousID = selected.AccountID
+	}
+	previousCursor := m.walletTable.Cursor()
 	m.accounts = accounts
 	m.wallets = nil
 	m.walletCount = len(accounts)
-	columns, rows := accountTableLayout(m.width, accounts)
+	m.accountTableIDs = make([]string, len(accounts))
+	for index := range accounts {
+		m.accountTableIDs[index] = accounts[index].AccountID
+	}
+	columns, rows := accountTableLayout(m.accountTableWidth(), accounts)
 	m.walletTable = table.New(
 		table.WithColumns(columns),
 		table.WithRows(rows),
 		table.WithFocused(true),
 	)
-	m.walletTable.SetWidth(max(20, m.width-8))
+	m.walletTable.SetWidth(m.accountTableWidth())
 	styles := table.DefaultStyles()
 	styles.Header = styles.Header.BorderStyle(lipgloss.NormalBorder()).BorderForeground(lipgloss.Color("240")).BorderBottom(true).Bold(true)
 	styles.Selected = styles.Selected.Foreground(lipgloss.Color("229")).Background(lipgloss.Color("57")).Bold(false)
@@ -1815,6 +2003,17 @@ func (m *CLIModel) applyAccountList(accounts []wallet.AccountSummary) {
 	}
 	if len(accounts) > 0 {
 		m.walletTable.SetHeight(contentHeight)
+		cursor := min(previousCursor, len(accounts)-1)
+		if previousID != "" {
+			for index := range accounts {
+				if accounts[index].AccountID == previousID {
+					cursor = index
+					break
+				}
+			}
+		}
+		m.walletTable.GotoTop()
+		m.walletTable.MoveDown(cursor)
 	}
 	m.updateTableDimensions()
 }
@@ -1830,14 +2029,14 @@ func (m *CLIModel) initListWallets() {
 
 func (m *CLIModel) initBackupMaterialInputs() {
 	m.backupPathInput = textinput.New()
-	m.backupPathInput.Placeholder = "Re-enter the derivation path"
+	m.backupPathInput.Placeholder = localization.Get("backup_reenter_path")
 	m.backupPathInput.CharLimit = 255
 	m.backupPathInput.Width = 80
 	m.backupLanguageInput = textinput.New()
-	m.backupLanguageInput.Placeholder = "Re-enter the BIP39 language"
+	m.backupLanguageInput.Placeholder = localization.Get("backup_reenter_language")
 	m.backupLanguageInput.CharLimit = 32
 	m.backupPassphraseInput = textinput.New()
-	m.backupPassphraseInput.Placeholder = "Re-enter the BIP39 passphrase"
+	m.backupPassphraseInput.Placeholder = localization.Get("backup_reenter_passphrase")
 	m.backupPassphraseInput.CharLimit = constants.PasswordCharLimit
 	m.backupPassphraseInput.EchoMode = textinput.EchoPassword
 	m.backupPassphraseInput.EchoCharacter = '•'
@@ -1846,16 +2045,17 @@ func (m *CLIModel) initBackupMaterialInputs() {
 }
 
 func (m *CLIModel) initResumeBackup(accountID string) {
+	m.clearCredentialPrompt()
 	m.resumeBackupAccountID = accountID
 	m.passwordInput = textinput.New()
-	m.passwordInput.Placeholder = localization.Labels["enter_password"]
+	m.passwordInput.Placeholder = localization.Get("enter_password")
 	m.passwordInput.CharLimit = constants.PasswordCharLimit
 	m.passwordInput.Width = constants.PasswordWidth
 	m.passwordInput.EchoMode = textinput.EchoPassword
 	m.passwordInput.EchoCharacter = '•'
 	m.passwordInput.Focus()
 	m.createPasswordConfirmationInput = textinput.New()
-	m.createPasswordConfirmationInput.Placeholder = "Confirm storage password"
+	m.createPasswordConfirmationInput.Placeholder = localization.Get("confirm_storage_placeholder")
 	m.createPasswordConfirmationInput.CharLimit = constants.PasswordCharLimit
 	m.createPasswordConfirmationInput.Width = constants.PasswordWidth
 	m.createPasswordConfirmationInput.EchoMode = textinput.EchoPassword
@@ -1871,29 +2071,30 @@ func (m *CLIModel) initEncryptedExportAction() {
 }
 
 func (m *CLIModel) initVaultAction(export bool) {
+	m.clearCredentialPrompt()
 	m.clearVaultActionInputs()
 	m.lastOperationNotice = ""
 	m.currentPasswordInput = textinput.New()
-	m.currentPasswordInput.Placeholder = "Current storage password"
+	m.currentPasswordInput.Placeholder = localization.Get("current_storage_placeholder")
 	m.currentPasswordInput.CharLimit = constants.PasswordCharLimit
 	m.currentPasswordInput.Width = constants.PasswordWidth
 	m.currentPasswordInput.EchoMode = textinput.EchoPassword
 	m.currentPasswordInput.EchoCharacter = '•'
 	m.currentPasswordInput.Focus()
 	m.newPasswordInput = textinput.New()
-	m.newPasswordInput.Placeholder = "New password"
+	m.newPasswordInput.Placeholder = localization.Get("new_password_placeholder")
 	m.newPasswordInput.CharLimit = constants.PasswordCharLimit
 	m.newPasswordInput.Width = constants.PasswordWidth
 	m.newPasswordInput.EchoMode = textinput.EchoPassword
 	m.newPasswordInput.EchoCharacter = '•'
 	m.confirmPasswordInput = textinput.New()
-	m.confirmPasswordInput.Placeholder = "Confirm new password"
+	m.confirmPasswordInput.Placeholder = localization.Get("confirm_storage_placeholder")
 	m.confirmPasswordInput.CharLimit = constants.PasswordCharLimit
 	m.confirmPasswordInput.Width = constants.PasswordWidth
 	m.confirmPasswordInput.EchoMode = textinput.EchoPassword
 	m.confirmPasswordInput.EchoCharacter = '•'
 	m.exportDestinationInput = textinput.New()
-	m.exportDestinationInput.Placeholder = "Absolute export destination"
+	m.exportDestinationInput.Placeholder = localization.Get("export_destination_placeholder")
 	m.exportDestinationInput.CharLimit = 1024
 	m.exportDestinationInput.Width = 80
 	if export {
@@ -1950,26 +2151,18 @@ func (m *CLIModel) updateLanguageSelection(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.selectedMenu += 2
 			}
 		case "enter":
-			// If the last item (Back) is selected, return to the config menu
-			if m.selectedMenu == len(m.menuItems)-1 {
+			item := m.menuItems[m.selectedMenu]
+			if item.action != "select_language" {
 				m.menuItems = NewConfigMenu()
 				m.selectedMenu = 0
 				m.currentView = constants.ConfigurationView
 				return m, nil
 			}
 
-			// Otherwise, change the language
-			// Extract the language code from the description (format: "language: XX")
-			descParts := strings.Split(m.menuItems[m.selectedMenu].description, ": ")
-			if len(descParts) < 2 {
-				m.err = errors.Wrap(fmt.Errorf("invalid language selection format"), 0)
-				return m, nil
-			}
-
-			selectedLang := strings.TrimSpace(descParts[1])
+			selectedLang := item.value
 
 			// Update the configuration
-			if m.currentConfig != nil && selectedLang != m.currentConfig.Language {
+			if m.currentConfig != nil && selectedLang != localization.NormalizeLanguage(m.currentConfig.Language) {
 				// Atualizar o idioma no arquivo de configuração
 				err := updateLanguageInConfig(selectedLang)
 				if err != nil {
@@ -1994,29 +2187,13 @@ func (m *CLIModel) updateLanguageSelection(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.err = errors.Wrap(err, 0)
 					return m, nil
 				}
-
-				// Return to the config menu
-				m.menuItems = NewConfigMenu()
-				m.selectedMenu = 0
-				m.currentView = constants.ConfigurationView
-
-				// Reinitialize localization with the new language
-				err = localization.InitLocalization(newCfg)
-				if err != nil {
-					m.err = errors.Wrap(err, 0)
-					return m, nil
-				}
-
-				// Return to the config menu
-				m.menuItems = NewConfigMenu()
-				m.selectedMenu = 0
-				m.currentView = constants.ConfigurationView
-			} else {
-				// If no change or error, just return to the config menu
-				m.menuItems = NewConfigMenu()
-				m.selectedMenu = 0
-				m.currentView = constants.ConfigurationView
+				m.localeLanguage = localization.GetCurrentLanguage()
+				m.refreshLocalizedUI()
 			}
+			// Return to the config menu
+			m.menuItems = NewConfigMenu()
+			m.selectedMenu = 0
+			m.currentView = constants.ConfigurationView
 		case "esc":
 			// Return to the config menu
 			m.menuItems = NewConfigMenu()
@@ -2041,21 +2218,17 @@ func (m *CLIModel) updateNetworkMenu(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.selectedMenu++
 			}
 		case "enter":
-			// If the last item (Back) is selected, return to the config menu
-			if m.selectedMenu == len(m.menuItems)-1 {
+			switch m.menuItems[m.selectedMenu].action {
+			case "add_network":
+				m.initAddNetwork()
+				return m, nil
+			case "network_list":
+				m.initNetworkList()
+				return m, nil
+			case "back":
 				m.menuItems = NewConfigMenu()
 				m.selectedMenu = 0
 				m.currentView = constants.ConfigurationView
-				return m, nil
-			}
-
-			// Otherwise, handle the selected option
-			switch m.selectedMenu {
-			case 0: // Add Network
-				m.initAddNetwork()
-				return m, nil
-			case 1: // Network List
-				m.initNetworkList()
 				return m, nil
 			}
 		case "esc":
@@ -2103,11 +2276,11 @@ func (m *CLIModel) rebuildWalletsTable() {
 	}
 
 	columns := []table.Column{
-		{Title: localization.Labels["id"], Width: idColWidth},
-		{Title: "Nome", Width: nameColWidth},
-		{Title: localization.Labels["wallet_type"], Width: typeColWidth},
-		{Title: localization.Labels["created_at"], Width: createdAtColWidth},
-		{Title: localization.Labels["ethereum_address"], Width: addressColWidth},
+		{Title: localization.Get("id"), Width: idColWidth},
+		{Title: localization.Get("name"), Width: nameColWidth},
+		{Title: localization.Get("wallet_type"), Width: typeColWidth},
+		{Title: localization.Get("created_at"), Width: createdAtColWidth},
+		{Title: localization.Get("ethereum_address"), Width: addressColWidth},
 	}
 
 	var rows []table.Row

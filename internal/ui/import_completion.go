@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"blocowallet/internal/wallet"
+	"blocowallet/pkg/localization"
 )
 
 // CompletionAction represents actions available in the completion phase
@@ -79,8 +80,8 @@ func (m *ImportCompletionModel) initializeActions() {
 	// Always available: Return to menu
 	m.availableActions = append(m.availableActions, CompletionActionItem{
 		Action:      CompletionActionReturnToMenu,
-		Label:       "Return to Main Menu",
-		Description: "Go back to the main wallet management menu",
+		Label:       localization.Get("ic_return_menu"),
+		Description: localization.Get("ic_return_menu_desc"),
 		Key:         "ENTER",
 		Enabled:     true,
 	})
@@ -88,8 +89,8 @@ func (m *ImportCompletionModel) initializeActions() {
 	// Always available: Select different files
 	m.availableActions = append(m.availableActions, CompletionActionItem{
 		Action:      CompletionActionSelectDifferentFiles,
-		Label:       "Select Different Files",
-		Description: "Choose different keystore files to import",
+		Label:       localization.Get("ic_select_files"),
+		Description: localization.Get("ic_select_files_desc"),
 		Key:         "S",
 		Enabled:     true,
 	})
@@ -98,8 +99,8 @@ func (m *ImportCompletionModel) initializeActions() {
 	if m.summary.FailedImports > 0 {
 		m.availableActions = append(m.availableActions, CompletionActionItem{
 			Action:      CompletionActionRetryFailed,
-			Label:       fmt.Sprintf("Retry Failed Imports (%d)", m.summary.FailedImports),
-			Description: "Retry importing files that failed due to errors",
+			Label:       localization.T("ic_retry_failed", map[string]interface{}{"Count": m.summary.FailedImports}),
+			Description: localization.Get("ic_retry_failed_desc"),
 			Key:         "F",
 			Enabled:     true,
 		})
@@ -109,8 +110,8 @@ func (m *ImportCompletionModel) initializeActions() {
 	if m.summary.SkippedImports > 0 {
 		m.availableActions = append(m.availableActions, CompletionActionItem{
 			Action:      CompletionActionRetrySkipped,
-			Label:       fmt.Sprintf("Retry Skipped Imports (%d)", m.summary.SkippedImports),
-			Description: "Retry importing files that were skipped (password input cancelled)",
+			Label:       localization.T("ic_retry_skipped", map[string]interface{}{"Count": m.summary.SkippedImports}),
+			Description: localization.Get("ic_retry_skipped_desc"),
 			Key:         "K",
 			Enabled:     true,
 		})
@@ -121,8 +122,8 @@ func (m *ImportCompletionModel) initializeActions() {
 		totalRetryable := m.summary.FailedImports + m.summary.SkippedImports
 		m.availableActions = append(m.availableActions, CompletionActionItem{
 			Action:      CompletionActionRetryAll,
-			Label:       fmt.Sprintf("Retry All Failed/Skipped (%d)", totalRetryable),
-			Description: "Retry all files that failed or were skipped",
+			Label:       localization.T("ic_retry_all", map[string]interface{}{"Count": totalRetryable}),
+			Description: localization.Get("ic_retry_all_desc"),
 			Key:         "A",
 			Enabled:     true,
 		})
@@ -132,8 +133,8 @@ func (m *ImportCompletionModel) initializeActions() {
 	if len(m.summary.Errors) > 0 {
 		m.availableActions = append(m.availableActions, CompletionActionItem{
 			Action:      CompletionActionViewErrors,
-			Label:       fmt.Sprintf("View Error Details (%d)", len(m.summary.Errors)),
-			Description: "View detailed information about errors that occurred",
+			Label:       localization.T("ic_view_errors", map[string]interface{}{"Count": len(m.summary.Errors)}),
+			Description: localization.Get("ic_view_errors_desc"),
 			Key:         "E",
 			Enabled:     true,
 		})
@@ -343,15 +344,15 @@ func (m ImportCompletionModel) renderCompletionTitle() string {
 
 	if m.summary.FailedImports == 0 && m.summary.SkippedImports == 0 {
 		// Complete success
-		title = "✓ Import Completed Successfully"
+		title = localization.Get("ic_title_success")
 		style = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("70")) // Green
 	} else if m.summary.SuccessfulImports > 0 {
 		// Partial success
-		title = "⚠ Import Completed with Issues"
+		title = localization.Get("ic_title_issues")
 		style = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("214")) // Orange
 	} else {
 		// Complete failure
-		title = "✗ Import Failed"
+		title = localization.Get("ic_title_failed")
 		style = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("196")) // Red
 	}
 
@@ -363,18 +364,17 @@ func (m ImportCompletionModel) renderSummaryStats() string {
 	var sections []string
 
 	// Main statistics line
-	stats := fmt.Sprintf("Total: %d | Success: %d | Failed: %d | Skipped: %d",
-		m.summary.TotalFiles,
-		m.summary.SuccessfulImports,
-		m.summary.FailedImports,
-		m.summary.SkippedImports)
+	stats := localization.T("eimp_stats", map[string]interface{}{
+		"Total": m.summary.TotalFiles, "Success": m.summary.SuccessfulImports,
+		"Failed": m.summary.FailedImports, "Skipped": m.summary.SkippedImports,
+	})
 
 	sections = append(sections, stats)
 
 	// Success rate if there were any files processed
 	if m.summary.TotalFiles > 0 {
 		successRate := float64(m.summary.SuccessfulImports) / float64(m.summary.TotalFiles) * 100
-		rateText := fmt.Sprintf("Success Rate: %.1f%%", successRate)
+		rateText := localization.T("ic_success_rate", map[string]interface{}{"Rate": fmt.Sprintf("%.1f", successRate)})
 
 		var rateStyle lipgloss.Style
 		if successRate >= 90 {
@@ -393,12 +393,12 @@ func (m ImportCompletionModel) renderSummaryStats() string {
 
 // renderTimeInfo renders timing information
 func (m ImportCompletionModel) renderTimeInfo() string {
-	timeText := fmt.Sprintf("Completed in: %v", m.elapsedTime.Round(time.Second))
+	timeText := localization.T("ic_completed_in", map[string]interface{}{"Elapsed": m.elapsedTime.Round(time.Second)})
 
 	// Add performance info if we have multiple files
 	if m.summary.TotalFiles > 1 {
 		avgTime := m.elapsedTime / time.Duration(m.summary.TotalFiles)
-		timeText += fmt.Sprintf(" (avg: %v per file)", avgTime.Round(time.Millisecond))
+		timeText += localization.T("ic_avg_per_file", map[string]interface{}{"Avg": avgTime.Round(time.Millisecond)})
 	}
 
 	return timeText
@@ -410,7 +410,7 @@ func (m ImportCompletionModel) renderQuickErrorSummary() string {
 
 	sections = append(sections, "")
 
-	errorTitle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("196")).Render("Issues Encountered:")
+	errorTitle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("196")).Render(localization.Get("ic_issues_title"))
 	sections = append(sections, errorTitle)
 
 	// Group errors by type
@@ -427,10 +427,10 @@ func (m ImportCompletionModel) renderQuickErrorSummary() string {
 
 	// Show failed files (up to 3)
 	if len(failedFiles) > 0 {
-		sections = append(sections, lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render("Failed:"))
+		sections = append(sections, lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render(localization.Get("ic_failed_label")))
 		for i, file := range failedFiles {
 			if i >= 3 {
-				sections = append(sections, fmt.Sprintf("  ... and %d more", len(failedFiles)-3))
+				sections = append(sections, localization.T("ic_more", map[string]interface{}{"Count": len(failedFiles) - 3}))
 				break
 			}
 			sections = append(sections, fmt.Sprintf("  • %s", file))
@@ -439,10 +439,10 @@ func (m ImportCompletionModel) renderQuickErrorSummary() string {
 
 	// Show skipped files (up to 3)
 	if len(skippedFiles) > 0 {
-		sections = append(sections, lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Render("Skipped:"))
+		sections = append(sections, lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Render(localization.Get("ic_skipped_label")))
 		for i, file := range skippedFiles {
 			if i >= 3 {
-				sections = append(sections, fmt.Sprintf("  ... and %d more", len(skippedFiles)-3))
+				sections = append(sections, localization.T("ic_more", map[string]interface{}{"Count": len(skippedFiles) - 3}))
 				break
 			}
 			sections = append(sections, fmt.Sprintf("  • %s", file))
@@ -461,7 +461,7 @@ func (m ImportCompletionModel) renderAvailableActions() string {
 	var sections []string
 	sections = append(sections, "")
 
-	actionsTitle := lipgloss.NewStyle().Bold(true).Render("Available Actions:")
+	actionsTitle := lipgloss.NewStyle().Bold(true).Render(localization.Get("ic_actions_title"))
 	sections = append(sections, actionsTitle)
 
 	for i, action := range m.availableActions {
@@ -501,14 +501,14 @@ func (m ImportCompletionModel) renderInstructions() string {
 	sections = append(sections, "")
 
 	instructions := []string{
-		"Use ↑/↓ or j/k to navigate actions",
-		"Press ENTER to execute selected action",
-		"Press ESC or Q to return to main menu",
+		localization.Get("ic_nav_actions"),
+		localization.Get("ic_enter_action"),
+		localization.Get("ic_esc_menu"),
 	}
 
 	// Add specific key instructions if actions are available
 	if m.hasActionWithKey("E") {
-		instructions = append(instructions, "Press E to view detailed error information")
+		instructions = append(instructions, localization.Get("ic_press_e"))
 	}
 
 	instructionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
@@ -522,17 +522,17 @@ func (m ImportCompletionModel) renderInstructions() string {
 // renderErrorDetailsView renders the detailed error view
 func (m ImportCompletionModel) renderErrorDetailsView() string {
 	if len(m.summary.Errors) == 0 {
-		return "No errors to display"
+		return localization.Get("ic_no_errors")
 	}
 
 	var sections []string
 
 	// Title
-	title := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("196")).Render("Error Details")
+	title := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("196")).Render(localization.Get("ic_error_details"))
 	sections = append(sections, title)
 
 	// Error navigation info
-	navInfo := fmt.Sprintf("Error %d of %d", m.errorIndex+1, len(m.summary.Errors))
+	navInfo := localization.T("ic_error_nav", map[string]interface{}{"Index": m.errorIndex + 1, "Total": len(m.summary.Errors)})
 	sections = append(sections, navInfo)
 
 	// Current error details
@@ -544,9 +544,9 @@ func (m ImportCompletionModel) renderErrorDetailsView() string {
 	// Navigation instructions
 	sections = append(sections, "")
 	instructions := []string{
-		"Use ↑/↓ or j/k to navigate between errors",
-		"Press R to retry this specific file",
-		"Press ESC or Q to return to summary",
+		localization.Get("ic_nav_errors"),
+		localization.Get("ic_retry_file"),
+		localization.Get("ic_esc_summary"),
 	}
 
 	instructionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
@@ -563,20 +563,20 @@ func (m ImportCompletionModel) renderSingleErrorDetails(err wallet.ImportError) 
 
 	// File information
 	fileStyle := lipgloss.NewStyle().Bold(true)
-	sections = append(sections, fileStyle.Render(fmt.Sprintf("File: %s", safeShort(err.File))))
+	sections = append(sections, fileStyle.Render(localization.T("ic_file_label", map[string]interface{}{"File": safeShort(err.File)})))
 
 	// Error type
-	errorType := "Failed"
+	errorType := localization.Get("eimp_error_failed")
 	typeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
 	if err.Skipped {
-		errorType = "Skipped"
+		errorType = localization.Get("eimp_error_skipped")
 		typeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
 	}
-	sections = append(sections, typeStyle.Render(fmt.Sprintf("Status: %s", errorType)))
+	sections = append(sections, typeStyle.Render(localization.T("ic_status_label", map[string]interface{}{"Status": errorType})))
 
 	// Error message
 	sections = append(sections, "")
-	sections = append(sections, "Error Details:")
+	sections = append(sections, localization.Get("ic_details_label"))
 
 	errorMsg := safeError(err.Error)
 	// Wrap long error messages
@@ -596,7 +596,7 @@ func (m ImportCompletionModel) renderSingleErrorDetails(err wallet.ImportError) 
 	suggestions := m.getSuggestedActions(err)
 	if len(suggestions) > 0 {
 		sections = append(sections, "")
-		sections = append(sections, "Suggested Actions:")
+		sections = append(sections, localization.Get("ic_suggested"))
 		for _, suggestion := range suggestions {
 			sections = append(sections, fmt.Sprintf("  • %s", suggestion))
 		}
@@ -612,21 +612,21 @@ func (m ImportCompletionModel) getSuggestedActions(err wallet.ImportError) []str
 	errorMsg := strings.ToLower(safeError(err.Error))
 
 	if err.Skipped {
-		suggestions = append(suggestions, "File was skipped due to user cancellation")
-		suggestions = append(suggestions, "Retry with manual password input")
+		suggestions = append(suggestions, localization.Get("ic_sug_skipped"))
+		suggestions = append(suggestions, localization.Get("ic_sug_retry_manual"))
 	} else if strings.Contains(errorMsg, "password") || strings.Contains(errorMsg, "decrypt") {
-		suggestions = append(suggestions, "Verify the password is correct")
-		suggestions = append(suggestions, "Check if a .pwd file exists with the correct password")
-		suggestions = append(suggestions, "Retry with manual password input")
+		suggestions = append(suggestions, localization.Get("ic_sug_password"))
+		suggestions = append(suggestions, localization.Get("ic_sug_pwdfile"))
+		suggestions = append(suggestions, localization.Get("ic_sug_retry_manual"))
 	} else if strings.Contains(errorMsg, "format") || strings.Contains(errorMsg, "invalid") {
-		suggestions = append(suggestions, "Verify the file is a valid KeyStore V3 format")
-		suggestions = append(suggestions, "Check if the file is corrupted")
+		suggestions = append(suggestions, localization.Get("ic_sug_format"))
+		suggestions = append(suggestions, localization.Get("ic_sug_corrupt"))
 	} else if strings.Contains(errorMsg, "permission") || strings.Contains(errorMsg, "access") {
-		suggestions = append(suggestions, "Check file permissions")
-		suggestions = append(suggestions, "Ensure the file is not locked by another process")
+		suggestions = append(suggestions, localization.Get("ic_sug_perms"))
+		suggestions = append(suggestions, localization.Get("ic_sug_locked"))
 	} else {
-		suggestions = append(suggestions, "Check the error details above")
-		suggestions = append(suggestions, "Verify the file is accessible and valid")
+		suggestions = append(suggestions, localization.Get("ic_sug_details"))
+		suggestions = append(suggestions, localization.Get("ic_sug_accessible"))
 	}
 
 	return suggestions

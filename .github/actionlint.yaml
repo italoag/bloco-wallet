@@ -1,0 +1,6 @@
+self-hosted-runner:
+  # GitHub-hosted Ubuntu 26.04 labels are generally available but not yet in
+  # actionlint's built-in runner list. Remove once actionlint recognizes them.
+  labels:
+    - ubuntu-26.04
+    - ubuntu-26.04-arm

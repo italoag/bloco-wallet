@@ -30,15 +30,15 @@ type NetworkListKeyMap struct {
 
 func newNetworkListKeyMap() NetworkListKeyMap {
 	return NetworkListKeyMap{
-		Up:         key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "up")),
-		Down:       key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "down")),
-		Add:        key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "Add Network")),
-		Edit:       key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "Edit Network")),
-		Delete:     key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "Delete Network")),
-		Refresh:    key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "Refresh")),
-		Revalidate: key.NewBinding(key.WithKeys("v"), key.WithHelp("v", "Revalidate")),
-		Back:       key.NewBinding(key.WithKeys("esc", "backspace"), key.WithHelp("esc", "Back")),
-		ToggleHelp: key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "More help")),
+		Up:         key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", localization.Get("help_up"))),
+		Down:       key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", localization.Get("help_down"))),
+		Add:        key.NewBinding(key.WithKeys("a"), key.WithHelp("a", localization.Get("help_add_network"))),
+		Edit:       key.NewBinding(key.WithKeys("e"), key.WithHelp("e", localization.Get("help_edit_network"))),
+		Delete:     key.NewBinding(key.WithKeys("d"), key.WithHelp("d", localization.Get("help_delete_network"))),
+		Refresh:    key.NewBinding(key.WithKeys("r"), key.WithHelp("r", localization.Get("help_refresh"))),
+		Revalidate: key.NewBinding(key.WithKeys("v"), key.WithHelp("v", localization.Get("help_revalidate"))),
+		Back:       key.NewBinding(key.WithKeys("esc", "backspace"), key.WithHelp("esc", localization.Get("help_back"))),
+		ToggleHelp: key.NewBinding(key.WithKeys("?"), key.WithHelp("?", localization.Get("help_more"))),
 	}
 }
 
@@ -48,6 +48,72 @@ func (keyMap NetworkListKeyMap) ShortHelp() []key.Binding {
 
 func (keyMap NetworkListKeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{{keyMap.Up, keyMap.Down}, {keyMap.Add, keyMap.Edit, keyMap.Delete}, {keyMap.Refresh, keyMap.Revalidate}, {keyMap.ToggleHelp, keyMap.Back}}
+}
+
+// networkHealthText resolves the stable health code to a localized string at
+// render time; unknown runtime codes fall back to a bounded raw diagnostic.
+func networkHealthText(info NetworkInfo) string {
+	switch info.CurrentHealth {
+	case "verified":
+		return localization.Get("net_health_verified")
+	case "unchecked", "":
+		return localization.Get("net_health_unchecked")
+	default:
+		return safeShort(info.CurrentHealth)
+	}
+}
+
+// networkPrivacyText renders the raw tracking value with a localized prefix.
+func networkPrivacyText(info NetworkInfo) string {
+	if info.PrivacyTracking == "" {
+		return localization.Get("net_tracking_unknown")
+	}
+	return localization.T("net_tracking_observed", map[string]interface{}{"Tracking": safeShort(info.PrivacyTracking)})
+}
+
+// networkConfidenceText resolves the stable confidence code at render time.
+func networkConfidenceText(info NetworkInfo) string {
+	switch info.QuorumConfidence {
+	case "single_provider", "none", "":
+		return localization.Get("net_confidence_none")
+	default:
+		return safeShort(info.QuorumConfidence)
+	}
+}
+
+// refreshLocalizedColumns reapplies localized column titles preserving widths.
+func (c *NetworkListComponent) refreshLocalizedColumns() {
+	columns := c.table.Columns()
+	keys := map[int]string{1: "network_name", 2: "network_col_type_identity", 3: "chain_id", 4: "symbol", 5: "status"}
+	for i, k := range keys {
+		if i < len(columns) {
+			columns[i].Title = localization.Get(k)
+		}
+	}
+	c.table.SetColumns(columns)
+}
+
+// refreshKeyHelp reapplies localized help descriptions preserving Enabled
+// state and keys.
+func (c *NetworkListComponent) refreshKeyHelp() {
+	type entry struct {
+		binding *key.Binding
+		key     string
+	}
+	k := &c.keys
+	for _, e := range []entry{
+		{&k.Up, "help_up"},
+		{&k.Down, "help_down"},
+		{&k.Add, "help_add_network"},
+		{&k.Edit, "help_edit_network"},
+		{&k.Delete, "help_delete_network"},
+		{&k.Refresh, "help_refresh"},
+		{&k.Revalidate, "help_revalidate"},
+		{&k.Back, "help_back"},
+		{&k.ToggleHelp, "help_more"},
+	} {
+		e.binding.SetHelp(e.binding.Help().Key, localization.Get(e.key))
+	}
 }
 
 // NetworkListComponent represents the network list component
@@ -64,6 +130,8 @@ type NetworkListComponent struct {
 
 	// Cached classification info to avoid network calls during View rendering
 	networksInfo map[string]NetworkInfo
+	// lastCfg lets locale refresh re-render localized cells without IO
+	lastCfg *config.Config
 
 	// Network service
 	chainListService *blockchain.ChainListService
@@ -86,11 +154,11 @@ func NewNetworkListComponent() NetworkListComponent {
 func (c *NetworkListComponent) initTable() {
 	columns := []table.Column{
 		{Title: "#", Width: 4},
-		{Title: localization.Labels["network_name"], Width: 18},
-		{Title: "Type / Identity / Privacy", Width: 36},
-		{Title: localization.Labels["chain_id"], Width: 10},
-		{Title: localization.Labels["symbol"], Width: 8},
-		{Title: localization.Labels["status"], Width: 10},
+		{Title: localization.Get("network_name"), Width: 18},
+		{Title: localization.Get("network_col_type_identity"), Width: 36},
+		{Title: localization.Get("chain_id"), Width: 10},
+		{Title: localization.Get("symbol"), Width: 8},
+		{Title: localization.Get("status"), Width: 10},
 		{Title: "Key", Width: 0}, // Hidden column for network key
 	}
 
@@ -183,7 +251,21 @@ func (c *NetworkListComponent) UpdateNetworksWithInfo(cfg *config.Config, networ
 	}
 	// Cache to avoid repeated network calls during table navigation/render
 	c.networksInfo = networksWithInfo
+	c.lastCfg = cfg
 
+	c.table.SetRows(c.buildRows(cfg))
+
+	// Only set the cursor if there are rows
+	if len(c.table.Rows()) > 0 {
+		c.table.SetCursor(0)
+	}
+	c.busy = false
+	c.updateKeyAvailability()
+}
+
+// buildRows derives display rows from raw config/network metadata so locale
+// refreshes can re-render localized cells without reverse-mapping text.
+func (c *NetworkListComponent) buildRows(cfg *config.Config) []table.Row {
 	var rows []table.Row
 	keys := make([]string, 0, len(cfg.Networks))
 	for key := range cfg.Networks {
@@ -193,22 +275,22 @@ func (c *NetworkListComponent) UpdateNetworksWithInfo(cfg *config.Config, networ
 
 	for index, networkKey := range keys {
 		network := cfg.Networks[networkKey]
-		status := localization.Labels["inactive"]
+		status := localization.Get("inactive")
 		if network.IsActive {
-			status = localization.Labels["active"]
+			status = localization.Get("active")
 		}
 
 		// Get network type and source information
-		networkType := "Custom"
-		identity := "not checked now"
-		if networkInfo, exists := networksWithInfo[networkKey]; exists {
+		networkType := localization.Get("network_type_custom")
+		identity := localization.Get("network_identity_unchecked")
+		if networkInfo, exists := c.networksInfo[networkKey]; exists {
 			if networkInfo.Type == blockchain.NetworkTypeStandard {
-				networkType = "Registry claim"
+				networkType = localization.Get("network_type_registry_claim")
 			}
 			if networkInfo.PreviouslyValidated {
-				identity = "previously observed"
+				identity = localization.Get("network_identity_observed")
 			}
-			networkType = fmt.Sprintf("%s / %s / health:%s", networkType, identity, safeShort(networkInfo.CurrentHealth))
+			networkType = fmt.Sprintf("%s / %s / %s:%s", networkType, identity, localization.Get("network_health_label"), networkHealthText(networkInfo))
 		} else {
 			networkType = fmt.Sprintf("%s / %s", networkType, identity)
 		}
@@ -223,15 +305,30 @@ func (c *NetworkListComponent) UpdateNetworksWithInfo(cfg *config.Config, networ
 			networkKey, // Hidden column for network key
 		})
 	}
+	return rows
+}
 
-	c.table.SetRows(rows)
-
-	// Only set the cursor if there are rows
-	if len(rows) > 0 {
-		c.table.SetCursor(0)
+// refreshLocalizedRows re-renders localized status/type cells from cached raw
+// metadata, preserving cursor and selection. No network or config IO.
+func (c *NetworkListComponent) refreshLocalizedRows() {
+	if c.lastCfg == nil {
+		return
 	}
-	c.busy = false
-	c.updateKeyAvailability()
+	selectedKey := c.GetSelectedNetworkKey()
+	cursor := c.table.Cursor()
+	c.table.SetRows(c.buildRows(c.lastCfg))
+	if len(c.table.Rows()) == 0 {
+		return
+	}
+	c.table.SetCursor(min(cursor, len(c.table.Rows())-1))
+	if selectedKey != "" {
+		for i, row := range c.table.Rows() {
+			if len(row) > 6 && row[6] == selectedKey {
+				c.table.SetCursor(i)
+				break
+			}
+		}
+	}
 }
 
 // GetSelectedNetworkKey returns the key of the selected network
@@ -293,7 +390,7 @@ func (c *NetworkListComponent) View() string {
 		Background(lipgloss.Color("#874BFD")).
 		MarginLeft(2).
 		MarginBottom(1)
-	content = headerStyle.Render(localization.Labels["networks"])
+	content = headerStyle.Render(localization.Get("networks"))
 	content += "\n\n"
 
 	// Table
@@ -301,7 +398,7 @@ func (c *NetworkListComponent) View() string {
 	if len(rows) > 0 {
 		content += c.table.View()
 	} else {
-		content += "No networks found. Add a network to get started."
+		content += localization.Get("no_networks_found")
 	}
 	content += "\n\n"
 	if c.busy {
@@ -314,9 +411,9 @@ func (c *NetworkListComponent) View() string {
 		errorStyle := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#FF0000")).
 			MarginLeft(2)
-		content += errorStyle.Render("Network operation failed: " + safeInline(c.err.Error()))
+		content += errorStyle.Render(localization.Get("network_op_failed") + ": " + safeInline(c.err.Error()))
 		content += "\n"
-		content += errorStyle.Render("Press r to reload, v to revalidate the selected provider, or e to correct its settings.")
+		content += errorStyle.Render(localization.Get("network_op_hint"))
 		content += "\n\n"
 	}
 
@@ -331,28 +428,28 @@ func (c *NetworkListComponent) View() string {
 				MarginLeft(2).
 				MarginBottom(1)
 
-			registryStatus := "Not listed or not verified"
+			registryStatus := localization.Get("network_registry_not_listed")
 			if selectedNetworkInfo.Type == blockchain.NetworkTypeStandard {
-				registryStatus = "Stored ChainList claim"
+				registryStatus = localization.Get("network_registry_claim")
 				if selectedNetworkInfo.ChainInfo != nil {
-					registryStatus = "Listed as " + safeShort(selectedNetworkInfo.ChainInfo.Name)
+					registryStatus = localization.T("network_registry_listed", map[string]interface{}{"Name": safeShort(selectedNetworkInfo.ChainInfo.Name)})
 				}
 			}
-			identityStatus := "Not verified in this session"
+			identityStatus := localization.Get("network_identity_not_verified")
 			if selectedNetworkInfo.IsValidated {
-				identityStatus = "Verified against the configured chain ID now"
+				identityStatus = localization.Get("network_identity_verified")
 			} else if selectedNetworkInfo.PreviouslyValidated {
-				identityStatus = "Previously verified; press v to verify again"
+				identityStatus = localization.Get("network_identity_prev")
 			}
 			details := strings.Join([]string{
-				"Selected network",
-				"Source: " + safeShort(selectedNetworkInfo.Source),
-				"Registry: " + registryStatus,
-				"Chain identity: " + identityStatus,
-				"Health: " + safeShort(selectedNetworkInfo.CurrentHealth),
-				"Privacy tracking: " + safeShort(selectedNetworkInfo.PrivacyTracking),
-				"Provider confidence: " + safeShort(selectedNetworkInfo.QuorumConfidence),
-				"Press v to revalidate or e to correct the provider settings.",
+				localization.Get("network_selected"),
+				localization.Get("network_detail_source") + ": " + safeShort(selectedNetworkInfo.Source),
+				localization.Get("network_detail_registry") + ": " + registryStatus,
+				localization.Get("network_detail_chain_identity") + ": " + identityStatus,
+				localization.Get("network_detail_health") + ": " + networkHealthText(*selectedNetworkInfo),
+				localization.Get("network_detail_privacy") + ": " + networkPrivacyText(*selectedNetworkInfo),
+				localization.Get("network_detail_confidence") + ": " + networkConfidenceText(*selectedNetworkInfo),
+				localization.Get("network_revalidate_hint"),
 			}, "\n")
 			content += detailStyle.Render(details)
 			content += "\n"

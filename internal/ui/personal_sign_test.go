@@ -64,9 +64,9 @@ func (authorizer personalSignAuthorizerStub) HasActiveSession(context.Context, s
 }
 
 func TestPersonalSignFlowShowsPreviewSignatureAndKeepsViewPure(t *testing.T) {
-	previousLabels := localization.Labels
-	localization.Labels = map[string]string{"wallet_details_title": "Wallet Details", "select_wallet_prompt": "Select wallet"}
-	t.Cleanup(func() { localization.Labels = previousLabels })
+	previousLanguage := localization.GetCurrentLanguage()
+	localization.SetCurrentLanguage("en")
+	t.Cleanup(func() { localization.SetCurrentLanguage(previousLanguage) })
 	key, err := crypto.HexToECDSA("4646464646464646464646464646464646464646464646464646464646464646")
 	if err != nil {
 		t.Fatal(err)
@@ -106,7 +106,7 @@ func TestPersonalSignFlowShowsPreviewSignatureAndKeepsViewPure(t *testing.T) {
 		t.Fatal("personal sign did not start submission")
 	}
 	before := model.personalSignGeneration
-	_, _ = model.Update(submit())
+	feedCmdResult(model, submit, 0)
 	view = model.viewPersonalSign()
 	if model.personalSignGeneration != before || model.personalSign.phase != personalSignComplete || !strings.Contains(view, "Signature") || !strings.Contains(view, "0x") {
 		t.Fatalf("personal sign did not complete: %q", view)
@@ -154,9 +154,9 @@ func TestHardwarePersonalSignDoesNotRequestStoragePassword(t *testing.T) {
 }
 
 func TestPersonalSignStaleResultIsIgnoredAfterBack(t *testing.T) {
-	previousLabels := localization.Labels
-	localization.Labels = map[string]string{"wallet_details_title": "Wallet Details", "select_wallet_prompt": "Select wallet"}
-	t.Cleanup(func() { localization.Labels = previousLabels })
+	previousLanguage := localization.GetCurrentLanguage()
+	localization.SetCurrentLanguage("en")
+	t.Cleanup(func() { localization.SetCurrentLanguage(previousLanguage) })
 	model := &CLIModel{width: 120, height: 30, styles: createStyles(), transactionAuthorizer: personalSignAuthorizerStub{}, selectedAccount: &wallet.AccountSummary{
 		AccountID: "11111111-1111-4111-8111-111111111111", Address: "0x1563915e194D8CfBA1943570603F7606A3115508", State: wallet.AccountStateActive,
 	}}
@@ -172,7 +172,7 @@ func TestPersonalSignStaleResultIsIgnoredAfterBack(t *testing.T) {
 	if model.currentView != constants.WalletDetailsView || model.personalSign != nil {
 		t.Fatal("back navigation did not clear personal sign")
 	}
-	_, _ = model.Update(submit())
+	feedCmdResult(model, submit, 0)
 	if model.currentView != constants.WalletDetailsView || model.personalSign != nil {
 		t.Fatal("stale personal sign result changed the restored view")
 	}

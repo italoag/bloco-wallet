@@ -1,10 +1,14 @@
 package ui
 
 import (
-	"blocowallet/internal/blockchain"
-	"blocowallet/pkg/config"
+	"context"
+	"errors"
 	"os"
 	"testing"
+
+	"blocowallet/internal/blockchain"
+	"blocowallet/pkg/config"
+	"blocowallet/pkg/localization"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -408,4 +412,29 @@ func TestNetworkManager_ValidateNetwork_EmptyName(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "name cannot be empty")
+}
+
+func TestListNetworksPreservesCauseAndLocalizes(t *testing.T) {
+	for _, lang := range []string{"en", "pt", "es"} {
+		previous := localization.GetCurrentLanguage()
+		localization.SetCurrentLanguage(lang)
+		mockConfigManager := &MockConfigurationManager{}
+		mockConfigManager.On("LoadConfiguration").Return(nil, context.Canceled)
+		mockChainList := &MockChainListService{}
+		nm := NewNetworkManager(mockConfigManager, mockChainList)
+
+		_, err := nm.ListNetworks()
+		require.Error(t, err)
+		assert.True(t, errors.Is(err, context.Canceled), "cause must survive localization wrap")
+		assert.NotContains(t, err.Error(), "{{")
+		switch lang {
+		case "pt":
+			assert.Contains(t, err.Error(), "Falha ao carregar")
+		case "es":
+			assert.Contains(t, err.Error(), "Error al cargar")
+		default:
+			assert.Contains(t, err.Error(), "Failed to load")
+		}
+		localization.SetCurrentLanguage(previous)
+	}
 }

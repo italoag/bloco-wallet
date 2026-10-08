@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"strings"
 
 	"blocowallet/internal/constants"
 	"blocowallet/internal/fido2"
+	"blocowallet/pkg/localization"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -55,12 +55,12 @@ type fido2KeyMap struct {
 
 func newFIDO2KeyMap() fido2KeyMap {
 	return fido2KeyMap{
-		Up:       key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "previous")),
-		Down:     key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "next")),
-		Register: key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "register key")),
-		Auth:     key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "authenticate")),
-		Submit:   key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "submit")),
-		Back:     key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
+		Up:       key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", localization.Get("fido2_previous"))),
+		Down:     key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", localization.Get("fido2_next"))),
+		Register: key.NewBinding(key.WithKeys("r"), key.WithHelp("r", localization.Get("fido2_register"))),
+		Auth:     key.NewBinding(key.WithKeys("a"), key.WithHelp("a", localization.Get("fido2_authenticate"))),
+		Submit:   key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", localization.Get("fido2_submit"))),
+		Back:     key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", localization.Get("hist_back"))),
 	}
 }
 
@@ -90,7 +90,7 @@ func (model *CLIModel) initFIDO2() {
 		return
 	}
 	response := textinput.New()
-	response.Placeholder = "Paste the WebAuthn response JSON"
+	response.Placeholder = localization.Get("fido2_response_placeholder")
 	response.CharLimit = 128 << 10
 	response.Width = 110
 	state := &fido2State{
@@ -138,7 +138,7 @@ func (model *CLIModel) updateFIDO2(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if key.Matches(message, state.keys.Register) {
 				if model.fido2Service == nil {
-					state.err = "FIDO2 service is unavailable"
+					state.err = localization.Get("fido2_err_unavailable")
 					return model, nil
 				}
 				challenge, err := model.fido2Service.BeginRegistration(context.Background(), defaultFIDO2RPID, defaultFIDO2Origin, state.accountID, []byte(state.accountID))
@@ -148,14 +148,14 @@ func (model *CLIModel) updateFIDO2(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				state.challengeID = challenge.ChallengeID
 				state.challenge = base64.RawURLEncoding.EncodeToString(challenge.Challenge)
-				state.status = "Registration challenge (base64url):\n" + safeInline(state.challenge) + "\n\nPaste the authenticator response JSON below."
+				state.status = localization.Get("fido2_reg_challenge") + "\n" + safeInline(state.challenge) + "\n\n" + localization.Get("fido2_paste_response")
 				state.phase = fido2Register
 				state.response.Focus()
 				return model, nil
 			}
 			if len(state.credentials) > 0 && key.Matches(message, state.keys.Auth) {
 				if model.fido2Service == nil {
-					state.err = "FIDO2 service is unavailable"
+					state.err = localization.Get("fido2_err_unavailable")
 					return model, nil
 				}
 				credential := state.credentials[state.selected]
@@ -166,7 +166,7 @@ func (model *CLIModel) updateFIDO2(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				state.challengeID = challenge.ChallengeID
 				state.challenge = base64.RawURLEncoding.EncodeToString(challenge.Challenge)
-				state.status = "Authentication challenge (base64url):\n" + safeInline(state.challenge) + "\n\nPaste the authenticator response JSON below."
+				state.status = localization.Get("fido2_auth_challenge") + "\n" + safeInline(state.challenge) + "\n\n" + localization.Get("fido2_paste_response")
 				state.phase = fido2Authenticate
 				state.response.Focus()
 				return model, nil
@@ -175,7 +175,7 @@ func (model *CLIModel) updateFIDO2(message tea.Msg) (tea.Model, tea.Cmd) {
 			if key.Matches(message, state.keys.Submit) {
 				var response fido2.RegistrationResponse
 				if err := json.Unmarshal([]byte(state.response.Value()), &response); err != nil {
-					state.err = "Response must be the authenticator JSON"
+					state.err = localization.Get("fido2_err_response")
 					return model, nil
 				}
 				result, err := model.fido2Service.FinishRegistration(context.Background(), state.challengeID, response, false)
@@ -196,7 +196,7 @@ func (model *CLIModel) updateFIDO2(message tea.Msg) (tea.Model, tea.Cmd) {
 			if key.Matches(message, state.keys.Submit) {
 				var response fido2.AssertionResponse
 				if err := json.Unmarshal([]byte(state.response.Value()), &response); err != nil {
-					state.err = "Response must be the authenticator JSON"
+					state.err = localization.Get("fido2_err_response")
 					return model, nil
 				}
 				result, err := model.fido2Service.FinishAuthentication(context.Background(), state.challengeID, response, false)
@@ -205,7 +205,7 @@ func (model *CLIModel) updateFIDO2(message tea.Msg) (tea.Model, tea.Cmd) {
 					return model, nil
 				}
 				state.err = ""
-				state.status = fmt.Sprintf("Authenticated. Counter now %d.", result.SignCount)
+				state.status = localization.T("fido2_authenticated", map[string]interface{}{"Count": result.SignCount})
 				state.response.SetValue("")
 				state.phase = fido2List
 				model.refreshFIDO2Credentials()
@@ -227,9 +227,9 @@ func (model *CLIModel) updateFIDO2(message tea.Msg) (tea.Model, tea.Cmd) {
 func (model *CLIModel) viewFIDO2() string {
 	state := model.fido2
 	if state == nil {
-		return "FIDO2 is unavailable."
+		return localization.Get("fido2_unavailable")
 	}
-	title := lipgloss.NewStyle().Bold(true).Render("FIDO2 Security Keys")
+	title := lipgloss.NewStyle().Bold(true).Render(localization.Get("fido2_title"))
 	var builder strings.Builder
 	builder.WriteString(title + "\n\n")
 	if state.err != "" {
@@ -239,26 +239,26 @@ func (model *CLIModel) viewFIDO2() string {
 	switch state.phase {
 	case fido2List:
 		if len(state.credentials) == 0 {
-			builder.WriteString("No security keys registered.\n\nr: register a key • Esc: back")
+			builder.WriteString(localization.Get("fido2_no_keys"))
 		} else {
-			builder.WriteString("Registered security keys:\n")
+			builder.WriteString(localization.Get("fido2_registered") + "\n")
 			for index, credential := range state.credentials {
 				marker := "  "
 				if index == state.selected {
 					marker = "> "
 				}
-				_, _ = fmt.Fprintf(&builder, "%s%s (RP %s, counter %d)\n", marker, safeShort(hexShort(credential.CredentialID)), safeShort(credential.RPID), credential.SignCount)
+				_, _ = builder.WriteString(marker + safeShort(hexShort(credential.CredentialID)) + localization.T("fido2_credential_line", map[string]interface{}{"RP": safeShort(credential.RPID), "Count": credential.SignCount}) + "\n")
 			}
-			builder.WriteString("\nr: register • a: authenticate • Esc: back")
+			builder.WriteString("\n" + localization.Get("fido2_list_hint"))
 		}
 	case fido2Register:
 		builder.WriteString(state.status + "\n\n")
-		builder.WriteString(state.response.View() + "\n\nEnter: verify and store • Esc: back")
+		builder.WriteString(state.response.View() + "\n\n" + localization.Get("fido2_verify_store"))
 	case fido2Authenticate:
 		builder.WriteString(state.status + "\n\n")
-		builder.WriteString(state.response.View() + "\n\nEnter: verify • Esc: back")
+		builder.WriteString(state.response.View() + "\n\n" + localization.Get("fido2_verify"))
 	case fido2RegisterDone:
-		builder.WriteString("Security key registered and stored.\n\nEnter: return")
+		builder.WriteString(localization.Get("fido2_key_registered"))
 	}
 	return builder.String()
 }

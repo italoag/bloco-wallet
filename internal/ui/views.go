@@ -37,7 +37,7 @@ func formatDisplayTime(value time.Time) string {
 
 func formatNativeAmount(amount *big.Int, decimals int) string {
 	if amount == nil {
-		return "unavailable"
+		return localization.Get("amount_unavailable")
 	}
 	if decimals <= 0 {
 		return amount.String()
@@ -56,33 +56,30 @@ func formatNativeAmount(amount *big.Int, decimals int) string {
 
 // viewCreateWalletName renderiza a visualização de entrada do nome da wallet
 func (m *CLIModel) viewCreateWalletName() string {
-	if localization.Labels == nil {
-		return "Localization labels not initialized."
-	}
 
 	var view strings.Builder
 	view.WriteString(
-		lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FF00")).Render("Criar Nova Wallet") + "\n\n" +
-			"Digite o nome para sua nova wallet:" + "\n\n" +
+		lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FF00")).Render(localization.Get("create_wallet_title")) + "\n\n" +
+			localization.Get("create_wallet_name_prompt") + "\n\n" +
 			m.nameInput.View() + "\n\n" +
-			localization.Labels["press_enter"],
+			localization.Get("press_enter"),
 	)
 	return view.String()
 }
 
 func (m *CLIModel) viewCreateWalletOptions() string {
-	title := lipgloss.NewStyle().Bold(true).Render("Configure BIP39 account")
-	progress := fmt.Sprintf("Step %d/4", m.createOptionsStage+1)
+	title := lipgloss.NewStyle().Bold(true).Render(localization.Get("create_options_title"))
+	progress := localization.T("create_step_progress", map[string]interface{}{"Step": m.createOptionsStage + 1})
 	var content string
 	switch {
 	case m.createOptionsStage == 2:
-		content = "Optional BIP39 passphrase\n\n" + m.createPassphraseInput.View() + "\n\nLeave blank for no passphrase. This value cannot be recovered from the mnemonic."
+		content = localization.Get("create_passphrase_body") + "\n\n" + m.createPassphraseInput.View() + "\n\n" + localization.Get("create_passphrase_hint")
 	case m.createOptionsStage == 3 && m.createCustomPath:
-		content = "Custom EVM derivation path\n\n" + m.createDerivationPathInput.View() + "\n\nThe path must remain inside the EVM BIP44 namespace m/44'/60'."
+		content = localization.Get("create_custom_path_body") + "\n\n" + m.createDerivationPathInput.View() + "\n\n" + localization.Get("create_custom_path_hint")
 	default:
 		content = m.createOptionList.View()
 	}
-	view := title + "\n\n" + progress + "\n\n" + content + "\n\nPress Enter to continue or Esc to cancel."
+	view := title + "\n\n" + progress + "\n\n" + content + "\n\n" + localization.Get("create_enter_continue")
 	if m.createPasswordError != "" {
 		view += "\n\n" + m.styles.ErrorStyle.Render(m.createPasswordError)
 	}
@@ -90,12 +87,9 @@ func (m *CLIModel) viewCreateWalletOptions() string {
 }
 
 func (m *CLIModel) viewCreateWalletBackup() string {
-	if localization.Labels == nil {
-		return "Localization labels not initialized."
-	}
 
 	var backupWordValues []string
-	confirmationLabel := localization.Labels["confirm_mnemonic"]
+	confirmationLabel := localization.Get("confirm_mnemonic")
 	confirmationInput := m.backupConfirmationInput.View()
 	materialNotice := ""
 	if m.Vault != nil && m.backupChallenge != nil {
@@ -104,17 +98,17 @@ func (m *CLIModel) viewCreateWalletBackup() string {
 		for _, index := range m.backupChallenge.RequiredWordIndices {
 			indices = append(indices, fmt.Sprintf("#%d", index+1))
 		}
-		confirmationLabel = fmt.Sprintf("Confirm only the requested words in order (%s):", strings.Join(indices, ", "))
-		materialNotice = fmt.Sprintf("Backup metadata (no re-entry required):\nPath: %s\nLanguage: %s\n", m.backupChallenge.DerivationPath, m.backupChallenge.BIP39Language)
+		confirmationLabel = localization.T("backup_confirm_words", map[string]interface{}{"Indices": strings.Join(indices, ", ")})
+		materialNotice = localization.T("backup_metadata", map[string]interface{}{"Path": m.backupChallenge.DerivationPath, "Language": m.backupChallenge.BIP39Language})
 		if m.backupChallenge.RequiresMaterialConfirmation {
-			materialNotice += "Back up any configured BIP39 passphrase separately; it cannot be recovered from these words.\n"
+			materialNotice += localization.Get("backup_passphrase_note")
 		}
 		materialNotice += "\n"
 	}
 
 	var view strings.Builder
 	view.WriteString(
-		lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FF00")).Render(localization.Labels["mnemonic_phrase"]) + "\n\n" +
+		lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FF00")).Render(localization.Get("mnemonic_phrase")) + "\n\n" +
 			renderMnemonicCards(backupWordValues, m.width-8) + "\n\n" +
 			materialNotice + confirmationLabel + "\n\n" +
 			confirmationInput + "\n\n",
@@ -122,7 +116,7 @@ func (m *CLIModel) viewCreateWalletBackup() string {
 	if m.backupError != "" {
 		view.WriteString(m.styles.ErrorStyle.Render(m.backupError) + "\n\n")
 	}
-	view.WriteString(localization.Labels["press_enter"])
+	view.WriteString(localization.Get("press_enter"))
 	return view.String()
 }
 
@@ -137,40 +131,40 @@ func (m *CLIModel) renderPasswordValidation(password string) string {
 	// Check for minimum length
 	if password == "" {
 		builder.WriteString(m.styles.RedCross.Render("✗"))
-		builder.WriteString(" required\n")
+		builder.WriteString(localization.Get("pwd_rule_required"))
 	} else if validationErr != nil {
 		builder.WriteString(m.styles.RedCross.Render("✗"))
-		builder.WriteString(" has 15 characters or more\n")
+		builder.WriteString(localization.Get("pwd_rule_length"))
 	} else {
 		builder.WriteString(m.styles.GreenCheck.Render("✓"))
-		builder.WriteString(" has 15 characters or more\n")
+		builder.WriteString(localization.Get("pwd_rule_length"))
 	}
 
 	// Check for lowercase letter
 	if password == "" || validationErr != nil {
 		builder.WriteString(m.styles.RedCross.Render("✗"))
-		builder.WriteString(" is valid UTF-8\n")
+		builder.WriteString(localization.Get("pwd_rule_utf8"))
 	} else {
 		builder.WriteString(m.styles.GreenCheck.Render("✓"))
-		builder.WriteString(" is valid UTF-8\n")
+		builder.WriteString(localization.Get("pwd_rule_utf8"))
 	}
 
 	// Check for uppercase letter
 	if password == "" || validationErr != nil {
 		builder.WriteString(m.styles.RedCross.Render("✗"))
-		builder.WriteString(" contains only printable characters\n")
+		builder.WriteString(localization.Get("pwd_rule_printable"))
 	} else {
 		builder.WriteString(m.styles.GreenCheck.Render("✓"))
-		builder.WriteString(" contains only printable characters\n")
+		builder.WriteString(localization.Get("pwd_rule_printable"))
 	}
 
 	// Check for digit or special character
 	if password == "" || validationErr != nil {
 		builder.WriteString(m.styles.RedCross.Render("✗"))
-		builder.WriteString(" preserves whitespace exactly")
+		builder.WriteString(localization.Get("pwd_rule_whitespace"))
 	} else {
 		builder.WriteString(m.styles.GreenCheck.Render("✓"))
-		builder.WriteString(" preserves whitespace exactly")
+		builder.WriteString(localization.Get("pwd_rule_whitespace"))
 	}
 
 	return builder.String()
@@ -178,21 +172,18 @@ func (m *CLIModel) renderPasswordValidation(password string) string {
 
 // viewCreateWalletPassword renderiza a visualização de criação de wallet
 func (m *CLIModel) viewCreateWalletPassword() string {
-	if localization.Labels == nil {
-		return "Localization labels not initialized."
-	}
 
 	var view strings.Builder
-	view.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FF00")).Render(localization.Labels["enter_password"]) + "\n\n")
+	view.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FF00")).Render(localization.Get("enter_password")) + "\n\n")
 	view.WriteString(m.passwordInput.View() + "\n\n")
 	view.WriteString(m.renderPasswordValidation(m.passwordInput.Value()) + "\n\n")
 	if m.Vault != nil {
-		view.WriteString("Confirm storage password:\n" + m.createPasswordConfirmationInput.View() + "\n\n")
+		view.WriteString(localization.Get("confirm_storage_password_label") + "\n" + m.createPasswordConfirmationInput.View() + "\n\n")
 	}
 	if m.createPasswordError != "" {
 		view.WriteString(m.styles.ErrorStyle.Render(m.createPasswordError) + "\n\n")
 	}
-	view.WriteString(localization.Labels["press_enter"])
+	view.WriteString(localization.Get("press_enter"))
 	return view.String()
 }
 
@@ -236,75 +227,14 @@ func (m *CLIModel) renderSplash() string {
 	return finalSplash
 }
 
-func (m *CLIModel) renderStatusBar() string {
-	// Left part: Number of wallets
-	leftStyle := m.styles.StatusBarLeft // Used assignment for copying.
-	left := leftStyle.
-		SetString(fmt.Sprintf("Wallets: %d", m.walletCount)).
-		String()
-
-	// Right part: Current date and time
-	currentTime := formatDisplayTime(m.displayTime)
-	rightStyle := m.styles.StatusBarRight // Used assignment for copying.
-	right := rightStyle.
-		SetString(fmt.Sprintf("Date: %s", currentTime)).
-		String()
-
-	// Map view constants to human-readable names
-	viewNames := map[string]string{
-		constants.DefaultView:               localization.Labels["main_menu_title"],
-		constants.SplashView:                "Splash",
-		constants.CreateWalletNameView:      localization.Labels["create_new_wallet"],
-		constants.CreateWalletBackupView:    localization.Labels["create_new_wallet"],
-		constants.CreateWalletView:          localization.Labels["create_new_wallet"],
-		constants.ImportMethodSelectionView: localization.Labels["import_method_title"],
-		constants.ListWalletsView:           localization.Labels["list_wallets"],
-		constants.WalletDetailsView:         localization.Labels["wallet_details_title"],
-		constants.AccountHistoryView:        "Local History",
-		constants.PersonalSignView:          "Sign Message",
-		constants.EIP712SignView:            "Sign Typed Data",
-		constants.ConfigurationView:         localization.Labels["configuration"],
-		constants.LanguageSelectionView:     localization.Labels["language"],
-		constants.NetworkMenuView:           localization.Labels["networks"],
-		constants.NetworkListView:           localization.Labels["network_list"],
-		constants.AddNetworkView:            localization.Labels["add_network"],
-	}
-
-	// Get the view name from the map, or use the current view constant if not found
-	viewName := viewNames[m.currentView]
-	if viewName == "" {
-		viewName = m.currentView
-	}
-
-	// Center part: Current view and shortcut keys
-	centerContent := fmt.Sprintf("View: %s | Press 'esc' to return | Press 'q' to quit", viewName)
-	centerWidth := m.width - lipgloss.Width(left) - lipgloss.Width(right)
-	if centerWidth < 12 {
-		width := max(1, m.width)
-		return lipgloss.NewStyle().Width(width).MaxWidth(width).Align(lipgloss.Center).Render(centerContent)
-	}
-	centerStyle := m.styles.StatusBarCenter // Used assignment for copying.
-	center := centerStyle.
-		SetString(centerContent).
-		Width(centerWidth).
-		Align(lipgloss.Center).
-		String()
-
-	// Join all parts
-	statusBar := lipgloss.JoinHorizontal(
-		lipgloss.Top,
-		left,
-		center,
-		right,
-	)
-
-	return statusBar
+func (m *CLIModel) renderCompactTerminal() string {
+	return m.renderTerminalSizeHint(100, 24)
 }
 
-func (m *CLIModel) renderCompactTerminal() string {
+func (m *CLIModel) renderTerminalSizeHint(minWidth, minHeight int) string {
 	width := max(1, m.width)
 	height := max(1, m.height)
-	message := lipgloss.NewStyle().Bold(true).Align(lipgloss.Center).MaxWidth(max(1, width-2)).MaxHeight(max(1, height-2)).Render("Terminal too small\nResize to at least 100 × 24")
+	message := lipgloss.NewStyle().Bold(true).Align(lipgloss.Center).MaxWidth(max(1, width-2)).MaxHeight(max(1, height-2)).Render(localization.T("terminal_too_small", map[string]interface{}{"Width": minWidth, "Height": minHeight}))
 	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, message)
 }
 
@@ -314,8 +244,18 @@ func (m *CLIModel) fitMainContent(contentHeight int) {
 	}
 	switch m.currentView {
 	case constants.ListWalletsView:
-		if len(m.wallets) > 0 || len(m.accounts) > 0 {
-			m.walletTable.SetHeight(max(1, contentHeight-3))
+		if (len(m.wallets) > 0 || len(m.accounts) > 0) && m.accountDeletion == nil {
+			overhead := lipgloss.Height(m.viewListWallets()) - lipgloss.Height(m.walletTable.View())
+			if overhead < 0 {
+				overhead = 0
+			}
+			target := max(3, contentHeight-m.styles.Content.GetVerticalFrameSize()-overhead)
+			if target != lipgloss.Height(m.walletTable.View()) {
+				cursor := m.walletTable.Cursor()
+				m.walletTable.SetHeight(target)
+				m.walletTable.GotoTop()
+				m.walletTable.MoveDown(cursor)
+			}
 		}
 	case constants.WalletDetailsView:
 		if m.selectedAccount == nil {
@@ -329,8 +269,12 @@ func (m *CLIModel) fitMainContent(contentHeight int) {
 		m.walletDetailsHelp.Width = width
 		m.updateWalletDetailsKeyAvailability()
 		m.walletDetailsViewport.SetContent(m.walletDetailsContent())
-		helpHeight := lipgloss.Height(m.walletDetailsHelp.View(m.walletDetailsKeys))
-		m.walletDetailsViewport.Height = max(1, contentHeight-helpHeight-1)
+		m.walletDetailsViewport.Height = max(1, contentHeight-m.styles.Content.GetVerticalFrameSize())
+	case constants.KeePassSettingsView:
+		if m.keepassSettings == nil {
+			return
+		}
+		m.keepassSettings.contentHeight = max(1, contentHeight-m.styles.Content.GetVerticalFrameSize())
 	case constants.AccountHistoryView:
 		if m.accountHistory == nil {
 			return
@@ -353,7 +297,7 @@ func (m *CLIModel) renderMainView() string {
 	headerLeft := lipgloss.JoinVertical(
 		lipgloss.Left,
 		renderedLogo,
-		fmt.Sprintf("Version: %s", m.displayVersion()),
+		localization.T("version_label", map[string]interface{}{"Version": m.displayVersion()}),
 	)
 
 	menuItems := m.renderMenuItems()
@@ -371,6 +315,9 @@ func (m *CLIModel) renderMainView() string {
 	headerHeight := lipgloss.Height(renderedHeader)
 
 	// Preparar conteúdo do footer
+	if m.currentView == constants.WalletDetailsView && m.selectedAccount != nil && m.walletDetailsHelp.Width != 0 {
+		m.updateWalletDetailsKeyAvailability()
+	}
 	renderedFooter := m.renderStatusBar()
 	footerHeight := lipgloss.Height(renderedFooter)
 
@@ -408,216 +355,119 @@ func (m *CLIModel) renderMainView() string {
 }
 
 func (m *CLIModel) viewImportMethodSelection() string {
-	if localization.Labels == nil {
-		return "Localization labels not initialized."
-	}
 
 	// Em vez de renderizar o menu de importação novamente, exibir apenas uma mensagem informativa
 	// já que o menu já é exibido na área padrão de menu
-	return localization.Labels["welcome_message"]
+	return localization.Get("welcome_message")
 }
 
 // viewConfigMenu renderiza a visualização de configuração
 func (m *CLIModel) viewConfigMenu() string {
-	if localization.Labels == nil {
-		return "Localization labels not initialized."
-	}
 
 	// Em vez de renderizar o menu de configuração novamente, exibir apenas uma mensagem informativa
 	// já que o menu já é exibido na área padrão de menu
-	return localization.Labels["welcome_message"]
+	return localization.Get("welcome_message")
 }
 
 func (m *CLIModel) viewListWallets() string {
-	if localization.Labels == nil {
-		return "Localization labels not initialized."
+
+	if m.accountDeletion != nil {
+		return m.viewAccountDeletion()
 	}
 
-	// Se não há diálogo de exclusão, retornar apenas a tabela
-	if m.deletingWallet == nil {
-		var view strings.Builder
+	var view strings.Builder
 
-		// Adicionar título à visualização
-		title := lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("#7D56F4")).
-			MarginBottom(1).
-			Render(localization.Labels["list_wallets_title"])
+	// Adicionar título à visualização
+	title := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("#7D56F4")).
+		MarginBottom(1).
+		Render(localization.Get("list_wallets_title"))
 
-		view.WriteString(title + "\n")
+	view.WriteString(title + "\n")
 
-		// Verificar se há wallets para exibir
-		if len(m.wallets) == 0 && len(m.accounts) == 0 {
-			// Exibir mensagem quando não há wallets
-			message := "No wallets found. Create a new wallet to get started."
-			if val, ok := localization.Labels["no_wallets_message"]; ok {
-				message = val
-			}
-			noWalletsMsg := lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#5C5C5C")).
-				Render(message)
+	// Verificar se há wallets para exibir
+	if len(m.wallets) == 0 && len(m.accounts) == 0 {
+		// Exibir mensagem quando não há wallets
+		message := localization.Get("no_wallets_message")
+		noWalletsMsg := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#5C5C5C")).
+			Render(message)
 
-			view.WriteString(noWalletsMsg)
-		} else {
-			// Adicionar a visualização da tabela
-			tableView := m.walletTable.View()
-			view.WriteString(tableView)
-
-			// Se houver espaço, adicionar instruções na parte inferior
-			if m.walletTable.Height() < len(m.wallets)+len(m.accounts) {
-				// Só mostra instruções de rolagem se houver mais itens que o espaço disponível
-				instructions := "\n" + lipgloss.NewStyle().
-					Foreground(lipgloss.Color("#5C5C5C")).
-					Render(localization.Labels["list_wallets_instructions"])
-
-				view.WriteString(instructions)
-			}
-		}
-
-		return view.String()
-	}
-
-	// Se há um diálogo de confirmação de exclusão, renderizar o diálogo
-	return m.renderDeleteConfirmationDialog()
-}
-
-// renderDeleteConfirmationDialog renderiza o diálogo de confirmação de exclusão
-func (m *CLIModel) renderDeleteConfirmationDialog() string {
-	// Primeiro, renderizar a tabela de wallets
-	var tableView string
-	if len(m.wallets) > 0 {
-		tableView = m.walletTable.View()
+		view.WriteString(noWalletsMsg)
 	} else {
-		// Se não há wallets, criar uma área vazia para o diálogo
-		tableView = strings.Repeat("\n", 10)
+		// Adicionar a visualização da tabela
+		tableView := m.walletTable.View()
+		view.WriteString(tableView)
 	}
 
-	// Caixa de diálogo centralizada com botões estilizados e seleção
-	question := localization.Labels["confirm_delete_wallet"]
-	address := fmt.Sprintf("%s: %s", localization.Labels["ethereum_address"], safeShort(m.deletingWallet.Address))
-
-	// Botões com seleção (garante espaçamento entre os textos)
-	var confirmBtn, cancelBtn string
-	if m.dialogButtonIndex == 0 {
-		confirmBtn = m.styles.DialogButtonActive.Render(localization.Labels["confirm"])
-		cancelBtn = m.styles.DialogButton.Render(localization.Labels["cancel"])
-	} else {
-		confirmBtn = m.styles.DialogButton.Render(localization.Labels["confirm"])
-		cancelBtn = m.styles.DialogButtonActive.Render(localization.Labels["cancel"])
+	if m.lastOperationNotice != "" {
+		view.WriteString("\n" + lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#5C5C5C")).
+			Render(safeInline(m.lastOperationNotice)))
 	}
 
-	buttons := lipgloss.JoinHorizontal(lipgloss.Center, confirmBtn, "   ", cancelBtn)
-	content := lipgloss.JoinVertical(lipgloss.Center, question, address, "", buttons)
-	dialog := m.styles.Dialog.Render(content)
-
-	// Calcular a posição do diálogo para centralizá-lo na área da tabela
-	tableWidth := lipgloss.Width(tableView)
-	tableHeight := lipgloss.Height(tableView)
-	dialogWidth := lipgloss.Width(dialog)
-	dialogHeight := lipgloss.Height(dialog)
-
-	// Calcular posições para centralizar o diálogo na tabela
-	leftPadding := (tableWidth - dialogWidth) / 2
-	if leftPadding < 0 {
-		leftPadding = 0
-	}
-
-	// Dividir a tabela em linhas
-	tableLines := strings.Split(tableView, "\n")
-
-	// Calcular a linha inicial para o diálogo
-	startLine := (tableHeight - dialogHeight) / 2
-	if startLine < 0 {
-		startLine = 0
-	}
-
-	// Dividir o diálogo em linhas
-	dialogLines := strings.Split(dialog, "\n")
-
-	// Inserir o diálogo nas linhas da tabela
-	for i := 0; i < dialogHeight && i+startLine < len(tableLines); i++ {
-		// Garantir que a linha da tabela é longa o suficiente
-		for len(tableLines[i+startLine]) < leftPadding {
-			tableLines[i+startLine] += " "
-		}
-
-		// Inserir a linha do diálogo na posição correta
-		if leftPadding < len(tableLines[i+startLine]) {
-			prefix := tableLines[i+startLine][:leftPadding]
-			suffix := ""
-			if leftPadding+dialogWidth < len(tableLines[i+startLine]) {
-				suffix = tableLines[i+startLine][leftPadding+dialogWidth:]
-			}
-			tableLines[i+startLine] = prefix + dialogLines[i] + suffix
-		} else {
-			padding := strings.Repeat(" ", leftPadding-len(tableLines[i+startLine]))
-			tableLines[i+startLine] += padding + dialogLines[i]
-		}
-	}
-
-	// Reconstruir a visualização da tabela com o diálogo
-	return strings.Join(tableLines, "\n")
+	return view.String()
 }
 
 func (m *CLIModel) viewVaultAction(export bool) string {
-	title := "Rotate storage password"
+	title := localization.Get("vault_rotate_title")
 	if export {
-		title = "Export Keystore V3"
+		title = localization.Get("vault_export_keystore_title")
 		if m.vaultExportEncrypted {
-			title = "Export Bloco encrypted backup"
+			title = localization.Get("vault_export_encrypted_title")
 		}
 	}
 	if export && m.vaultActionPreview && m.selectedAccount != nil {
-		format := "Keystore V3 (derived private key only)"
+		format := localization.Get("vault_export_format_keystore")
 		if m.vaultExportEncrypted {
-			format = "Bloco encrypted backup (canonical secret)"
+			format = localization.Get("vault_export_format_encrypted")
 		}
-		return lipgloss.NewStyle().Bold(true).Render("Confirm secret export") + "\n\n" +
-			fmt.Sprintf("Account: %s\nAddress: %s\nFormat: %s\nDestination: %s\n\nThis operation writes an exportable secret artifact.\nPress Enter again to export or Esc to cancel.",
-				safeShort(m.selectedAccount.Name), safeShort(m.selectedAccount.Address), safeShort(format), safeInline(m.exportDestinationInput.Value()))
+		return lipgloss.NewStyle().Bold(true).Render(localization.Get("vault_export_confirm_title")) + "\n\n" +
+			localization.T("vault_export_confirm_body", map[string]interface{}{
+				"Name": safeShort(m.selectedAccount.Name), "Address": safeShort(m.selectedAccount.Address),
+				"Format": safeShort(format), "Destination": safeInline(m.exportDestinationInput.Value()),
+			})
 	}
 	var view strings.Builder
 	view.WriteString(lipgloss.NewStyle().Bold(true).Render(title) + "\n\n")
-	view.WriteString("Current password:\n" + m.currentPasswordInput.View() + "\n\n")
-	view.WriteString("New password:\n" + m.newPasswordInput.View() + "\n\n")
-	view.WriteString("Confirm new password:\n" + m.confirmPasswordInput.View() + "\n\n")
+	view.WriteString(localization.Get("vault_current_password") + "\n" + m.currentPasswordInput.View() + "\n")
+	if m.selectedAccount != nil {
+		if label := m.credentialMethodLabel(m.credentialToggleEligible(*m.selectedAccount)); label != "" {
+			view.WriteString(label + "\n")
+		}
+	}
+	view.WriteString("\n")
+	view.WriteString(localization.Get("vault_new_password") + "\n" + m.newPasswordInput.View() + "\n\n")
+	view.WriteString(localization.Get("vault_confirm_password") + "\n" + m.confirmPasswordInput.View() + "\n\n")
 	if export {
-		view.WriteString("Destination:\n" + m.exportDestinationInput.View() + "\n\n")
+		view.WriteString(localization.Get("vault_destination") + "\n" + m.exportDestinationInput.View() + "\n\n")
 	}
 	if m.vaultActionError != "" {
 		view.WriteString(m.styles.ErrorStyle.Render(m.vaultActionError) + "\n\n")
 	}
-	view.WriteString("Press Enter to advance. Press Esc to cancel.")
 	return view.String()
 }
 
 // viewWalletDetails renderiza a visualização de detalhes da wallet
 func (m *CLIModel) viewWalletDetails() string {
-	if localization.Labels == nil {
-		return "Localization labels not initialized."
-	}
 	if m.selectedAccount != nil {
-		return m.walletDetailsViewport.View() + "\n" + m.walletDetailsHelp.View(m.walletDetailsKeys)
+		return m.walletDetailsViewport.View()
 	}
 
 	if m.walletDetails != nil {
 		var view strings.Builder
 
 		// Resolve import method display name
-		methodLabel := localization.Labels["method_label"]
+		methodLabel := localization.Get("method_label")
 		methodName := ""
 		switch m.walletDetails.ImportMethod {
 		case wallet.ImportMethodMnemonic:
-			methodName = localization.Labels["method_mnemonic"]
+			methodName = localization.Get("method_mnemonic")
 		case wallet.ImportMethodPrivateKey:
-			methodName = localization.Labels["method_private_key"]
+			methodName = localization.Get("method_private_key")
 		case wallet.ImportMethodKeystore:
-			// Show "Keystore File" for keystore imports
-			if localization.Labels["method_keystore"] != "" {
-				methodName = localization.Labels["method_keystore"]
-			} else {
-				methodName = "Keystore File" // Fallback
-			}
+			methodName = localization.Get("method_keystore")
 		default:
 			methodName = safeShort(string(m.walletDetails.ImportMethod))
 		}
@@ -639,37 +489,30 @@ func (m *CLIModel) viewWalletDetails() string {
 		}
 
 		view.WriteString(
-			lipgloss.NewStyle().Bold(true).Render(localization.Labels["wallet_details_title"]+"\n\n") +
-				fmt.Sprintf("%-*s %s\n", 20, localization.Labels["ethereum_address"], safeShort(m.walletDetails.Wallet.Address)) +
-				fmt.Sprintf("%-*s %s\n", 20, localization.Labels["private_key"], localization.GetWalletImportMessage("sensitive_data_hidden")) +
+			lipgloss.NewStyle().Bold(true).Render(localization.Get("wallet_details_title")+"\n\n") +
+				fmt.Sprintf("%-*s %s\n", 20, localization.Get("ethereum_address"), safeShort(m.walletDetails.Wallet.Address)) +
+				fmt.Sprintf("%-*s %s\n", 20, localization.Get("private_key"), localization.GetWalletImportMessage("sensitive_data_hidden")) +
 				fmt.Sprintf("%-*s %s\n", 20, methodLabel+":", methodName) +
-				fmt.Sprintf("%-*s %s\n\n", 20, localization.Labels["mnemonic_phrase_label"], mnemonicText),
+				fmt.Sprintf("%-*s %s\n\n", 20, localization.Get("mnemonic_phrase_label"), mnemonicText),
 		)
 
-		view.WriteString("\n" + localization.Labels["press_esc"])
 		return view.String()
 	}
-	return localization.Labels["select_wallet_prompt"]
+	return localization.Get("select_wallet_prompt")
 }
 
 // viewLanguageSelection renderiza a visualização de seleção de idioma
 func (m *CLIModel) viewLanguageSelection() string {
-	if localization.Labels == nil {
-		return "Localization labels not initialized."
-	}
 
 	// Em vez de renderizar o menu de idiomas novamente, exibir apenas uma mensagem informativa
 	// já que o menu já é exibido na área padrão de menu
-	return localization.Labels["welcome_message"]
+	return localization.Get("welcome_message")
 }
 
 // viewNetworkMenu renderiza a visualização do menu de redes
 func (m *CLIModel) viewNetworkMenu() string {
-	if localization.Labels == nil {
-		return "Localization labels not initialized."
-	}
 
 	// Em vez de renderizar o menu de redes novamente, exibir apenas uma mensagem informativa
 	// já que o menu já é exibido na área padrão de menu
-	return localization.Labels["welcome_message"]
+	return localization.Get("welcome_message")
 }

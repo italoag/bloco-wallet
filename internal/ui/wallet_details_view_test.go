@@ -118,9 +118,11 @@ func TestVaultBackedCreateFlowPersistsOnlyEncryptedSecret(t *testing.T) {
 	}
 	assert.Equal(t, constants.CreateWalletView, model.currentView)
 	model.passwordInput.SetValue("Strong vault password 1!")
-	_, _ = model.updateCreateWalletPassword(tea.KeyMsg{Type: tea.KeyEnter})
+	_, cmd := model.updateCreateWalletPassword(tea.KeyMsg{Type: tea.KeyEnter})
+	driveCmds(model, cmd)
 	model.createPasswordConfirmationInput.SetValue("Strong vault password 1!")
-	_, _ = model.updateCreateWalletPassword(tea.KeyMsg{Type: tea.KeyEnter})
+	_, cmd = model.updateCreateWalletPassword(tea.KeyMsg{Type: tea.KeyEnter})
+	driveCmds(model, cmd)
 	require.NotNil(t, model.backupChallenge)
 	mnemonic := strings.Join(model.backupChallenge.Words, " ")
 	answers := make([]string, 0, len(model.backupChallenge.RequiredWordIndices))
@@ -128,7 +130,8 @@ func TestVaultBackedCreateFlowPersistsOnlyEncryptedSecret(t *testing.T) {
 		answers = append(answers, model.backupChallenge.Words[index])
 	}
 	model.backupConfirmationInput.SetValue(strings.Join(answers, " "))
-	_, _ = model.updateCreateWalletBackup(tea.KeyMsg{Type: tea.KeyEnter})
+	_, cmd = model.updateCreateWalletBackup(tea.KeyMsg{Type: tea.KeyEnter})
+	driveCmds(model, cmd)
 
 	require.NotNil(t, model.selectedAccount)
 	assert.Equal(t, wallet.AccountStateActive, model.selectedAccount.State)
@@ -145,11 +148,14 @@ func TestVaultBackedCreateFlowPersistsOnlyEncryptedSecret(t *testing.T) {
 	newStoragePassword := "Different vault password 2!"
 	model.initVaultAction(false)
 	model.currentPasswordInput.SetValue("Strong vault password 1!")
-	_, _ = model.updateVaultAction(tea.KeyMsg{Type: tea.KeyEnter}, false)
+	_, cmd = model.updateVaultAction(tea.KeyMsg{Type: tea.KeyEnter}, false)
+	driveCmds(model, cmd)
 	model.newPasswordInput.SetValue(newStoragePassword)
-	_, _ = model.updateVaultAction(tea.KeyMsg{Type: tea.KeyEnter}, false)
+	_, cmd = model.updateVaultAction(tea.KeyMsg{Type: tea.KeyEnter}, false)
+	driveCmds(model, cmd)
 	model.confirmPasswordInput.SetValue(newStoragePassword)
-	_, _ = model.updateVaultAction(tea.KeyMsg{Type: tea.KeyEnter}, false)
+	_, cmd = model.updateVaultAction(tea.KeyMsg{Type: tea.KeyEnter}, false)
+	driveCmds(model, cmd)
 	assert.Equal(t, constants.WalletDetailsView, model.currentView)
 	if _, err := vault.Unlock(context.Background(), model.selectedAccount.AccountID, []byte("Strong vault password 1!")); err == nil {
 		t.Fatal("old password unlocked after UI rotation")
@@ -162,15 +168,20 @@ func TestVaultBackedCreateFlowPersistsOnlyEncryptedSecret(t *testing.T) {
 	exportPath := filepath.Join(t.TempDir(), "account.bloco")
 	model.initVaultAction(true)
 	model.currentPasswordInput.SetValue(newStoragePassword)
-	_, _ = model.updateVaultAction(tea.KeyMsg{Type: tea.KeyEnter}, true)
+	_, cmd = model.updateVaultAction(tea.KeyMsg{Type: tea.KeyEnter}, true)
+	driveCmds(model, cmd)
 	model.newPasswordInput.SetValue(exportPassword)
-	_, _ = model.updateVaultAction(tea.KeyMsg{Type: tea.KeyEnter}, true)
+	_, cmd = model.updateVaultAction(tea.KeyMsg{Type: tea.KeyEnter}, true)
+	driveCmds(model, cmd)
 	model.confirmPasswordInput.SetValue(exportPassword)
-	_, _ = model.updateVaultAction(tea.KeyMsg{Type: tea.KeyEnter}, true)
+	_, cmd = model.updateVaultAction(tea.KeyMsg{Type: tea.KeyEnter}, true)
+	driveCmds(model, cmd)
 	model.exportDestinationInput.SetValue(exportPath)
-	_, _ = model.updateVaultAction(tea.KeyMsg{Type: tea.KeyEnter}, true)
+	_, cmd = model.updateVaultAction(tea.KeyMsg{Type: tea.KeyEnter}, true)
+	driveCmds(model, cmd)
 	assert.True(t, model.vaultActionPreview)
-	_, _ = model.updateVaultAction(tea.KeyMsg{Type: tea.KeyEnter}, true)
+	_, cmd = model.updateVaultAction(tea.KeyMsg{Type: tea.KeyEnter}, true)
+	driveCmds(model, cmd)
 	assert.Equal(t, constants.WalletDetailsView, model.currentView)
 	assert.FileExists(t, exportPath)
 
@@ -185,7 +196,8 @@ func TestVaultBackedCreateFlowPersistsOnlyEncryptedSecret(t *testing.T) {
 	_, _ = model.updateWalletDetails(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'b'}})
 	assert.Equal(t, constants.CreateWalletView, model.currentView)
 	model.passwordInput.SetValue(newStoragePassword)
-	_, _ = model.updateCreateWalletPassword(tea.KeyMsg{Type: tea.KeyEnter})
+	_, cmd = model.updateCreateWalletPassword(tea.KeyMsg{Type: tea.KeyEnter})
+	driveCmds(model, cmd)
 	require.NotNil(t, model.backupChallenge)
 	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	storedPending, err := repository.GetAccount(context.Background(), pending.AccountID)
@@ -210,7 +222,8 @@ func TestVaultBackedCreateFlowPersistsOnlyEncryptedSecret(t *testing.T) {
 		requestedWords = append(requestedWords, customChallenge.Words[index])
 	}
 	model.backupConfirmationInput.SetValue(strings.Join(requestedWords, " "))
-	_, _ = model.updateCreateWalletBackup(tea.KeyMsg{Type: tea.KeyEnter})
+	_, cmd = model.updateCreateWalletBackup(tea.KeyMsg{Type: tea.KeyEnter})
+	driveCmds(model, cmd)
 	assert.Equal(t, constants.WalletDetailsView, model.currentView)
 	assert.Nil(t, model.backupChallenge)
 	activatedCustom, err := repository.GetAccount(context.Background(), custom.AccountID)
@@ -297,12 +310,25 @@ func TestWalletCreationRequiresMnemonicConfirmation(t *testing.T) {
 	model.passwordInput.SetValue("Strong vault password 1!")
 	_, _ = model.updateCreateWalletPassword(tea.KeyMsg{Type: tea.KeyEnter})
 	model.createPasswordConfirmationInput.SetValue("Strong vault password 1!")
-	_, _ = model.updateCreateWalletPassword(tea.KeyMsg{Type: tea.KeyEnter})
+	_, cmd := model.updateCreateWalletPassword(tea.KeyMsg{Type: tea.KeyEnter})
+	require.NotNil(t, cmd)
+	createResult, ok := cmd().(vaultCreateResultMsg)
+	require.True(t, ok)
+	require.NoError(t, createResult.err)
+	_, _ = model.Update(createResult)
 	require.Equal(t, constants.CreateWalletBackupView, model.currentView)
 	require.NotNil(t, model.backupChallenge)
-	model.backupConfirmationInput.SetValue("wrong recovery phrase")
+	answers := make([]string, len(model.backupChallenge.RequiredWordIndices))
+	for i := range answers {
+		answers[i] = "wrong"
+	}
+	model.backupConfirmationInput.SetValue(strings.Join(answers, " "))
 
-	_, _ = model.updateCreateWalletBackup(tea.KeyMsg{Type: tea.KeyEnter})
+	_, cmd = model.updateCreateWalletBackup(tea.KeyMsg{Type: tea.KeyEnter})
+	require.NotNil(t, cmd)
+	confirmResult, ok := cmd().(backupConfirmResultMsg)
+	require.True(t, ok)
+	_, _ = model.Update(confirmResult)
 
 	assert.Equal(t, constants.CreateWalletBackupView, model.currentView)
 	assert.NotEmpty(t, model.backupError)
@@ -314,7 +340,7 @@ func TestKeystoreImportUsesCanonicalMenu(t *testing.T) {
 	require.NoError(t, localization.InitLocalization(cfg))
 	found := false
 	for _, item := range NewImportMenu() {
-		if item.title == localization.Labels["import_keystore"] {
+		if item.title == localization.Get("import_keystore") {
 			found = true
 		}
 	}
@@ -345,7 +371,7 @@ func TestWatchOnlyImportUsesCanonicalAddressOnlyFlow(t *testing.T) {
 	assert.Equal(t, "address", model.canonicalImport.fields[1].key)
 	model.canonicalImport.fields[0].input.SetValue("Observer")
 	model.canonicalImport.fields[1].input.SetValue("f39fd6e51aad88f6f4ce6ab8827279cfffb92266")
-	require.NoError(t, prepareCanonicalImportPreview(context.Background(), nil, model.canonicalImport))
+	require.NoError(t, prepareCanonicalImportPreview(context.Background(), nil, model.canonicalImport, nil, false))
 	require.NotNil(t, model.canonicalImport.preview)
 	assert.Equal(t, wallet.SignerKindWatchOnly, model.canonicalImport.preview.SignerKind)
 	approvedAddress := model.canonicalImport.fields[1].input.Value()
@@ -455,7 +481,7 @@ func TestWalletDeletionIsDisabledInUI(t *testing.T) {
 	_, _ = model.updateListWallets(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
 
 	assert.NotNil(t, model.err)
-	assert.Nil(t, model.deletingWallet)
+	assert.Nil(t, model.accountDeletion)
 }
 
 func TestWalletSelectionUsesIDWhenAddressesMatch(t *testing.T) {

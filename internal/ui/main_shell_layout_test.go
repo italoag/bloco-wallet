@@ -15,15 +15,9 @@ import (
 
 func newMainShellLayoutModel(t *testing.T, view string) *CLIModel {
 	t.Helper()
-	previousLabels := localization.Labels
-	localization.Labels = map[string]string{
-		"version":              "0.2.0",
-		"main_menu_title":      "Main Menu",
-		"list_wallets":         "My Wallets",
-		"list_wallets_title":   "My Wallets",
-		"wallet_details_title": "Wallet Details",
-	}
-	t.Cleanup(func() { localization.Labels = previousLabels })
+	previousLanguage := localization.GetCurrentLanguage()
+	localization.SetCurrentLanguage("en")
+	t.Cleanup(func() { localization.SetCurrentLanguage(previousLanguage) })
 	styles := createStyles()
 	styles.Header = styles.Header.Width(160)
 	styles.Content = styles.Content.Width(160)
@@ -68,14 +62,14 @@ func TestWalletListRendersInsideMainShellWithoutVerticalOverflow(t *testing.T) {
 
 func TestMainShellUsesBoundedCompactFallback(t *testing.T) {
 	model := newMainShellLayoutModel(t, constants.ListWalletsView)
-	model.width = 80
-	model.height = 24
+	model.width = 70
+	model.height = 20
 	model.styles.Header = model.styles.Header.Width(model.width)
 	model.styles.Content = model.styles.Content.Width(model.width)
 	model.styles.Footer = model.styles.Footer.Width(model.width)
 	view := model.View()
 	if lipgloss.Height(view) > model.height || lipgloss.Width(view) > model.width || !strings.Contains(view, "Terminal too small") {
-		t.Fatalf("compact shell is not bounded to 80x24: %dx%d %q", lipgloss.Width(view), lipgloss.Height(view), view)
+		t.Fatalf("compact shell is not bounded to 70x20: %dx%d %q", lipgloss.Width(view), lipgloss.Height(view), view)
 	}
 }
 
@@ -86,8 +80,15 @@ func TestAccountTablePreservesFullAddressAtCommonWidths(t *testing.T) {
 	}
 	for _, width := range []int{80, 120} {
 		columns, rows := accountTableLayout(width, []wallet.AccountSummary{account})
-		if len(columns) < 4 || columns[len(columns)-1].Width != 42 || len(rows) != 1 || rows[0][len(rows[0])-1] != account.Address || rows[0][0] != account.AccountID {
-			t.Fatalf("account table lost identity or address at width %d: columns=%+v rows=%+v", width, columns, rows)
+		if len(columns) != 4 || columns[len(columns)-1].Width != 42 || len(rows) != 1 || rows[0][len(rows[0])-1] != account.Address {
+			t.Fatalf("account table lost address at width %d: columns=%+v rows=%+v", width, columns, rows)
+		}
+		for _, row := range rows {
+			for _, cell := range row {
+				if cell == account.AccountID {
+					t.Fatalf("account table must not expose the account ID at width %d", width)
+				}
+			}
 		}
 	}
 }
@@ -174,7 +175,11 @@ func TestMainShellVersionIgnoresLocaleMutation(t *testing.T) {
 	model := newMainShellLayoutModel(t, constants.DefaultView)
 	model.ConfigureVersion("v0.6.0")
 	_ = model.View()
-	localization.Labels["version"] = "999.999.999"
+	mutated := localization.Messages("en")
+	mutated["version"] = "999.999.999"
+	if localization.Get("version") == "999.999.999" {
+		t.Fatal("Messages copy leaked into the catalog")
+	}
 	view := model.View()
 	if !strings.Contains(view, "Version: v0.6.0") || strings.Contains(view, "999.999.999") {
 		t.Fatalf("locale mutation changed rendered version: %q", view)

@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -16,7 +16,9 @@ import (
 	"time"
 
 	"blocowallet/internal/constants"
+	"blocowallet/internal/keepass"
 	"blocowallet/internal/wallet"
+	"blocowallet/pkg/localization"
 
 	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -32,19 +34,12 @@ const (
 	canonicalEncryptedMethod       = wallet.ImportMethod("bloco_encrypted")
 	canonicalBatchLimit            = 100
 	canonicalBatchDirectoryLimit   = 300
-	canonicalSecretFileLimit       = 4096
 	canonicalImportTimeout         = 5 * time.Minute
 )
 
-// isCanonicalBatchMethod reports whether the method imports many secrets per
-// run (keystore files, mnemonic files, or private key files).
-func isCanonicalBatchMethod(method wallet.ImportMethod) bool {
-	return method == canonicalBatchMethod || method == canonicalMnemonicBatchMethod || method == canonicalPrivateKeyBatchMethod
-}
-
 type canonicalImportField struct {
 	key      string
-	label    string
+	labelKey string
 	optional bool
 	input    textinput.Model
 }
@@ -53,7 +48,9 @@ type canonicalBatchPreview struct {
 	name    string
 	address string
 	digest  string
+	secret  []byte
 	err     string
+	kdbx    bool
 }
 
 type canonicalImportState struct {
@@ -63,12 +60,14 @@ type canonicalImportState struct {
 	preview                *wallet.ImportPreview
 	data                   []byte
 	batchItems             []wallet.KeystoreBatchItem
-	secretBatchItems       []wallet.SecretBatchItem
+	mnemonicItems          []wallet.MnemonicBatchItem
+	privateKeyItems        []wallet.PrivateKeyBatchItem
 	batchPreviews          []canonicalBatchPreview
 	resultLines            []string
 	operationID            uint64
 	busy                   bool
 	cancelling             bool
+	quitAfterResult        bool
 	cancel                 context.CancelFunc
 	err                    string
 	sourcePassword         []byte
@@ -81,23 +80,32 @@ type canonicalImportState struct {
 	suggestKey             string
 	suggestValue           string
 	suggestGeneration      uint64
+	lookupMissingSidecars  bool
+	kdbxSources            map[string]bool
+	kdbxSource             bool
 }
 
 type canonicalPreviewResultMsg struct {
-	operationID      uint64
-	preview          *wallet.ImportPreview
-	data             []byte
-	batchItems       []wallet.KeystoreBatchItem
-	secretBatchItems []wallet.SecretBatchItem
-	batchPreviews    []canonicalBatchPreview
-	err              error
+	operationID     uint64
+	preview         *wallet.ImportPreview
+	data            []byte
+	batchItems      []wallet.KeystoreBatchItem
+	mnemonicItems   []wallet.MnemonicBatchItem
+	privateKeyItems []wallet.PrivateKeyBatchItem
+	batchPreviews   []canonicalBatchPreview
+	kdbxSource      bool
+	err             error
 }
 
 type canonicalCommitResultMsg struct {
-	operationID uint64
-	summary     wallet.AccountSummary
-	resultLines []string
-	err         error
+	operationID   uint64
+	summary       wallet.AccountSummary
+	resultLines   []string
+	err           error
+	backupPending bool
+	backupSaved   int
+	backupFailed  int
+	op            *wallet.CredentialBackupOperation
 }
 
 type canonicalImportProgressMsg struct {
@@ -124,60 +132,61 @@ type canonicalPathSuggestionsMsg struct {
 }
 
 var (
-	errCanonicalBatchSourceRead  = errors.New("source file or password sidecar could not be read")
-	errCanonicalBatchValidation  = errors.New("keystore validation or decryption failed")
-	errCanonicalSecretValidation = errors.New("secret validation failed")
-	errCanonicalImportCancelled  = errors.New("import cancelled")
-	errCanonicalImportFailed     = errors.New("wallet import failed")
+	errCanonicalBatchSourceRead      = errors.New("source file or password sidecar could not be read")
+	errCanonicalBatchValidation      = errors.New("keystore validation or decryption failed")
+	errCanonicalMnemonicValidation   = errors.New("mnemonic validation failed")
+	errCanonicalPrivateKeyValidation = errors.New("private key validation failed")
+	errCanonicalImportCancelled      = errors.New("import cancelled")
 )
+
+func (state *canonicalImportState) isBatch() bool {
+	return state.method == canonicalBatchMethod || state.method == canonicalMnemonicBatchMethod || state.method == canonicalPrivateKeyBatchMethod
+}
 
 func newCanonicalImportState(method wallet.ImportMethod) *canonicalImportState {
 	state := &canonicalImportState{method: method}
-	if !isCanonicalBatchMethod(method) {
-		state.fields = append(state.fields, newCanonicalField("name", "Account name", false, false, 128))
+	if !state.isBatch() {
+		state.fields = append(state.fields, newCanonicalField("name", "canonical_label_name", false, false, 128))
 	}
 	switch method {
 	case wallet.ImportMethodMnemonic:
 		state.fields = append(state.fields,
-			newCanonicalField("mnemonic", "BIP39 mnemonic (12/15/18/21/24 words)", false, true, 2048),
-			newCanonicalField("language", "Language (blank = auto-detect)", true, false, 32),
-			newCanonicalField("passphrase", "Optional BIP39 passphrase", true, true, 1024),
-			newCanonicalField("path", "EVM derivation path (blank = m/44'/60'/0'/0/0)", true, false, 255),
+			newCanonicalField("mnemonic", "canonical_label_mnemonic", false, true, 2048),
+			newCanonicalField("language", "canonical_label_language", true, false, 32),
+			newCanonicalField("passphrase", "canonical_label_passphrase", true, true, 1024),
+			newCanonicalField("path", "canonical_label_path", true, false, 255),
 		)
 	case wallet.ImportMethodPrivateKey:
-		state.fields = append(state.fields, newCanonicalField("private_key", "Private key", false, true, 128))
+		state.fields = append(state.fields, newCanonicalField("private_key", "canonical_label_private_key", false, true, 128))
 	case wallet.ImportMethodKeystore:
 		state.fields = append(state.fields,
-			newCanonicalField("keystore_path", "Absolute Keystore V3 path", false, false, 1024),
-			newCanonicalField("source_password", "Keystore source password (may be empty)", true, true, constants.PasswordCharLimit),
+			newCanonicalField("keystore_path", "canonical_label_keystore_path", false, false, 1024),
+			newCanonicalField("source_password", "canonical_label_source_password_keystore", true, true, constants.PasswordCharLimit),
 		)
 	case canonicalBatchMethod:
 		state.fields = append(state.fields,
-			newCanonicalField("directory", "Directory containing Keystore V3 files", false, false, 1024),
+			newCanonicalField("directory", "canonical_label_directory_keystore", false, false, 1024),
 		)
 	case canonicalMnemonicBatchMethod:
 		state.fields = append(state.fields,
-			newCanonicalField("directory", "Directory containing .mnemonic/.phrase files", false, false, 1024),
-			newCanonicalField("language", "Language (blank = auto-detect)", true, false, 32),
-			newCanonicalField("passphrase", "Optional BIP39 passphrase applied to all items", true, true, 1024),
-			newCanonicalField("path", "EVM derivation path (blank = m/44'/60'/0'/0/0)", true, false, 255),
+			newCanonicalField("directory", "canonical_label_directory_mnemonic", false, false, 1024),
 		)
 	case canonicalPrivateKeyBatchMethod:
 		state.fields = append(state.fields,
-			newCanonicalField("directory", "Directory containing .key/.privatekey/.pk files", false, false, 1024),
+			newCanonicalField("directory", "canonical_label_directory_private_key", false, false, 1024),
 		)
 	case canonicalEncryptedMethod:
 		state.fields = append(state.fields,
-			newCanonicalField("encrypted_path", "Absolute Bloco encrypted export path", false, false, 1024),
-			newCanonicalField("source_password", "Encrypted export password", false, true, constants.PasswordCharLimit),
+			newCanonicalField("encrypted_path", "canonical_label_encrypted_path", false, false, 1024),
+			newCanonicalField("source_password", "canonical_label_source_password_encrypted", false, true, constants.PasswordCharLimit),
 		)
 	case wallet.ImportMethodWatchOnly:
-		state.fields = append(state.fields, newCanonicalField("address", "EVM address", false, false, 42))
+		state.fields = append(state.fields, newCanonicalField("address", "canonical_label_address", false, false, 42))
 	}
 	if method != wallet.ImportMethodWatchOnly {
 		state.fields = append(state.fields,
-			newCanonicalField("storage_password", "New vault storage password", false, true, constants.PasswordCharLimit),
-			newCanonicalField("confirm_password", "Confirm vault storage password", false, true, constants.PasswordCharLimit),
+			newCanonicalField("storage_password", "canonical_label_storage_password", false, true, constants.PasswordCharLimit),
+			newCanonicalField("confirm_password", "canonical_label_confirm_password", false, true, constants.PasswordCharLimit),
 		)
 	}
 	for index := range state.fields {
@@ -189,20 +198,23 @@ func newCanonicalImportState(method wallet.ImportMethod) *canonicalImportState {
 	return state
 }
 
-func newCanonicalField(key, label string, optional, secret bool, limit int) canonicalImportField {
+func newCanonicalField(key, labelKey string, optional, secret bool, limit int) canonicalImportField {
 	input := textinput.New()
-	input.Placeholder = label
+	input.Placeholder = localization.Get(labelKey)
 	input.CharLimit = limit
 	input.Width = 80
 	if secret {
 		input.EchoMode = textinput.EchoPassword
 		input.EchoCharacter = '•'
 	}
-	return canonicalImportField{key: key, label: label, optional: optional, input: input}
+	return canonicalImportField{key: key, labelKey: labelKey, optional: optional, input: input}
 }
 
 func (m *CLIModel) initCanonicalImport(method wallet.ImportMethod) {
+	m.credentialUseKeePass = false
 	m.canonicalImport = newCanonicalImportState(method)
+	m.canonicalImport.lookupMissingSidecars = m.credentialBackupEnabled()
+	m.canonicalImport.kdbxSources = make(map[string]bool)
 	m.currentView = constants.CanonicalImportView
 }
 
@@ -219,7 +231,9 @@ func (m *CLIModel) updateCanonicalImport(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case canonicalPreviewResultMsg:
 			clear(result.data)
 			clearCanonicalBatchItems(result.batchItems)
-			clearCanonicalSecretBatchItems(result.secretBatchItems)
+			clearCanonicalMnemonicItems(result.mnemonicItems)
+			clearCanonicalPrivateKeyItems(result.privateKeyItems)
+			clearCanonicalBatchPreviews(result.batchPreviews)
 		}
 		m.currentView = constants.ImportMethodSelectionView
 		return m, nil
@@ -229,7 +243,9 @@ func (m *CLIModel) updateCanonicalImport(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if result.operationID != state.operationID {
 			clear(result.data)
 			clearCanonicalBatchItems(result.batchItems)
-			clearCanonicalSecretBatchItems(result.secretBatchItems)
+			clearCanonicalMnemonicItems(result.mnemonicItems)
+			clearCanonicalPrivateKeyItems(result.privateKeyItems)
+			clearCanonicalBatchPreviews(result.batchPreviews)
 			return m, nil
 		}
 		state.busy = false
@@ -241,17 +257,26 @@ func (m *CLIModel) updateCanonicalImport(msg tea.Msg) (tea.Model, tea.Cmd) {
 		state.cancel = nil
 		if result.err != nil {
 			state.err = result.err.Error()
+			if state.quitAfterResult {
+				return m, tea.Quit
+			}
 			return m, nil
 		}
 		state.preview = result.preview
 		state.data = result.data
 		state.batchItems = result.batchItems
-		state.secretBatchItems = result.secretBatchItems
+		state.mnemonicItems = result.mnemonicItems
+		state.privateKeyItems = result.privateKeyItems
 		state.batchPreviews = result.batchPreviews
+		state.kdbxSource = result.kdbxSource
 		state.err = ""
+		if state.quitAfterResult {
+			return m, tea.Quit
+		}
 		return m, nil
 	case canonicalCommitResultMsg:
 		if result.operationID != state.operationID {
+			m.discardCredentialOperation(result.op)
 			return m, nil
 		}
 		state.busy = false
@@ -261,9 +286,25 @@ func (m *CLIModel) updateCanonicalImport(msg tea.Msg) (tea.Model, tea.Cmd) {
 			state.cancel()
 		}
 		state.cancel = nil
+		m.discardCredentialOperation(result.op)
 		if result.err != nil {
-			state.err = result.err.Error()
-			return m, nil
+			var pendingErr *wallet.CredentialBackupPendingError
+			if !errors.As(result.err, &pendingErr) {
+				state.err = result.err.Error()
+				if state.quitAfterResult {
+					return m, tea.Quit
+				}
+				return m, nil
+			}
+			result.backupPending = true
+		}
+		notice := ""
+		if result.backupPending {
+			notice = localization.Get("keepass_backup_pending_notice")
+		}
+		if result.backupSaved > 0 || result.backupPending {
+			notice = strings.TrimSpace(notice + " " + localization.T("keepass_commit_summary", map[string]interface{}{"Saved": result.backupSaved, "Pending": result.backupFailed}))
+			m.lastOperationNotice = notice
 		}
 		if len(result.resultLines) > 0 {
 			state.resultLines = result.resultLines
@@ -271,11 +312,18 @@ func (m *CLIModel) updateCanonicalImport(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if result.summary.AccountID != "" {
 				m.selectedAccount = &result.summary
 			}
-			return m, m.refreshWalletsTable()
+			cmd := m.refreshWalletsTable()
+			if state.quitAfterResult {
+				return m, tea.Sequence(cmd, tea.Quit)
+			}
+			return m, cmd
 		}
 		m.clearCanonicalImport()
 		m.selectedAccount = &result.summary
 		m.currentView = constants.WalletDetailsView
+		if state.quitAfterResult {
+			return m, tea.Quit
+		}
 		return m, m.refreshWalletsTable()
 	case canonicalImportProgressMsg:
 		if result.operationID != state.operationID || state.events == nil {
@@ -308,7 +356,7 @@ func (m *CLIModel) updateCanonicalImport(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if result.err != nil {
 			clear(result.password)
-			state.err = "Keystore password sidecar could not be read"
+			state.err = localization.Get("canonical_sidecar_read_error")
 			return m, nil
 		}
 		clear(state.sourcePassword)
@@ -342,18 +390,20 @@ func (m *CLIModel) updateCanonicalImport(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if state.preview != nil {
-			return m, m.startCanonicalCommit()
+			needsOp := m.credentialBackupEnabled() && state.method != wallet.ImportMethodWatchOnly
+			return m, m.submitWithCredential(needsOp, func() tea.Cmd { return m.startCanonicalCommit() })
 		}
 		field := &state.fields[state.stage]
-		if !field.optional && field.input.Value() == "" {
-			state.err = field.label + " is required"
+		keepsSource := field.key == "source_password" && m.credentialUseKeePass && m.credentialBackupEnabled()
+		if !field.optional && field.input.Value() == "" && !keepsSource {
+			state.err = localization.T("field_required", map[string]interface{}{"Field": localization.Get(field.labelKey)})
 			return m, nil
 		}
 		if state.stage < len(state.fields)-1 {
 			if field.key == "keystore_path" && state.method == wallet.ImportMethodKeystore {
 				expanded := canonicalExpandHome(field.input.Value())
 				if !filepath.IsAbs(expanded) || !strings.EqualFold(filepath.Ext(expanded), ".json") {
-					state.err = "Path must be an absolute Keystore V3 .json file"
+					state.err = localization.Get("canonical_invalid_keystore_path")
 					return m, nil
 				}
 				field.input.SetValue(expanded)
@@ -364,10 +414,26 @@ func (m *CLIModel) updateCanonicalImport(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, m.advanceCanonicalField()
 		}
-		return m, m.startCanonicalPreview()
+		needsOp := m.credentialBackupEnabled() && state.method != wallet.ImportMethodWatchOnly
+		return m, m.submitWithCredential(needsOp, func() tea.Cmd { return m.startCanonicalPreview() })
 	}
 	if state.preview != nil {
 		return m, nil
+	}
+	if key, ok := msg.(tea.KeyMsg); ok && key.String() == "ctrl+k" && state.stage < len(state.fields) && m.credentialBackupEnabled() {
+		switch state.fields[state.stage].key {
+		case "source_password":
+			m.credentialUseKeePass = !m.credentialUseKeePass
+			if m.credentialUseKeePass {
+				state.fields[state.stage].input.SetValue("")
+			}
+			return m, nil
+		case "directory":
+			if state.method == canonicalBatchMethod {
+				state.lookupMissingSidecars = !state.lookupMissingSidecars
+				return m, nil
+			}
+		}
 	}
 	var command tea.Cmd
 	state.fields[state.stage].input, command = state.fields[state.stage].input.Update(msg)
@@ -466,38 +532,48 @@ func (m *CLIModel) startCanonicalPreview() tea.Cmd {
 	m.canonicalOperationID++
 	state.operationID = m.canonicalOperationID
 	operationID := state.operationID
-	ctx, cancel := context.WithTimeout(context.Background(), canonicalImportTimeout)
+	op := m.activeCredentialOperation()
+	parent := context.Background()
+	if op != nil {
+		parent = op.Context()
+	}
+	ctx, cancel := context.WithTimeout(parent, canonicalImportTimeout)
 	state.cancel = cancel
 	state.busy = true
 	state.cancelling = false
 	state.err = ""
 	snapshot := cloneCanonicalImportState(state)
-	if isCanonicalBatchMethod(state.method) {
+	useKeePass := m.credentialUseKeePass && op != nil
+	if state.isBatch() {
 		events := make(chan tea.Msg, canonicalBatchLimit+3)
 		state.events = events
 		state.batchProgress = wallet.KeystoreBatchProgress{}
-		state.progressStage = "Validating"
+		state.progressStage = "canonical_stage_validating"
 		snapshot.reportProgress = func(report wallet.KeystoreBatchProgress) {
-			events <- canonicalImportProgressMsg{operationID: operationID, stage: "Validating", progress: report}
+			events <- canonicalImportProgressMsg{operationID: operationID, stage: "canonical_stage_validating", progress: report}
 		}
 		worker := func() tea.Msg {
 			defer close(events)
 			defer cancel()
 			defer clear(snapshot.sourcePassword)
-			err := prepareCanonicalImportPreview(ctx, m.Vault, snapshot)
+			err := prepareCanonicalImportPreview(ctx, m.Vault, snapshot, op, useKeePass)
 			if err != nil {
 				clear(snapshot.data)
 				clearCanonicalBatchItems(snapshot.batchItems)
-				clearCanonicalSecretBatchItems(snapshot.secretBatchItems)
+				clearCanonicalMnemonicItems(snapshot.mnemonicItems)
+				clearCanonicalPrivateKeyItems(snapshot.privateKeyItems)
+				clearCanonicalBatchPreviews(snapshot.batchPreviews)
 			}
 			events <- canonicalPreviewResultMsg{
-				operationID:      operationID,
-				preview:          snapshot.preview,
-				data:             snapshot.data,
-				batchItems:       snapshot.batchItems,
-				secretBatchItems: snapshot.secretBatchItems,
-				batchPreviews:    snapshot.batchPreviews,
-				err:              err,
+				operationID:     operationID,
+				preview:         snapshot.preview,
+				data:            snapshot.data,
+				batchItems:      snapshot.batchItems,
+				mnemonicItems:   snapshot.mnemonicItems,
+				privateKeyItems: snapshot.privateKeyItems,
+				batchPreviews:   snapshot.batchPreviews,
+				kdbxSource:      snapshot.kdbxSource,
+				err:             err,
 			}
 			return nil
 		}
@@ -506,20 +582,24 @@ func (m *CLIModel) startCanonicalPreview() tea.Cmd {
 	return func() tea.Msg {
 		defer cancel()
 		defer clear(snapshot.sourcePassword)
-		err := prepareCanonicalImportPreview(ctx, m.Vault, snapshot)
+		err := prepareCanonicalImportPreview(ctx, m.Vault, snapshot, op, useKeePass)
 		if err != nil {
 			clear(snapshot.data)
 			clearCanonicalBatchItems(snapshot.batchItems)
-			clearCanonicalSecretBatchItems(snapshot.secretBatchItems)
+			clearCanonicalMnemonicItems(snapshot.mnemonicItems)
+			clearCanonicalPrivateKeyItems(snapshot.privateKeyItems)
+			clearCanonicalBatchPreviews(snapshot.batchPreviews)
 		}
 		return canonicalPreviewResultMsg{
-			operationID:      operationID,
-			preview:          snapshot.preview,
-			data:             snapshot.data,
-			batchItems:       snapshot.batchItems,
-			secretBatchItems: snapshot.secretBatchItems,
-			batchPreviews:    snapshot.batchPreviews,
-			err:              err,
+			operationID:     operationID,
+			preview:         snapshot.preview,
+			data:            snapshot.data,
+			batchItems:      snapshot.batchItems,
+			mnemonicItems:   snapshot.mnemonicItems,
+			privateKeyItems: snapshot.privateKeyItems,
+			batchPreviews:   snapshot.batchPreviews,
+			kdbxSource:      snapshot.kdbxSource,
+			err:             err,
 		}
 	}
 }
@@ -530,7 +610,8 @@ func cloneCanonicalImportState(state *canonicalImportState) *canonicalImportStat
 	cloned.preview = nil
 	cloned.data = nil
 	cloned.batchItems = nil
-	cloned.secretBatchItems = nil
+	cloned.mnemonicItems = nil
+	cloned.privateKeyItems = nil
 	cloned.batchPreviews = nil
 	cloned.resultLines = nil
 	cloned.cancel = nil
@@ -538,10 +619,13 @@ func cloneCanonicalImportState(state *canonicalImportState) *canonicalImportStat
 	cloned.cancelling = false
 	cloned.events = nil
 	cloned.sourcePassword = append([]byte(nil), state.sourcePassword...)
+	cloned.lookupMissingSidecars = state.lookupMissingSidecars
+	cloned.kdbxSources = make(map[string]bool)
+	cloned.kdbxSource = false
 	return &cloned
 }
 
-func prepareCanonicalImportPreview(ctx context.Context, vault *wallet.WalletVault, state *canonicalImportState) error {
+func prepareCanonicalImportPreview(ctx context.Context, vault *wallet.WalletVault, state *canonicalImportState, credential *wallet.CredentialBackupOperation, useKeePass bool) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -574,12 +658,26 @@ func prepareCanonicalImportPreview(ctx context.Context, vault *wallet.WalletVaul
 	case wallet.ImportMethodKeystore:
 		state.data, err = readCanonicalKeystore(state.value("keystore_path"))
 		if err == nil {
-			sourcePassword := canonicalSourcePassword(state)
-			preview, err = wallet.PreviewKeystoreImportContext(ctx, state.data, sourcePassword)
-			clear(sourcePassword)
+			if useKeePass && !state.sourcePasswordFromFile {
+				err = credential.WithFilePassword(ctx, "keystore_v3", state.data, func(resolved []byte) error {
+					var inner error
+					preview, inner = wallet.PreviewKeystoreImportContext(ctx, state.data, resolved)
+					return inner
+				})
+				if err == nil {
+					state.kdbxSource = true
+				}
+			} else {
+				sourcePassword := canonicalSourcePassword(state)
+				preview, err = wallet.PreviewKeystoreImportContext(ctx, state.data, sourcePassword)
+				clear(sourcePassword)
+			}
 		}
 	case canonicalBatchMethod:
 		state.batchItems, err = readCanonicalKeystoreBatch(state.value("directory"))
+		if err == nil {
+			err = assignCanonicalBatchNames(ctx, vault, state)
+		}
 		if err == nil {
 			if state.reportProgress != nil {
 				state.reportProgress(wallet.KeystoreBatchProgress{Total: len(state.batchItems)})
@@ -600,6 +698,37 @@ func prepareCanonicalImportPreview(ctx context.Context, vault *wallet.WalletVaul
 					}
 					continue
 				}
+				if !item.SourcePasswordFromFile && state.lookupMissingSidecars && credential != nil {
+					lookupErr := credential.WithFilePassword(ctx, "keystore_v3", item.KeystoreJSON, func(resolved []byte) error {
+						validated, inner := wallet.PreviewKeystoreImportContext(ctx, item.KeystoreJSON, resolved)
+						if inner == nil {
+							itemPreview.address = validated.Address
+						}
+						return inner
+					})
+					switch {
+					case lookupErr == nil:
+						itemPreview.kdbx = true
+						state.kdbxSources[itemPreview.digest] = true
+						state.batchPreviews = append(state.batchPreviews, itemPreview)
+						batchProgress.Completed++
+						if state.reportProgress != nil {
+							state.reportProgress(batchProgress)
+						}
+						continue
+					case errors.Is(lookupErr, keepass.ErrNotFound):
+					default:
+						item.PreflightErr = lookupErr
+						itemPreview.err = canonicalBatchFailureReason(lookupErr)
+						state.batchPreviews = append(state.batchPreviews, itemPreview)
+						batchProgress.Completed++
+						batchProgress.Failed++
+						if state.reportProgress != nil {
+							state.reportProgress(batchProgress)
+						}
+						continue
+					}
+				}
 				validated, previewErr := wallet.PreviewKeystoreImportContext(ctx, item.KeystoreJSON, item.SourcePassword)
 				if previewErr != nil {
 					item.PreflightErr = fmt.Errorf("%w", errCanonicalBatchValidation)
@@ -618,43 +747,36 @@ func prepareCanonicalImportPreview(ctx context.Context, vault *wallet.WalletVaul
 			}
 			preview = wallet.ImportPreview{SecretType: wallet.SecretTypePrivateKey, SourceFormat: fmt.Sprintf("keystore_v3_batch:%d", len(state.batchItems))}
 		}
-	case canonicalMnemonicBatchMethod, canonicalPrivateKeyBatchMethod:
-		state.secretBatchItems, err = readCanonicalSecretBatch(state.value("directory"), state.method)
+	case canonicalMnemonicBatchMethod:
+		state.mnemonicItems, err = readCanonicalMnemonicBatch(state.value("directory"))
+		if err == nil {
+			err = assignCanonicalBatchNames(ctx, vault, state)
+		}
 		if err == nil {
 			if state.reportProgress != nil {
-				state.reportProgress(wallet.KeystoreBatchProgress{Total: len(state.secretBatchItems)})
+				state.reportProgress(wallet.KeystoreBatchProgress{Total: len(state.mnemonicItems)})
 			}
-			batchProgress := wallet.KeystoreBatchProgress{Total: len(state.secretBatchItems)}
-			state.batchPreviews = make([]canonicalBatchPreview, 0, len(state.secretBatchItems))
-			for index := range state.secretBatchItems {
-				item := &state.secretBatchItems[index]
-				digest := sha256.Sum256(canonicalSecretItemDigest(item))
-				itemPreview := canonicalBatchPreview{name: item.Name, digest: hex.EncodeToString(digest[:])}
-				if item.PreflightErr == nil {
-					var validated wallet.ImportPreview
-					var previewErr error
-					if state.method == canonicalMnemonicBatchMethod {
-						passphrase := state.value("passphrase")
-						if len(item.Passphrase) > 0 {
-							passphrase = string(item.Passphrase)
-						}
-						validated, previewErr = wallet.PreviewMnemonicImport(wallet.MnemonicImportRequest{
-							Mnemonic:        string(item.SecretData),
-							BIP39Passphrase: passphrase,
-							BIP39Language:   canonicalBatchLanguage(state.value("language")),
-							DerivationPath:  state.value("path"),
-						})
-					} else {
-						validated, previewErr = wallet.PreviewPrivateKeyImport(wallet.PrivateKeyImportRequest{PrivateKey: string(item.SecretData)})
-					}
-					if previewErr != nil {
-						item.PreflightErr = fmt.Errorf("%w", errCanonicalSecretValidation)
-					} else {
-						itemPreview.address = validated.Address
-					}
-				}
+			batchProgress := wallet.KeystoreBatchProgress{Total: len(state.mnemonicItems)}
+			state.batchPreviews = make([]canonicalBatchPreview, 0, len(state.mnemonicItems))
+			for index := range state.mnemonicItems {
+				item := &state.mnemonicItems[index]
+				itemPreview := canonicalBatchPreview{name: item.Name, secret: append([]byte(nil), item.Mnemonic...)}
 				if item.PreflightErr != nil {
 					itemPreview.err = canonicalBatchFailureReason(item.PreflightErr)
+					state.batchPreviews = append(state.batchPreviews, itemPreview)
+					batchProgress.Completed++
+					batchProgress.Failed++
+					if state.reportProgress != nil {
+						state.reportProgress(batchProgress)
+					}
+					continue
+				}
+				validated, previewErr := wallet.PreviewMnemonicFileImport(item.Mnemonic)
+				if previewErr != nil {
+					item.PreflightErr = fmt.Errorf("%w", errCanonicalMnemonicValidation)
+					itemPreview.err = canonicalBatchFailureReason(item.PreflightErr)
+				} else {
+					itemPreview.address = validated.Address
 				}
 				state.batchPreviews = append(state.batchPreviews, itemPreview)
 				batchProgress.Completed++
@@ -664,19 +786,80 @@ func prepareCanonicalImportPreview(ctx context.Context, vault *wallet.WalletVaul
 				if state.reportProgress != nil {
 					state.reportProgress(batchProgress)
 				}
+				if ctxErr := ctx.Err(); ctxErr != nil {
+					err = ctxErr
+					break
+				}
 			}
-			secretType := wallet.SecretTypePrivateKey
-			format := "private_key_batch"
-			if state.method == canonicalMnemonicBatchMethod {
-				secretType = wallet.SecretTypeMnemonic
-				format = "mnemonic_batch"
+			if err == nil {
+				preview = wallet.ImportPreview{SecretType: wallet.SecretTypeMnemonic, DerivationPath: "m/44'/60'/0'/0/0", SourceFormat: fmt.Sprintf("bip39_batch:%d", len(state.mnemonicItems))}
 			}
-			preview = wallet.ImportPreview{SecretType: secretType, SourceFormat: fmt.Sprintf("%s:%d", format, len(state.secretBatchItems))}
+		}
+	case canonicalPrivateKeyBatchMethod:
+		state.privateKeyItems, err = readCanonicalPrivateKeyBatch(state.value("directory"))
+		if err == nil {
+			err = assignCanonicalBatchNames(ctx, vault, state)
+		}
+		if err == nil {
+			if state.reportProgress != nil {
+				state.reportProgress(wallet.KeystoreBatchProgress{Total: len(state.privateKeyItems)})
+			}
+			batchProgress := wallet.KeystoreBatchProgress{Total: len(state.privateKeyItems)}
+			state.batchPreviews = make([]canonicalBatchPreview, 0, len(state.privateKeyItems))
+			for index := range state.privateKeyItems {
+				item := &state.privateKeyItems[index]
+				itemPreview := canonicalBatchPreview{name: item.Name, secret: append([]byte(nil), item.PrivateKey...)}
+				if item.PreflightErr != nil {
+					itemPreview.err = canonicalBatchFailureReason(item.PreflightErr)
+					state.batchPreviews = append(state.batchPreviews, itemPreview)
+					batchProgress.Completed++
+					batchProgress.Failed++
+					if state.reportProgress != nil {
+						state.reportProgress(batchProgress)
+					}
+					continue
+				}
+				validated, previewErr := wallet.PreviewPrivateKeyFileImport(item.PrivateKey)
+				if previewErr != nil {
+					item.PreflightErr = fmt.Errorf("%w", errCanonicalPrivateKeyValidation)
+					itemPreview.err = canonicalBatchFailureReason(item.PreflightErr)
+				} else {
+					itemPreview.address = validated.Address
+				}
+				state.batchPreviews = append(state.batchPreviews, itemPreview)
+				batchProgress.Completed++
+				if item.PreflightErr != nil {
+					batchProgress.Failed++
+				}
+				if state.reportProgress != nil {
+					state.reportProgress(batchProgress)
+				}
+				if ctxErr := ctx.Err(); ctxErr != nil {
+					err = ctxErr
+					break
+				}
+			}
+			if err == nil {
+				preview = wallet.ImportPreview{SecretType: wallet.SecretTypePrivateKey, SourceFormat: fmt.Sprintf("private_key_batch:%d", len(state.privateKeyItems))}
+			}
 		}
 	case canonicalEncryptedMethod:
 		state.data, err = readCanonicalKeystore(state.value("encrypted_path"))
 		if err == nil {
-			preview, err = vault.PreviewEncryptedAccountImport(ctx, state.data, []byte(state.value("source_password")))
+			if useKeePass {
+				err = credential.WithFilePassword(ctx, "bloco_encrypted", state.data, func(resolved []byte) error {
+					var inner error
+					preview, inner = vault.PreviewEncryptedAccountImport(ctx, state.data, resolved)
+					return inner
+				})
+				if err == nil {
+					state.kdbxSource = true
+				}
+			} else {
+				sourcePassword := []byte(state.value("source_password"))
+				preview, err = vault.PreviewEncryptedAccountImport(ctx, state.data, sourcePassword)
+				clear(sourcePassword)
+			}
 		}
 	default:
 		err = fmt.Errorf("unsupported import method")
@@ -689,6 +872,12 @@ func prepareCanonicalImportPreview(ctx context.Context, vault *wallet.WalletVaul
 		state.data = nil
 		clearCanonicalBatchItems(state.batchItems)
 		state.batchItems = nil
+		clearCanonicalMnemonicItems(state.mnemonicItems)
+		state.mnemonicItems = nil
+		clearCanonicalPrivateKeyItems(state.privateKeyItems)
+		state.privateKeyItems = nil
+		clearCanonicalBatchPreviews(state.batchPreviews)
+		state.batchPreviews = nil
 		return err
 	}
 	state.preview = &preview
@@ -701,30 +890,59 @@ func (m *CLIModel) startCanonicalCommit() tea.Cmd {
 	m.canonicalOperationID++
 	state.operationID = m.canonicalOperationID
 	operationID := state.operationID
-	ctx, cancel := context.WithTimeout(context.Background(), canonicalImportTimeout)
+	op := m.activeCredentialOperation()
+	parent := context.Background()
+	if op != nil {
+		parent = op.Context()
+	}
+	ctx, cancel := context.WithTimeout(parent, canonicalImportTimeout)
 	state.cancel = cancel
 	state.busy = true
 	state.cancelling = false
 	state.err = ""
 	snapshot := cloneCanonicalCommitState(state)
-	if isCanonicalBatchMethod(state.method) {
+	useKeePass := m.credentialUseKeePass && m.credentialBackupEnabled()
+	syncBackup := func(err error) (saved, failed int, pending bool) {
+		if op == nil {
+			return 0, 0, false
+		}
+		if err != nil {
+			var pendingErr *wallet.CredentialBackupPendingError
+			if !errors.As(err, &pendingErr) {
+				return 0, 0, false
+			}
+			pending = true
+		}
+		report, syncErr := op.Sync(ctx)
+		saved = report.AccountsSaved + report.FilesSaved
+		failed = report.Pending
+		return saved, failed, pending || syncErr != nil || report.Pending > 0
+	}
+	if state.isBatch() {
 		snapshot.logDirectory = m.canonicalFailureLogDirectory()
 		events := make(chan tea.Msg, canonicalBatchLimit+3)
 		state.events = events
 		state.batchProgress = wallet.KeystoreBatchProgress{}
-		state.progressStage = "Importing"
+		state.progressStage = "canonical_stage_importing"
 		snapshot.reportProgress = func(report wallet.KeystoreBatchProgress) {
-			events <- canonicalImportProgressMsg{operationID: operationID, stage: "Importing", progress: report}
+			events <- canonicalImportProgressMsg{operationID: operationID, stage: "canonical_stage_importing", progress: report}
 		}
 		worker := func() tea.Msg {
 			defer close(events)
 			defer cancel()
 			defer clear(snapshot.sourcePassword)
-			summary, resultLines, err := executeCanonicalImport(ctx, m.Vault, snapshot)
+			summary, resultLines, err := executeCanonicalImport(ctx, m.Vault, snapshot, op, useKeePass)
 			clear(snapshot.data)
 			clearCanonicalBatchItems(snapshot.batchItems)
-			clearCanonicalSecretBatchItems(snapshot.secretBatchItems)
-			events <- canonicalCommitResultMsg{operationID: operationID, summary: summary, resultLines: resultLines, err: err}
+			clearCanonicalMnemonicItems(snapshot.mnemonicItems)
+			clearCanonicalPrivateKeyItems(snapshot.privateKeyItems)
+			clearCanonicalBatchPreviews(snapshot.batchPreviews)
+			var pendingErr *wallet.CredentialBackupPendingError
+			if op != nil && (err == nil || errors.As(err, &pendingErr)) {
+				events <- canonicalImportProgressMsg{operationID: operationID, stage: "keepass_stage_syncing"}
+			}
+			saved, failed, pending := syncBackup(err)
+			events <- canonicalCommitResultMsg{operationID: operationID, summary: summary, resultLines: resultLines, err: err, backupPending: pending, backupSaved: saved, backupFailed: failed, op: op}
 			return nil
 		}
 		return tea.Batch(worker, waitCanonicalImportEvent(events))
@@ -732,11 +950,14 @@ func (m *CLIModel) startCanonicalCommit() tea.Cmd {
 	return func() tea.Msg {
 		defer cancel()
 		defer clear(snapshot.sourcePassword)
-		summary, resultLines, err := executeCanonicalImport(ctx, m.Vault, snapshot)
+		summary, resultLines, err := executeCanonicalImport(ctx, m.Vault, snapshot, op, useKeePass)
 		clear(snapshot.data)
 		clearCanonicalBatchItems(snapshot.batchItems)
-		clearCanonicalSecretBatchItems(snapshot.secretBatchItems)
-		return canonicalCommitResultMsg{operationID: operationID, summary: summary, resultLines: resultLines, err: err}
+		clearCanonicalMnemonicItems(snapshot.mnemonicItems)
+		clearCanonicalPrivateKeyItems(snapshot.privateKeyItems)
+		clearCanonicalBatchPreviews(snapshot.batchPreviews)
+		saved, failed, pending := syncBackup(err)
+		return canonicalCommitResultMsg{operationID: operationID, summary: summary, resultLines: resultLines, err: err, backupPending: pending, backupSaved: saved, backupFailed: failed, op: op}
 	}
 }
 
@@ -758,24 +979,35 @@ func cloneCanonicalCommitState(state *canonicalImportState) *canonicalImportStat
 	cloned.batchItems = make([]wallet.KeystoreBatchItem, len(state.batchItems))
 	for index, item := range state.batchItems {
 		cloned.batchItems[index] = wallet.KeystoreBatchItem{
-			Name:           item.Name,
-			KeystoreJSON:   append([]byte(nil), item.KeystoreJSON...),
-			SourcePassword: append([]byte(nil), item.SourcePassword...),
-			SourcePath:     item.SourcePath,
-			PreflightErr:   item.PreflightErr,
+			Name:                   item.Name,
+			KeystoreJSON:           append([]byte(nil), item.KeystoreJSON...),
+			SourcePassword:         append([]byte(nil), item.SourcePassword...),
+			SourcePasswordFromFile: item.SourcePasswordFromFile,
+			SourcePath:             item.SourcePath,
+			PreflightErr:           item.PreflightErr,
 		}
 	}
-	cloned.secretBatchItems = make([]wallet.SecretBatchItem, len(state.secretBatchItems))
-	for index, item := range state.secretBatchItems {
-		cloned.secretBatchItems[index] = wallet.SecretBatchItem{
+	cloned.mnemonicItems = make([]wallet.MnemonicBatchItem, len(state.mnemonicItems))
+	for index, item := range state.mnemonicItems {
+		cloned.mnemonicItems[index] = wallet.MnemonicBatchItem{
 			Name:         item.Name,
-			SecretData:   append([]byte(nil), item.SecretData...),
-			Passphrase:   append([]byte(nil), item.Passphrase...),
 			SourcePath:   item.SourcePath,
+			Mnemonic:     append([]byte(nil), item.Mnemonic...),
+			PreflightErr: item.PreflightErr,
+		}
+	}
+	cloned.privateKeyItems = make([]wallet.PrivateKeyBatchItem, len(state.privateKeyItems))
+	for index, item := range state.privateKeyItems {
+		cloned.privateKeyItems[index] = wallet.PrivateKeyBatchItem{
+			Name:         item.Name,
+			SourcePath:   item.SourcePath,
+			PrivateKey:   append([]byte(nil), item.PrivateKey...),
 			PreflightErr: item.PreflightErr,
 		}
 	}
 	cloned.batchPreviews = append([]canonicalBatchPreview(nil), state.batchPreviews...)
+	cloned.lookupMissingSidecars = state.lookupMissingSidecars
+	cloned.kdbxSources = state.kdbxSources
 	cloned.cancel = nil
 	cloned.busy = false
 	cloned.cancelling = false
@@ -784,7 +1016,7 @@ func cloneCanonicalCommitState(state *canonicalImportState) *canonicalImportStat
 	return &cloned
 }
 
-func executeCanonicalImport(ctx context.Context, vault *wallet.WalletVault, state *canonicalImportState) (wallet.AccountSummary, []string, error) {
+func executeCanonicalImport(ctx context.Context, vault *wallet.WalletVault, state *canonicalImportState, credential *wallet.CredentialBackupOperation, useKeePass bool) (wallet.AccountSummary, []string, error) {
 	storagePassword := []byte(state.value("storage_password"))
 	confirmation := []byte(state.value("confirm_password"))
 	defer clear(storagePassword)
@@ -819,30 +1051,65 @@ func executeCanonicalImport(ctx context.Context, vault *wallet.WalletVault, stat
 			Address: address,
 		})
 	case wallet.ImportMethodKeystore:
-		sourcePassword := canonicalSourcePassword(state)
-		summary, err = vault.ImportKeystore(ctx, wallet.KeystoreImportRequest{
-			Name:                   strings.TrimSpace(state.value("name")),
-			KeystoreJSON:           state.data,
-			SourcePassword:         sourcePassword,
-			StoragePassword:        storagePassword,
-			ConfirmStoragePassword: confirmation,
-		})
-		clear(sourcePassword)
+		importKeystore := func(sourcePassword []byte) error {
+			var inner error
+			summary, inner = vault.ImportKeystore(ctx, wallet.KeystoreImportRequest{
+				Name:                   strings.TrimSpace(state.value("name")),
+				KeystoreJSON:           state.data,
+				SourcePassword:         sourcePassword,
+				SourcePath:             state.value("keystore_path"),
+				StoragePassword:        storagePassword,
+				ConfirmStoragePassword: confirmation,
+			})
+			return inner
+		}
+		if useKeePass && credential != nil && !state.sourcePasswordFromFile {
+			err = credential.WithFilePassword(ctx, "keystore_v3", state.data, importKeystore)
+		} else {
+			sourcePassword := canonicalSourcePassword(state)
+			err = importKeystore(sourcePassword)
+			clear(sourcePassword)
+		}
 	case canonicalEncryptedMethod:
-		sourcePassword := []byte(state.value("source_password"))
-		summary, err = vault.ImportEncryptedAccount(ctx, wallet.EncryptedAccountImportRequest{
-			Name:                   strings.TrimSpace(state.value("name")),
-			ExportJSON:             state.data,
-			ExportPassword:         sourcePassword,
-			StoragePassword:        storagePassword,
-			ConfirmStoragePassword: confirmation,
-		})
-		clear(sourcePassword)
+		importEncrypted := func(sourcePassword []byte) error {
+			var inner error
+			summary, inner = vault.ImportEncryptedAccount(ctx, wallet.EncryptedAccountImportRequest{
+				Name:                   strings.TrimSpace(state.value("name")),
+				ExportJSON:             state.data,
+				ExportPassword:         sourcePassword,
+				SourcePath:             state.value("encrypted_path"),
+				StoragePassword:        storagePassword,
+				ConfirmStoragePassword: confirmation,
+			})
+			return inner
+		}
+		if useKeePass && credential != nil {
+			err = credential.WithFilePassword(ctx, "bloco_encrypted", state.data, importEncrypted)
+		} else {
+			sourcePassword := []byte(state.value("source_password"))
+			err = importEncrypted(sourcePassword)
+			clear(sourcePassword)
+		}
 	case canonicalBatchMethod:
 		for index, item := range state.batchItems {
 			digest := sha256.Sum256(item.KeystoreJSON)
 			if index >= len(state.batchPreviews) || hex.EncodeToString(digest[:]) != state.batchPreviews[index].digest {
 				return wallet.AccountSummary{}, nil, fmt.Errorf("batch item changed after preview")
+			}
+		}
+		if credential != nil && state.lookupMissingSidecars {
+			for index := range state.batchItems {
+				item := &state.batchItems[index]
+				if item.PreflightErr != nil || item.SourcePasswordFromFile {
+					continue
+				}
+				lookupErr := credential.WithFilePassword(ctx, "keystore_v3", item.KeystoreJSON, func(resolved []byte) error {
+					item.SourcePassword = append([]byte(nil), resolved...)
+					return nil
+				})
+				if lookupErr != nil && !errors.Is(lookupErr, keepass.ErrNotFound) {
+					item.PreflightErr = lookupErr
+				}
 			}
 		}
 		results := vault.ImportKeystoreBatch(ctx, wallet.KeystoreBatchImportRequest{
@@ -852,98 +1119,38 @@ func executeCanonicalImport(ctx context.Context, vault *wallet.WalletVault, stat
 			MaxConcurrency:         2,
 			OnProgress:             state.reportProgress,
 		})
-		failures := 0
-		imported := 0
-		alreadyImported := 0
-		resultLines := make([]string, 0, len(results)+2)
-		for _, result := range results {
-			name := "batch"
-			if result.Index >= 0 && result.Index < len(state.batchItems) {
-				name = state.batchItems[result.Index].Name
-			}
-			if result.Err != nil {
-				failures++
-				resultLines = append(resultLines, fmt.Sprintf("%s | ERROR: %s", name, canonicalBatchFailureReason(result.Err)))
-			} else if result.AlreadyImported {
-				alreadyImported++
-				resultLines = append(resultLines, fmt.Sprintf("%s | already imported", name))
-			} else if result.Summary != nil {
-				imported++
-				resultLines = append(resultLines, fmt.Sprintf("%s | %s | imported", name, result.Summary.Address))
-				if summary.AccountID == "" {
-					summary = *result.Summary
-				}
-			}
-		}
-		resultLines = append(resultLines, fmt.Sprintf("Summary: %d found, %d processed, %d imported, %d already imported, %d failed",
-			len(state.batchItems), len(results), imported, alreadyImported, failures))
-		if failures > 0 {
-			if state.logDirectory == "" {
-				resultLines = append(resultLines, "WARNING: failure log could not be written (log directory unavailable)")
-			} else if logPath, logErr := writeCanonicalImportFailureLog(state.logDirectory, state.batchItems, results); logErr != nil {
-				resultLines = append(resultLines, "WARNING: failure log could not be written")
-			} else {
-				resultLines = append(resultLines, "Failure log: "+logPath)
-			}
-		}
-		return summary, resultLines, nil
-	case canonicalMnemonicBatchMethod, canonicalPrivateKeyBatchMethod:
-		for index := range state.secretBatchItems {
-			digest := sha256.Sum256(canonicalSecretItemDigest(&state.secretBatchItems[index]))
-			if index >= len(state.batchPreviews) || hex.EncodeToString(digest[:]) != state.batchPreviews[index].digest {
+		commitSummary, resultLines := canonicalBatchResultLines(state.logDirectory, "keystore-import-failures-*.log", canonicalBatchFileRefsFromKeystores(state.batchItems), results)
+		return commitSummary, resultLines, nil
+	case canonicalMnemonicBatchMethod:
+		for index, item := range state.mnemonicItems {
+			if index >= len(state.batchPreviews) || subtle.ConstantTimeCompare(item.Mnemonic, state.batchPreviews[index].secret) != 1 {
 				return wallet.AccountSummary{}, nil, fmt.Errorf("batch item changed after preview")
 			}
 		}
-		kind := wallet.SecretBatchPrivateKey
-		if state.method == canonicalMnemonicBatchMethod {
-			kind = wallet.SecretBatchMnemonic
-		}
-		results := vault.ImportSecretBatch(ctx, wallet.SecretBatchImportRequest{
-			Kind:                   kind,
-			Items:                  state.secretBatchItems,
-			BIP39Passphrase:        state.value("passphrase"),
-			BIP39Language:          canonicalBatchLanguage(state.value("language")),
-			DerivationPath:         state.value("path"),
+		results := vault.ImportMnemonicBatch(ctx, wallet.MnemonicBatchImportRequest{
+			Items:                  state.mnemonicItems,
 			StoragePassword:        storagePassword,
 			ConfirmStoragePassword: confirmation,
 			MaxConcurrency:         2,
-			OnProgress:             canonicalSecretProgressAdapter(state.reportProgress),
+			OnProgress:             state.reportProgress,
 		})
-		failures := 0
-		imported := 0
-		alreadyImported := 0
-		resultLines := make([]string, 0, len(results)+2)
-		for _, result := range results {
-			name := "batch"
-			if result.Index >= 0 && result.Index < len(state.secretBatchItems) {
-				name = state.secretBatchItems[result.Index].Name
-			}
-			if result.Err != nil {
-				failures++
-				resultLines = append(resultLines, fmt.Sprintf("%s | ERROR: %s", name, canonicalBatchFailureReason(result.Err)))
-			} else if result.AlreadyImported {
-				alreadyImported++
-				resultLines = append(resultLines, fmt.Sprintf("%s | already imported", name))
-			} else if result.Summary != nil {
-				imported++
-				resultLines = append(resultLines, fmt.Sprintf("%s | %s | imported", name, result.Summary.Address))
-				if summary.AccountID == "" {
-					summary = *result.Summary
-				}
+		commitSummary, resultLines := canonicalBatchResultLines(state.logDirectory, "mnemonic-import-failures-*.log", canonicalBatchFileRefsFromMnemonics(state.mnemonicItems), results)
+		return commitSummary, resultLines, nil
+	case canonicalPrivateKeyBatchMethod:
+		for index, item := range state.privateKeyItems {
+			if index >= len(state.batchPreviews) || subtle.ConstantTimeCompare(item.PrivateKey, state.batchPreviews[index].secret) != 1 {
+				return wallet.AccountSummary{}, nil, fmt.Errorf("batch item changed after preview")
 			}
 		}
-		resultLines = append(resultLines, fmt.Sprintf("Summary: %d found, %d processed, %d imported, %d already imported, %d failed",
-			len(state.secretBatchItems), len(results), imported, alreadyImported, failures))
-		if failures > 0 {
-			if state.logDirectory == "" {
-				resultLines = append(resultLines, "WARNING: failure log could not be written (log directory unavailable)")
-			} else if logPath, logErr := writeCanonicalSecretFailureLog(state.logDirectory, state.secretBatchItems, results); logErr != nil {
-				resultLines = append(resultLines, "WARNING: failure log could not be written")
-			} else {
-				resultLines = append(resultLines, "Failure log: "+logPath)
-			}
-		}
-		return summary, resultLines, nil
+		results := vault.ImportPrivateKeyBatch(ctx, wallet.PrivateKeyBatchImportRequest{
+			Items:                  state.privateKeyItems,
+			StoragePassword:        storagePassword,
+			ConfirmStoragePassword: confirmation,
+			MaxConcurrency:         2,
+			OnProgress:             state.reportProgress,
+		})
+		commitSummary, resultLines := canonicalBatchResultLines(state.logDirectory, "private-key-import-failures-*.log", canonicalBatchFileRefsFromPrivateKeys(state.privateKeyItems), results)
+		return commitSummary, resultLines, nil
 	default:
 		err = fmt.Errorf("unsupported import method")
 	}
@@ -953,57 +1160,97 @@ func executeCanonicalImport(ctx context.Context, vault *wallet.WalletVault, stat
 func (m *CLIModel) viewCanonicalImport() string {
 	state := m.canonicalImport
 	if state == nil {
-		return "Import state is unavailable"
+		return localization.Get("canonical_state_unavailable")
 	}
-	title := lipgloss.NewStyle().Bold(true).Render("Canonical wallet import")
+	title := lipgloss.NewStyle().Bold(true).Render(localization.Get("canonical_import_title"))
 	if state.busy {
 		if state.cancelling {
-			return title + "\n\nCancelling safely. Waiting for in-flight cryptographic work to stop."
+			return title + "\n\n" + localization.Get("canonical_cancelling")
 		}
-		if isCanonicalBatchMethod(state.method) && state.batchProgress.Total > 0 {
+		if state.isBatch() && state.batchProgress.Total > 0 {
 			fraction := float64(state.batchProgress.Completed) / float64(state.batchProgress.Total)
 			bar := progress.New(progress.WithDefaultGradient(), progress.WithWidth(40)).ViewAs(fraction)
 			stageLabel := state.progressStage
 			if stageLabel == "" {
-				stageLabel = "Processing"
+				stageLabel = "canonical_stage_processing"
 			}
-			return fmt.Sprintf("%s\n\n%s\n%s\nFound %d | Processed %d/%d | Imported %d | Already imported %d | Failed %d\n\nPress Esc to cancel.",
-				title, stageLabel, bar,
-				state.batchProgress.Total, state.batchProgress.Completed, state.batchProgress.Total,
-				state.batchProgress.Imported, state.batchProgress.AlreadyImported, state.batchProgress.Failed)
+			return fmt.Sprintf("%s\n\n%s\n%s\n%s",
+				title, localization.Get(stageLabel), bar,
+				localization.T("canonical_batch_progress", map[string]interface{}{
+					"Found":    state.batchProgress.Total,
+					"Done":     state.batchProgress.Completed,
+					"Total":    state.batchProgress.Total,
+					"Imported": state.batchProgress.Imported,
+					"Already":  state.batchProgress.AlreadyImported,
+					"Failed":   state.batchProgress.Failed,
+				}))
 		}
-		return title + "\n\nProcessing bounded cryptographic work. Press Esc to cancel."
+		return title + "\n\n" + localization.Get("canonical_processing")
 	}
 	if len(state.resultLines) > 0 {
-		return title + "\n\n" + strings.Join(safeLines(state.resultLines), "\n") + "\n\nPress Enter to return to the account list."
+		return title + "\n\n" + strings.Join(safeLines(state.resultLines), "\n")
 	}
-	if state.preview != nil && isCanonicalBatchMethod(state.method) {
+	if state.preview != nil && state.isBatch() {
 		var view strings.Builder
-		view.WriteString(title + "\n\nAuthenticated batch preview:\n")
+		view.WriteString(title + "\n\n" + localization.Get("canonical_batch_preview_title") + "\n")
+		if state.method == canonicalMnemonicBatchMethod {
+			view.WriteString(localization.Get("detail_derivation_path") + ": m/44'/60'/0'/0/0\n")
+		}
 		for _, item := range state.batchPreviews {
 			status := item.address
 			if item.err != "" {
-				status = "ERROR: " + item.err
+				status = localization.T("canonical_preview_error", map[string]interface{}{"Err": item.err})
 			}
-			_, _ = fmt.Fprintf(&view, "%s | %s | sha256:%s\n", safeShort(item.name), safeInline(status), safeShort(item.digest[:16]))
+			if item.kdbx {
+				status = status + " " + localization.Get("keepass_source_kdbx")
+			}
+			if state.method == canonicalMnemonicBatchMethod || state.method == canonicalPrivateKeyBatchMethod {
+				_, _ = fmt.Fprintf(&view, "%s | %s\n", safeShort(item.name), safeInline(status))
+			} else {
+				_, _ = fmt.Fprintf(&view, "%s | %s | sha256:%s\n", safeShort(item.name), safeInline(status), safeShort(item.digest[:min(16, len(item.digest))]))
+			}
 		}
-		view.WriteString("\nPress Enter to commit these exact bytes or Esc to cancel.")
 		return view.String()
 	}
 	if state.preview != nil {
 		preview := state.preview
 		secretType := string(preview.SecretType)
 		if secretType == "" {
-			secretType = "none"
+			secretType = localization.Get("canonical_secret_none")
 		}
-		return fmt.Sprintf("%s\n\nSource: %s\nAddress: %s\nSigner: %s\nSecret material: %s\nPath: %s\nLanguage: %s\nPassphrase present: %t\n\nPress Enter to commit or Esc to cancel.",
-			title, safeShort(preview.SourceFormat), safeShort(preview.Address), safeShort(string(preview.SignerKind)), safeShort(secretType), safeShort(preview.DerivationPath), safeShort(string(preview.BIP39Language)), preview.HasBIP39Passphrase)
+		passphrasePresent := localization.Get("no")
+		if preview.HasBIP39Passphrase {
+			passphrasePresent = localization.Get("yes")
+		}
+		sourceLine := ""
+		if state.kdbxSource {
+			sourceLine = "\n" + localization.Get("keepass_source_kdbx")
+		}
+		return fmt.Sprintf("%s\n\n%s%s",
+			title, localization.T("canonical_preview_summary", map[string]interface{}{
+				"Source":     safeShort(preview.SourceFormat),
+				"Address":    safeShort(preview.Address),
+				"Signer":     safeShort(string(preview.SignerKind)),
+				"Secret":     safeShort(secretType),
+				"Path":       safeShort(preview.DerivationPath),
+				"Language":   safeShort(string(preview.BIP39Language)),
+				"Passphrase": passphrasePresent,
+			}), sourceLine)
 	}
 	field := state.fields[state.stage]
-	view := fmt.Sprintf("%s\n\nStep %d/%d\n%s:\n%s\n\nPress Enter to continue or Esc to cancel.",
-		title, state.stage+1, len(state.fields), field.label, field.input.View())
-	if field.key == "keystore_path" || field.key == "directory" {
-		view += "\nTab: complete path; Up/Down: choose suggestion."
+	view := fmt.Sprintf("%s\n\n%s\n%s:\n%s",
+		title,
+		localization.T("canonical_step", map[string]interface{}{"Step": state.stage + 1, "Total": len(state.fields)}),
+		localization.Get(field.labelKey), field.input.View())
+	if field.key == "source_password" && m.credentialBackupEnabled() {
+		view += "\n" + m.credentialMethodLabel(true)
+	}
+	if field.key == "directory" && state.method == canonicalBatchMethod && m.credentialBackupEnabled() {
+		label := localization.Get("keepass_status_disabled")
+		if state.lookupMissingSidecars {
+			label = localization.Get("keepass_status_enabled")
+		}
+		view += "\n" + localization.T("keepass_lookup_label", map[string]interface{}{"Status": label})
 	}
 	if state.err != "" {
 		view += "\n\n" + m.styles.ErrorStyle.Render(safeInline(state.err))
@@ -1022,8 +1269,11 @@ func (m *CLIModel) clearCanonicalImportSecrets(clearResults bool) {
 	m.canonicalImport.data = nil
 	clearCanonicalBatchItems(m.canonicalImport.batchItems)
 	m.canonicalImport.batchItems = nil
-	clearCanonicalSecretBatchItems(m.canonicalImport.secretBatchItems)
-	m.canonicalImport.secretBatchItems = nil
+	clearCanonicalMnemonicItems(m.canonicalImport.mnemonicItems)
+	m.canonicalImport.mnemonicItems = nil
+	clearCanonicalPrivateKeyItems(m.canonicalImport.privateKeyItems)
+	m.canonicalImport.privateKeyItems = nil
+	clearCanonicalBatchPreviews(m.canonicalImport.batchPreviews)
 	m.canonicalImport.batchPreviews = nil
 	m.canonicalImport.preview = nil
 	clear(m.canonicalImport.sourcePassword)
@@ -1045,6 +1295,7 @@ func (m *CLIModel) clearCanonicalImport() {
 		m.canonicalImport.cancel()
 	}
 	m.clearCanonicalImportSecrets(true)
+	m.credentialUseKeePass = false
 	m.canonicalImport = nil
 }
 
@@ -1094,32 +1345,41 @@ func readCanonicalKeystore(path string) (data []byte, err error) {
 	return data, nil
 }
 
-func readCanonicalKeystoreAt(directory *os.File, name string, expected os.FileInfo) (data []byte, err error) {
+func readCanonicalFileAt(directory *os.File, name string, expected os.FileInfo, limit int64) (data []byte, err error) {
 	file, err := openFileAtNoFollow(directory, name)
 	if err != nil {
 		return nil, err
 	}
 	defer func() {
-		if closeErr := file.Close(); closeErr != nil && err == nil {
-			err = closeErr
+		if closeErr := file.Close(); closeErr != nil {
+			if err == nil {
+				err = closeErr
+			}
+			clear(data)
+			data = nil
 		}
 	}()
 	openedInfo, err := file.Stat()
 	if err != nil {
 		return nil, err
 	}
-	if !openedInfo.Mode().IsRegular() || !os.SameFile(expected, openedInfo) || openedInfo.Size() > canonicalKeystoreLimit {
-		return nil, fmt.Errorf("batch keystore changed while opening")
+	if !openedInfo.Mode().IsRegular() || !os.SameFile(expected, openedInfo) || openedInfo.Size() > limit {
+		return nil, fmt.Errorf("batch file changed while opening")
 	}
-	data, err = io.ReadAll(io.LimitReader(file, canonicalKeystoreLimit+1))
+	data, err = io.ReadAll(io.LimitReader(file, limit+1))
 	if err != nil {
+		clear(data)
 		return nil, err
 	}
-	if len(data) > canonicalKeystoreLimit {
+	if len(data) > int(limit) {
 		clear(data)
-		return nil, fmt.Errorf("keystore exceeds 1 MiB")
+		return nil, fmt.Errorf("batch file exceeds %d bytes", limit)
 	}
 	return data, nil
+}
+
+func readCanonicalKeystoreAt(directory *os.File, name string, expected os.FileInfo) (data []byte, err error) {
+	return readCanonicalFileAt(directory, name, expected, canonicalKeystoreLimit)
 }
 
 func readCanonicalKeystoreBatch(directory string) (items []wallet.KeystoreBatchItem, err error) {
@@ -1201,6 +1461,7 @@ func readCanonicalKeystoreBatch(directory string) (items []wallet.KeystoreBatchI
 			item.PreflightErr = fmt.Errorf("%w: %v", errCanonicalBatchSourceRead, passwordErr)
 		} else if found {
 			item.SourcePassword = password
+			item.SourcePasswordFromFile = true
 		}
 		items = append(items, item)
 	}
@@ -1260,76 +1521,20 @@ func canonicalSourcePassword(state *canonicalImportState) []byte {
 func canonicalBatchFailureReason(err error) string {
 	switch {
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
-		return errCanonicalImportCancelled.Error()
+		return localization.Get("canonical_err_cancelled")
 	case errors.Is(err, errCanonicalBatchSourceRead):
-		return errCanonicalBatchSourceRead.Error()
+		return localization.Get("canonical_err_source_read")
 	case errors.Is(err, errCanonicalBatchValidation):
-		return errCanonicalBatchValidation.Error()
-	case errors.Is(err, errCanonicalSecretValidation):
-		return errCanonicalSecretValidation.Error()
+		return localization.Get("canonical_err_keystore_validation")
+	case errors.Is(err, errCanonicalMnemonicValidation):
+		return localization.Get("canonical_err_mnemonic_validation")
+	case errors.Is(err, errCanonicalPrivateKeyValidation):
+		return localization.Get("canonical_err_private_key_validation")
+	case errors.Is(err, wallet.ErrAccountDeleted):
+		return wallet.ErrAccountDeleted.Error()
 	default:
-		return errCanonicalImportFailed.Error()
+		return localization.Get("canonical_err_import_failed")
 	}
-}
-
-func writeCanonicalImportFailureLog(directory string, items []wallet.KeystoreBatchItem, results []wallet.KeystoreBatchResult) (string, error) {
-	file, err := os.CreateTemp(directory, "keystore-import-failures-*.log")
-	if err != nil {
-		return "", err
-	}
-	path := file.Name()
-	fail := func(cause error) (string, error) {
-		_ = file.Close()
-		_ = os.Remove(path)
-		return "", cause
-	}
-	if err := file.Chmod(0o600); err != nil {
-		return fail(err)
-	}
-	encoder := json.NewEncoder(file)
-	summary := struct {
-		Type            string `json:"type"`
-		Total           int    `json:"total"`
-		Imported        int    `json:"imported"`
-		AlreadyImported int    `json:"already_imported"`
-		Failed          int    `json:"failed"`
-	}{Type: "summary", Total: len(items)}
-	for _, result := range results {
-		switch {
-		case result.Err != nil:
-			summary.Failed++
-		case result.AlreadyImported:
-			summary.AlreadyImported++
-		default:
-			summary.Imported++
-		}
-	}
-	if err := encoder.Encode(summary); err != nil {
-		return fail(err)
-	}
-	record := struct {
-		Type   string `json:"type"`
-		Path   string `json:"path,omitempty"`
-		Reason string `json:"reason"`
-	}{Type: "failure"}
-	for _, result := range results {
-		if result.Err == nil {
-			continue
-		}
-		record.Path = ""
-		if result.Index >= 0 && result.Index < len(items) {
-			record.Path = items[result.Index].SourcePath
-		}
-		record.Reason = canonicalBatchFailureReason(result.Err)
-		if err := encoder.Encode(record); err != nil {
-			return fail(err)
-		}
-	}
-	if err := file.Close(); err != nil {
-		_ = os.Remove(path)
-		return "", err
-	}
-	return path, nil
 }
 
 func clearCanonicalBatchItems(items []wallet.KeystoreBatchItem) {
@@ -1339,243 +1544,10 @@ func clearCanonicalBatchItems(items []wallet.KeystoreBatchItem) {
 	}
 }
 
-// canonicalSecretBatchExtensions maps each secret batch method to the file
-// extensions it accepts inside the scan directory (case-insensitive).
-func canonicalSecretBatchExtensions(method wallet.ImportMethod) map[string]bool {
-	switch method {
-	case canonicalMnemonicBatchMethod:
-		return map[string]bool{".mnemonic": true, ".phrase": true}
-	case canonicalPrivateKeyBatchMethod:
-		return map[string]bool{".key": true, ".privatekey": true, ".pk": true}
-	}
-	return nil
-}
-
-// canonicalSecretItemDigest produces the authenticated preview digest for a
-// secret batch item. The passphrase is folded in so the commit digest check
-// fails if a .pwd sidecar changed after preview.
-func canonicalSecretItemDigest(item *wallet.SecretBatchItem) []byte {
-	digest := sha256.New()
-	digest.Write(item.SecretData)
-	digest.Write([]byte{0x00})
-	digest.Write(item.Passphrase)
-	return digest.Sum(nil)
-}
-
-func canonicalBatchLanguage(value string) wallet.BIP39Language {
-	return wallet.BIP39Language(strings.ToLower(strings.ReplaceAll(value, "-", "_")))
-}
-
-// canonicalSecretProgressAdapter adapts the vault's SecretBatchProgress to the
-// shared batch progress channel used by the TUI progress view.
-func canonicalSecretProgressAdapter(report func(wallet.KeystoreBatchProgress)) func(wallet.SecretBatchProgress) {
-	if report == nil {
-		return nil
-	}
-	return func(progress wallet.SecretBatchProgress) {
-		report(wallet.KeystoreBatchProgress{
-			Total:           progress.Total,
-			Completed:       progress.Completed,
-			Imported:        progress.Imported,
-			AlreadyImported: progress.AlreadyImported,
-			Failed:          progress.Failed,
-		})
-	}
-}
-
-func readCanonicalSecretAt(directory *os.File, name string, expected os.FileInfo) (data []byte, err error) {
-	file, err := openFileAtNoFollow(directory, name)
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		if closeErr := file.Close(); closeErr != nil && err == nil {
-			err = closeErr
-		}
-	}()
-	openedInfo, err := file.Stat()
-	if err != nil {
-		return nil, err
-	}
-	if !openedInfo.Mode().IsRegular() || !os.SameFile(expected, openedInfo) || openedInfo.Size() > canonicalSecretFileLimit {
-		return nil, fmt.Errorf("batch secret file changed while opening")
-	}
-	data, err = io.ReadAll(io.LimitReader(file, canonicalSecretFileLimit+1))
-	if err != nil {
-		return nil, err
-	}
-	if len(data) > canonicalSecretFileLimit {
-		clear(data)
-		return nil, fmt.Errorf("secret file exceeds %d bytes", canonicalSecretFileLimit)
-	}
-	return data, nil
-}
-
-// readCanonicalSecretBatch scans a directory for secret files accepted by the
-// batch method (.mnemonic/.phrase or .key/.privatekey/.pk), reads each file
-// without following symlinks, and returns one item per file. Files that
-// cannot be read surface as PreflightErr items; content validity is checked
-// during preview, not here.
-func readCanonicalSecretBatch(directory string, method wallet.ImportMethod) (items []wallet.SecretBatchItem, err error) {
-	extensions := canonicalSecretBatchExtensions(method)
-	if extensions == nil {
-		return nil, fmt.Errorf("unsupported secret batch method")
-	}
-	if !filepath.IsAbs(directory) {
-		return nil, fmt.Errorf("batch directory must be absolute")
-	}
-	info, err := os.Lstat(directory)
-	if err != nil {
-		return nil, err
-	}
-	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
-		return nil, fmt.Errorf("batch path must be a regular directory")
-	}
-	directoryFile, err := openPathNoFollow(directory, true)
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		if closeErr := directoryFile.Close(); closeErr != nil && err == nil {
-			err = closeErr
-		}
-	}()
-	openedInfo, err := directoryFile.Stat()
-	if err != nil {
-		return nil, err
-	}
-	if !openedInfo.IsDir() || !os.SameFile(info, openedInfo) {
-		return nil, fmt.Errorf("batch directory changed while opening")
-	}
-	entries, err := directoryFile.ReadDir(canonicalBatchDirectoryLimit + 1)
-	if err != nil && err != io.EOF {
-		return nil, err
-	}
-	if len(entries) > canonicalBatchDirectoryLimit {
-		return nil, fmt.Errorf("batch exceeds %d directory entries", canonicalBatchDirectoryLimit)
-	}
-	byName := make(map[string]os.DirEntry, len(entries))
-	names := make([]string, 0, len(entries))
-	for _, entry := range entries {
-		if entry.IsDir() || !extensions[strings.ToLower(filepath.Ext(entry.Name()))] {
-			continue
-		}
-		names = append(names, entry.Name())
-		byName[entry.Name()] = entry
-	}
-	if len(names) == 0 {
-		return nil, fmt.Errorf("batch directory contains no matching secret files")
-	}
-	if len(names) > canonicalBatchLimit {
-		return nil, fmt.Errorf("batch exceeds %d files", canonicalBatchLimit)
-	}
-	sort.Strings(names)
-	items = make([]wallet.SecretBatchItem, 0, len(names))
-	for _, fileName := range names {
-		item := wallet.SecretBatchItem{
-			Name:       strings.TrimSuffix(fileName, filepath.Ext(fileName)),
-			SourcePath: filepath.Join(directory, fileName),
-		}
-		entryInfo, infoErr := byName[fileName].Info()
-		if infoErr != nil {
-			item.PreflightErr = fmt.Errorf("%w: %v", errCanonicalBatchSourceRead, infoErr)
-			items = append(items, item)
-			continue
-		}
-		if entryInfo.Mode()&os.ModeSymlink != 0 || !entryInfo.Mode().IsRegular() {
-			item.PreflightErr = fmt.Errorf("%w", errCanonicalBatchSourceRead)
-			items = append(items, item)
-			continue
-		}
-		data, readErr := readCanonicalSecretAt(directoryFile, fileName, entryInfo)
-		if readErr != nil {
-			item.PreflightErr = fmt.Errorf("%w: %v", errCanonicalBatchSourceRead, readErr)
-			items = append(items, item)
-			continue
-		}
-		item.SecretData = append([]byte(nil), bytes.TrimSpace(data)...)
-		clear(data)
-		if len(item.SecretData) == 0 {
-			item.PreflightErr = fmt.Errorf("%w", errCanonicalSecretValidation)
-			items = append(items, item)
-			continue
-		}
-		if method == canonicalMnemonicBatchMethod {
-			passphrase, found, passwordErr := readCanonicalPasswordFile(directoryFile, fileName)
-			if passwordErr != nil {
-				item.PreflightErr = fmt.Errorf("%w: %v", errCanonicalBatchSourceRead, passwordErr)
-			} else if found {
-				item.Passphrase = passphrase
-			}
-		}
-		items = append(items, item)
-	}
-	return items, nil
-}
-
-func writeCanonicalSecretFailureLog(directory string, items []wallet.SecretBatchItem, results []wallet.SecretBatchResult) (string, error) {
-	file, err := os.CreateTemp(directory, "secret-import-failures-*.log")
-	if err != nil {
-		return "", err
-	}
-	path := file.Name()
-	fail := func(cause error) (string, error) {
-		_ = file.Close()
-		_ = os.Remove(path)
-		return "", cause
-	}
-	if err := file.Chmod(0o600); err != nil {
-		return fail(err)
-	}
-	encoder := json.NewEncoder(file)
-	summary := struct {
-		Type            string `json:"type"`
-		Total           int    `json:"total"`
-		Imported        int    `json:"imported"`
-		AlreadyImported int    `json:"already_imported"`
-		Failed          int    `json:"failed"`
-	}{Type: "summary", Total: len(items)}
-	for _, result := range results {
-		switch {
-		case result.Err != nil:
-			summary.Failed++
-		case result.AlreadyImported:
-			summary.AlreadyImported++
-		default:
-			summary.Imported++
-		}
-	}
-	if err := encoder.Encode(summary); err != nil {
-		return fail(err)
-	}
-	record := struct {
-		Type   string `json:"type"`
-		Path   string `json:"path,omitempty"`
-		Reason string `json:"reason"`
-	}{Type: "failure"}
-	for _, result := range results {
-		if result.Err == nil {
-			continue
-		}
-		record.Path = ""
-		if result.Index >= 0 && result.Index < len(items) {
-			record.Path = items[result.Index].SourcePath
-		}
-		record.Reason = canonicalBatchFailureReason(result.Err)
-		if err := encoder.Encode(record); err != nil {
-			return fail(err)
-		}
-	}
-	if err := file.Close(); err != nil {
-		_ = os.Remove(path)
-		return "", err
-	}
-	return path, nil
-}
-
-func clearCanonicalSecretBatchItems(items []wallet.SecretBatchItem) {
-	for index := range items {
-		clear(items[index].SecretData)
-		clear(items[index].Passphrase)
+// clearCanonicalBatchPreviews wipes the approved secret snapshots stored for
+// preview-to-commit binding on mnemonic/private-key batch items.
+func clearCanonicalBatchPreviews(previews []canonicalBatchPreview) {
+	for index := range previews {
+		clear(previews[index].secret)
 	}
 }

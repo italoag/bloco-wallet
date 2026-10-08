@@ -45,9 +45,9 @@ const eip712SignUITestFixture = `{
 }`
 
 func TestEIP712SignFlowSelectsChainPreviewsFieldsAndSigns(t *testing.T) {
-	previousLabels := localization.Labels
-	localization.Labels = map[string]string{"wallet_details_title": "Wallet Details", "select_wallet_prompt": "Select wallet"}
-	t.Cleanup(func() { localization.Labels = previousLabels })
+	previousLanguage := localization.GetCurrentLanguage()
+	localization.SetCurrentLanguage("en")
+	t.Cleanup(func() { localization.SetCurrentLanguage(previousLanguage) })
 	key, err := crypto.HexToECDSA("4646464646464646464646464646464646464646464646464646464646464646")
 	if err != nil {
 		t.Fatal(err)
@@ -93,7 +93,7 @@ func TestEIP712SignFlowSelectsChainPreviewsFieldsAndSigns(t *testing.T) {
 	if submit == nil {
 		t.Fatal("EIP-712 sign did not start submission")
 	}
-	_, _ = model.Update(submit())
+	feedCmdResult(model, submit, 0)
 	view = model.viewEIP712Sign()
 	if model.eip712Sign.phase != eip712SignComplete || !strings.Contains(view, "Signature") {
 		t.Fatalf("EIP-712 sign did not complete: %q", view)
@@ -105,9 +105,9 @@ func TestEIP712SignFlowSelectsChainPreviewsFieldsAndSigns(t *testing.T) {
 }
 
 func TestEIP712SignRejectsChainMismatchWithClearError(t *testing.T) {
-	previousLabels := localization.Labels
-	localization.Labels = map[string]string{"wallet_details_title": "Wallet Details", "select_wallet_prompt": "Select wallet"}
-	t.Cleanup(func() { localization.Labels = previousLabels })
+	previousLanguage := localization.GetCurrentLanguage()
+	localization.SetCurrentLanguage("en")
+	t.Cleanup(func() { localization.SetCurrentLanguage(previousLanguage) })
 	cfg := &config.Config{Networks: map[string]config.Network{"testnet": {Name: "Testnet", ChainID: 5, IsActive: true}}}
 	model := &CLIModel{width: 120, height: 30, styles: createStyles(), currentConfig: cfg, transactionAuthorizer: personalSignAuthorizerStub{}, selectedAccount: &wallet.AccountSummary{
 		AccountID: "11111111-1111-4111-8111-111111111111", Address: "0x9d8A62f656a8d1615C1294fd71e9CFb3E4855A4F", State: wallet.AccountStateActive,

@@ -15,7 +15,7 @@ env:
 jobs:
   preflight:
     name: Test Candidate Image
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
     steps:
@@ -23,6 +23,7 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
+          submodules: recursive
       - name: Get version info
         id: version
         run: |
@@ -68,7 +69,7 @@ jobs:
   build:
     name: Build Docker Image
     needs: preflight
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
       packages: write
@@ -79,6 +80,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          submodules: recursive
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
@@ -159,7 +161,7 @@ jobs:
 
   multi-arch-test:
     name: Multi-Architecture Test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs: build
     if: github.event_name != 'pull_request'
     strategy:
@@ -188,7 +190,7 @@ jobs:
 
   cleanup:
     name: Cleanup Old Images
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs: [build, multi-arch-test]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:

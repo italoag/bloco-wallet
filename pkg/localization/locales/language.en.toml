@@ -1,64 +1,241 @@
 # English translations
 
-[edit_network]
-other = "Edit Network"
+[action_export_error_report]
+other = "Export Error Report"
 
-[rpc_endpoint_tip]
-other = "Use reliable RPC endpoints for better performance"
+[action_fix_file_permissions]
+other = "Fix File Permissions"
 
-[import_keystore]
-other = "Keystore File"
+[action_retry_failed_imports]
+other = "Retry Failed Imports"
 
-[error_crypto_service_not_initialized]
-other = "Crypto service not initialized"
+[action_retry_with_manual_passwords]
+other = "Retry with Manual Passwords"
 
-[keystore_invalid_json]
-other = "The file contains an invalid JSON"
+[action_return_to_menu]
+other = "Return to Main Menu"
 
-[failed_to_get_network_details]
-other = "Failed to get network details"
+[action_select_different_files]
+other = "Select Different Files"
 
-[rpc_endpoint_required]
-other = "RPC endpoint is required"
+[action_view_error_details]
+other = "View Error Details"
+
+[active]
+other = "Active"
+
+[add_network]
+other = "Add Network"
 
 [add_network_desc]
 other = "Add a new blockchain network"
 
-[symbol_placeholder]
-other = "Symbol will be filled automatically"
+[add_network_footer]
+other = "↑/↓: Navigate Suggestions • Tab: Next Field • ENTER: Select/Submit • ESC: Back"
 
-[network_name]
-other = "Network Name"
+[adding_network]
+other = "Adding network"
 
-[wallet_list_status_bar]
-other = "View: {{.View}} | Press 'esc' to return | 'q' to quit"
+[back]
+other = "Back"
 
-[wallet_details_title]
-other = "Wallet Details"
+[back_to_menu]
+other = "Main Menu"
 
-[keystore_title]
-other = "Import Wallet via Keystore File"
+[back_to_menu_desc]
+other = "Return to the main menu"
+
+[batch_import_failed]
+other = "Batch import operation failed"
+
+[batch_import_recovery_failed]
+other = "Review individual file errors and retry"
+
+[cancel]
+other = "Cancel"
+
+[chain_id]
+other = "Chain ID"
+
+[chain_id_mismatch]
+other = "Chain ID mismatch: expected {{.Expected}}, got {{.Actual}}"
+
+[chain_id_placeholder]
+other = "Chain ID will be filled automatically"
+
+[chain_id_required]
+other = "Chain ID is required"
+
+[chain_id_tip]
+other = "Chain ID must be unique (check chainlist.org for reference)"
+
+[chainlist_unavailable_warning]
+other = "ChainList is unavailable. The network will be added as a custom network."
+
+[cleanup_failed]
+other = "Cleanup operation failed"
+
+[configuration]
+other = "Configuration"
+
+[configuration_desc]
+other = "Configure application settings"
+
+[confirm_mnemonic]
+other = "Re-enter the full mnemonic phrase to confirm your backup:"
+
+[confirm_title]
+other = "Confirm"
+
+[create_new_wallet]
+other = "Create New"
+
+[create_new_wallet_desc]
+other = "Generate a new Ethereum wallet"
+
+[created_at]
+other = "Created"
+
+[current]
+other = "Current"
+
+[delete_network]
+other = "Delete Network"
+
+[delete_wallet]
+other = "Delete Wallet"
+
+[delete_wallet_confirmation]
+other = "Are you sure you want to delete this wallet?"
+
+[directory_scan_failed]
+other = "Directory scan failed"
+
+[directory_scan_recovery_failed]
+other = "Check directory permissions and file formats"
+
+[duplicate_import_detail]
+other = "{{.Message}} [{{.MethodLabel}}: {{.Method}}]{{if .Address}} ({{.Address}}){{end}}{{if .Guidance}} - {{.Guidance}}{{end}}"
+
+[duplicate_mnemonic]
+other = "A wallet with this mnemonic phrase already exists"
+
+[duplicate_private_key]
+other = "A wallet with this private key already exists"
+
+[edit_network]
+other = "Edit Network"
+
+[enter_keystore_path]
+other = "Enter the path to the KeyStoreV3 file:"
 
 [enter_mnemonic]
 other = "Enter your 12-word mnemonic phrase:"
 
-[invalid_chain_id]
-other = "Invalid chain ID. Must be a number"
+[enter_password]
+other = "Enter a password to encrypt the wallet:"
 
-[view_wallet]
-other = "View Details"
+[enter_private_key]
+other = "Enter the private key (with or without 0x prefix):"
 
-[import_private_key_desc]
-other = "Import using a private key"
+[enter_wallet_password]
+other = "Enter the wallet password:"
 
-[import_keystore_desc]
-other = "Import using a KeyStoreV3 file"
+[error]
+other = "Error: {{.Error}}"
 
-[import_watch_only]
-other = "Watch-only Address"
+[error_category_filesystem]
+other = "File System"
 
-[import_watch_only_desc]
-other = "Track an address without storing"
+[error_category_network]
+other = "Network"
+
+[error_category_password]
+other = "Password"
+
+[error_category_system]
+other = "System"
+
+[error_category_unknown]
+other = "Unknown"
+
+[error_category_user_action]
+other = "User Action"
+
+[error_category_validation]
+other = "Validation"
+
+[error_crypto_service_not_initialized]
+other = "Crypto service not initialized"
+
+[error_decode_mnemonic]
+other = "Failed to decode encrypted mnemonic"
+
+[error_empty_encrypted_mnemonic]
+other = "Encrypted mnemonic cannot be empty"
+
+[error_empty_password]
+other = "Password cannot be empty"
+
+[error_generate_salt]
+other = "Failed to generate salt"
+
+[error_invalid_mnemonic_format]
+other = "Invalid encrypted mnemonic format: too short"
+
+[error_invalid_password]
+other = "Invalid password: hash verification failed"
+
+[error_title]
+other = "Error"
+
+[error_user_friendly_file_access]
+other = "Unable to access the selected file"
+
+[error_user_friendly_generic]
+other = "An error occurred during the operation"
+
+[error_user_friendly_invalid_format]
+other = "The file format is not supported"
+
+[error_user_friendly_operation_failed]
+other = "The operation could not be completed"
+
+[error_user_friendly_password_required]
+other = "A password is required for this operation"
+
+[error_user_friendly_permission_denied]
+other = "Permission denied"
+
+[error_user_friendly_timeout]
+other = "Operation timed out"
+
+[error_user_friendly_user_cancelled]
+other = "Operation cancelled by user"
+
+[ethereum_address]
+other = "Ethereum Address:"
+
+[exit]
+other = "Exit"
+
+[exit_desc]
+other = "Exit the application"
+
+[failed_to_get_chain_id_from_rpc]
+other = "Failed to get chain ID from RPC"
+
+[failed_to_get_network_details]
+other = "Failed to get network details"
+
+[generic_error_recovery]
+other = "Please check the file and try again"
+
+[guidance_duplicate_mnemonic]
+other = "You already imported this mnemonic. If you meant a different wallet, check the phrase and try again."
+
+[guidance_duplicate_private_key]
+other = "This private key is already imported. Open the existing wallet entry instead of importing again."
 
 [import_batch_keystore]
 other = "Batch Keystore Import"
@@ -66,175 +243,86 @@ other = "Batch Keystore Import"
 [import_batch_keystore_desc]
 other = "Import several KeystoreV3 files at once"
 
+[import_batch_mnemonic]
+other = "Batch Mnemonic Import"
+
+[import_batch_mnemonic_desc]
+other = "Import seed phrases from a directory"
+
+[import_batch_private_key]
+other = "Batch Private Key Import"
+
+[import_batch_private_key_desc]
+other = "Import private keys from a directory"
+
 [import_encrypted_backup]
 other = "Encrypted Backup"
 
 [import_encrypted_backup_desc]
 other = "Restore a Bloco encrypted backup"
 
-[invalid_keystore]
-other = "Invalid keystore file. Please check the path and try again."
+[import_interrupted]
+other = "Import process was interrupted"
 
-[invalid_mnemonic]
-other = "Invalid mnemonic phrase. It must be 12 words separated by spaces."
+[import_job_validation_failed]
+other = "Import job validation failed"
 
-[error]
-other = "Error: {{.Error}}"
+[import_keystore]
+other = "Keystore File"
 
-[list_wallets]
-other = "My Wallets"
+[import_keystore_desc]
+other = "Import using a KeyStoreV3 file"
 
-[active]
-other = "Active"
-
-[rpc_endpoint_placeholder]
-other = "RPC URL will be filled automatically"
-
-[back_to_menu_desc]
-other = "Return to the main menu"
-
-[status]
-other = "Status"
-
-[configuration]
-other = "Configuration"
+[import_method_title]
+other = "Select Import Method"
 
 [import_mnemonic]
 other = "Mnemonic Phrase"
 
-[cancel]
-other = "Cancel"
+[import_mnemonic_desc]
+other = "Import using a BIP39 mnemonic phrase"
 
-[list_wallets_desc]
-other = "View and manage your wallets"
+[import_private_key]
+other = "Private Key"
 
-[imported_keystore]
-other = "Keystore (Private Key)"
+[import_private_key_desc]
+other = "Import using a private key"
 
-[main_menu_title]
-other = "Main Menu"
+[import_status_cleaning_up]
+other = "Cleaning up resources..."
 
-[delete_network]
-other = "Delete Network"
+[import_status_completing]
+other = "Completing import operation..."
 
-[network_details]
-other = "Network Details"
+[import_status_processing_batch]
+other = "Processing batch import..."
 
-[welcome_message]
-other = """Welcome to the BLOCO Wallet!
+[import_status_scanning_directory]
+other = "Scanning directory for keystore files..."
 
-Select an option from the menu."""
+[import_status_validating_files]
+other = "Validating selected files..."
 
-[status_bar_instructions]
-other = "View: {{.View}} | Press 'esc' to return | 'q' to quit"
+[import_status_waiting_password]
+other = "Waiting for password input..."
 
-[keystore_missing_fields]
-other = "Keystore file is missing required fields"
+[import_summary_all_failed]
+other = "All imports failed"
 
-[error_invalid_password]
-other = "Invalid password: hash verification failed"
+[import_summary_all_successful]
+other = "All imports completed successfully"
 
-[import_wallet_title]
-other = "Import an existing Wallet"
+[import_summary_no_recoverable_errors]
+other = "No errors can be automatically recovered"
 
-[password_no_lowercase]
-other = "Password must contain at least one lowercase letter"
+[import_summary_partial_success]
+other = "Some imports completed successfully"
 
-[network_list_instructions]
-other = "Use arrow keys to navigate, 'a' to add, 'e' to edit, 'd' to delete, 'esc' to go back."
+[import_summary_recoverable_errors]
+other = "Some errors can be fixed and retried"
 
-[symbol_required]
-other = "Symbol is required"
-
-[yes]
-other = "Yes"
-
-[wallet_type]
-other = "Type"
-
-[network_name_placeholder]
-other = "Network name will be filled automatically"
-
-[press_esc]
-other = "Press ESC to return to the wallet list."
-
-[networks_desc]
-other = "Configure blockchain networks"
-
-[error_empty_encrypted_mnemonic]
-other = "Encrypted mnemonic cannot be empty"
-
-[add_network]
-other = "Add Network"
-
-[keystore_invalid_structure]
-other = "The file isn't a valid KeyStoreV3 file"
-
-[network_list_desc]
-other = "Manage blockchain networks"
-
-[networks]
-other = "Networks"
-
-[enter_keystore_path]
-other = "Enter the path to the KeyStoreV3 file:"
-
-[delete_wallet_confirmation]
-other = "Are you sure you want to delete this wallet?"
-
-[current]
-other = "Current"
-
-[quit_app]
-other = "Quit Application"
-
-[error_generate_salt]
-other = "Failed to generate salt"
-
-[public_key]
-other = "Public Key:"
-
-[no_network_selected]
-other = "No network selected"
-
-[network_validation_failed]
-other = "Network validation failed"
-
-[language_desc]
-other = "Change application language"
-
-[wallets]
-other = "Wallets"
-
-[quit_app_desc]
-other = "Exit the program"
-
-[password_no_digit_or_special]
-other = "Password must contain at least one digit or special character"
-
-[chain_id_placeholder]
-other = "Chain ID will be filled automatically"
-
-[back]
-other = "Back"
-
-[enter_wallet_password]
-other = "Enter the wallet password:"
-
-[wallet_deleted]
-other = "Wallet deleted successfully."
-
-[exit]
-other = "Exit"
-
-[wallet_imported]
-other = "Wallet imported successfully!"
-
-[inactive]
-other = "Inactive"
-
-[select_wallet_prompt]
-other = "Select a wallet and enter the password to view the details."
+[import_summary_user_cancelled]
+other = "Import cancelled by user"
 
 [import_wallet]
 other = "Import Wallet"
@@ -242,77 +330,44 @@ other = "Import Wallet"
 [import_wallet_desc]
 other = "Import an existing wallet"
 
-[created_at]
-other = "Created"
+[import_wallet_title]
+other = "Import an existing Wallet"
 
-[network_list]
-other = "Blockchain Networks"
+[import_watch_only]
+other = "Watch-only Address"
 
-[network_name_required]
-other = "Network name is required"
+[import_watch_only_desc]
+other = "Track an address without storing private keys"
 
-[wallet_list_instructions]
-other = "Use the arrow keys to navigate, Enter to view details, and 'esc' to return to the menu."
+[imported_keystore]
+other = "Keystore (Private Key)"
 
-[ethereum_address]
-other = "Ethereum Address:"
+[imported_mnemonic]
+other = "Mnemonic"
 
-[language]
-other = "Language"
-
-[password_too_short]
-other = "Password must have at least 8 characters"
-
-[chain_id_required]
-other = "Chain ID is required"
-
-[wallet_action_title]
-other = "Wallet Actions"
-
-[confirm_title]
-other = "Confirm"
-
-[keystore_invalid_address]
-other = "Invalid Ethereum address format in keystore"
-
-[press_enter]
-other = "Press Enter to continue."
-
-[import_method_title]
-other = "Select Import Method"
-
-[import_private_key]
+[imported_private_key]
 other = "Private Key"
 
-[delete_wallet]
-other = "Delete Wallet"
+[inactive]
+other = "Inactive"
 
-[error_empty_password]
-other = "Password cannot be empty"
+[invalid_chain_id]
+other = "Invalid chain ID. Must be a number"
 
-[error_decode_mnemonic]
-other = "Failed to decode encrypted mnemonic"
+[invalid_keystore]
+other = "Invalid keystore file. Please check the path and try again."
 
-[password_no_uppercase]
-other = "Password must contain at least one uppercase letter"
+[invalid_keystore_password]
+other = "Invalid password for the keystore file. Please try again."
 
-[search_networks]
-other = "Search Networks"
+[invalid_mnemonic]
+other = "Invalid mnemonic phrase. It must be 12 words separated by spaces."
 
-[search_networks_tip]
-other = "Search for networks by name and select from suggestions"
+[invalid_rpc_endpoint]
+other = "Invalid RPC endpoint. Must start with http:// or https://"
 
-[adding_network]
-other = "Adding network"
-
-[create_new_wallet]
-other = "Create New"
-
-[private_key_title]
-other = "Import Wallet via Private Key"
-
-[enter_private_key]
-other = "Enter the private key (with or without 0x prefix):"
+[keystore_access_error]
+other = "✗ Error accessing file"
 
 [keystore_address_mismatch]
 other = "Address in keystore doesn't match the derived private key"
@@ -323,121 +378,2861 @@ other = "Keystore file is corrupted or damaged"
 [keystore_file_not_found]
 other = "Keystore file not found at the specified path"
 
-[suggestions]
-other = "Suggestions"
+[keystore_file_valid]
+other = "✓ Valid keystore file detected"
 
-[chainlist_unavailable_warning]
-other = "ChainList is unavailable. The network will be added as a custom network."
+[keystore_import_stage_decrypting]
+other = "Decrypting private key..."
 
-[enter_password]
-other = "Enter a password to encrypt the wallet:"
+[keystore_import_stage_parsing]
+other = "Parsing keystore structure..."
 
-[invalid_keystore_password]
-other = "Invalid password for the keystore file. Please try again."
+[keystore_import_stage_saving]
+other = "Saving wallet..."
 
-[no]
-other = "No"
-
-[exit_desc]
-other = "Exit the application"
-
-[invalid_rpc_endpoint]
-other = "Invalid RPC endpoint. Must start with http:// or https://"
-
-[symbol]
-other = "Symbol"
-
-[configuration_desc]
-other = "Configure application settings"
-
-[keystore_invalid_version]
-other = "Invalid keystore version, expected version 3"
-
-[password_validation_failed]
-other = "Password validation failed"
-
-[rpc_endpoint]
-other = "RPC Endpoint"
-
-[chain_id]
-other = "Chain ID"
-
-[mnemonic_phrase_label]
-other = "Mnemonic Phrase:"
-
-[wallet_created]
-other = "Wallet created successfully!"
-
-[imported_mnemonic]
-other = "Mnemonic"
-
-[search_networks_placeholder]
-other = "Type to search networks (e.g., Ethereum, Polygon)"
-
-[chain_id_tip]
-other = "Chain ID must be unique (check chainlist.org for reference)"
-
-[mnemonic_phrase]
-other = "Mnemonic Phrase (Keep it Safe!):"
-
-[private_key]
-other = "Private Key:"
-
-[create_new_wallet_desc]
-other = "Generate a new Ethereum wallet"
-
-[import_mnemonic_desc]
-other = "Import using 12-word mnemonic phrase"
-
-[loading]
-other = "Loading..."
-
-[imported_private_key]
-other = "Private Key"
-
-[tips]
-other = "Tips"
-
-[back_to_menu]
-other = "Main Menu"
-
-[add_network_footer]
-other = "↑/↓: Navigate Suggestions • Tab: Next Field • Enter: Select/Submit • Esc: Back"
-
-[searching_networks]
-other = "Searching networks"
+[keystore_import_stage_validating]
+other = "Validating keystore file..."
 
 [keystore_incorrect_password]
 other = "Incorrect password for the keystore file"
 
-[error_invalid_mnemonic_format]
-other = "Invalid encrypted mnemonic format: too short"
+[keystore_invalid_address]
+other = "Invalid Ethereum address format in keystore"
 
+[keystore_invalid_json]
+other = "The file contains an invalid JSON"
 
+[keystore_invalid_structure]
+other = "The file isn't a valid KeyStoreV3 file"
 
-[error_title]
-other = "Error"
+[keystore_invalid_version]
+other = "Invalid keystore version, expected version 3"
+
+[keystore_is_directory]
+other = "✗ Path points to a directory, not a file"
+
+[keystore_missing_fields]
+other = "Keystore file is missing required fields"
+
+[keystore_not_json]
+other = "✗ File does not contain valid JSON"
+
+[keystore_recovery_file_not_found]
+other = "Try checking the file path and ensure the file exists"
+
+[keystore_recovery_general]
+other = "Please check the file and try again"
+
+[keystore_recovery_incorrect_password]
+other = "Please try again with the correct password"
+
+[keystore_recovery_invalid_json]
+other = "The file may be corrupted or not contain valid JSON. Try with a different keystore file"
+
+[keystore_recovery_invalid_structure]
+other = "Make sure this is a valid Ethereum keystore v3 file"
+
+[keystore_title]
+other = "Import Wallet via Keystore File"
+
+[language]
+other = "Language"
+
+[language_desc]
+other = "Change application language"
+
+[language_name]
+other = "English"
+
+[list_wallets]
+other = "My Wallets"
+
+[list_wallets_desc]
+other = "View and manage your wallets"
+
+[loading]
+other = "Loading..."
+
+[main_menu_title]
+other = "Main Menu"
+
+[max_password_attempts_exceeded]
+other = "Maximum password attempts exceeded"
+
+[message_with_field]
+other = "{{.Message}} ({{.Field}})"
+
+[message_with_file]
+other = "{{.Message}} ({{.File}})"
+
+[method_keystore]
+other = "Keystore File"
+
+[method_label]
+other = "Method"
+
+[method_mnemonic]
+other = "Mnemonic"
+
+[method_private_key]
+other = "Private Key"
+
+[mnemonic_mismatch]
+other = "The confirmation does not match the generated mnemonic phrase."
+
+[mnemonic_phrase]
+other = "Mnemonic Phrase (Keep it Safe!):"
+
+[mnemonic_phrase_label]
+other = "Mnemonic Phrase:"
+
+[network_details]
+other = "Network Details"
+
+[network_list]
+other = "Blockchain Networks"
+
+[network_list_desc]
+other = "Manage blockchain networks"
+
+[network_list_instructions]
+other = "Use arrow keys to navigate, 'a' to add, 'e' to edit, 'd' to delete, 'ESC' to go back."
+
+[network_name]
+other = "Network Name"
+
+[network_name_placeholder]
+other = "Network name will be filled automatically"
+
+[network_name_required]
+other = "Network name is required"
 
 [network_search_failed]
 other = "Network search failed"
 
-[rpc_validation_failed]
-other = "RPC validation failed"
-
-[failed_to_get_chain_id_from_rpc]
-other = "Failed to get chain ID from RPC"
-
-[chain_id_mismatch]
-other = "Chain ID mismatch"
-
 [network_search_failed_guidance]
 other = "Please check your internet connection and try again."
-
-[rpc_validation_failed_guidance]
-other = "Verify the RPC URL is correct and reachable."
 
 [network_selection_failed]
 other = "Network selection failed"
 
+[network_validation_failed]
+other = "Network validation failed"
+
+[networks]
+other = "Networks"
+
+[networks_desc]
+other = "Configure blockchain networks"
+
+[no]
+other = "No"
+
+[no_mnemonic_available]
+other = "Mnemonic not available (imported via private key)"
+
+[no_mnemonic_keystore]
+other = "Mnemonic not available - imported from keystore file"
+
+[no_network_selected]
+other = "No network selected"
+
 [operation_failed_generic]
 other = "Operation failed"
+
+[partial_import_failure]
+other = "Some imports failed"
+
+[password_attempts_recovery_exceeded]
+other = "Reset and try with the correct password"
+
+[password_file_corrupted]
+other = "Password file is corrupted"
+
+[password_file_empty]
+other = "Password file is empty"
+
+[password_file_invalid]
+other = "Invalid password file format"
+
+[password_file_not_found]
+other = "Password file not found"
+
+[password_file_oversized]
+other = "Password file is too large"
+
+[password_file_recovery_corrupted]
+other = "Ensure the password file is saved with UTF-8 encoding"
+
+[password_file_recovery_empty]
+other = "Add the password to the .pwd file or enter it manually"
+
+[password_file_recovery_general]
+other = "Check the password file and try again"
+
+[password_file_recovery_invalid]
+other = "Ensure the password file contains only the password text"
+
+[password_file_recovery_not_found]
+other = "Try entering the password manually or create a .pwd file"
+
+[password_file_recovery_oversized]
+other = "Password files should contain only the password (max 256 characters)"
+
+[password_file_recovery_unreadable]
+other = "Check file permissions and try again"
+
+[password_file_unknown_error]
+other = "Unknown password file error"
+
+[password_file_unreadable]
+other = "Cannot read password file"
+
+[password_input_cancelled]
+other = "Password input was cancelled"
+
+[password_input_recovery_timeout]
+other = "Try again with a shorter response time"
+
+[password_input_skipped]
+other = "Password input was skipped"
+
+[password_input_timeout]
+other = "Password input timed out"
+
+[password_no_digit_or_special]
+other = "Password must contain at least one digit or special character"
+
+[password_no_lowercase]
+other = "Password must contain at least one lowercase letter"
+
+[password_no_uppercase]
+other = "Password must contain at least one uppercase letter"
+
+[password_too_short]
+other = "Password must have at least 8 characters"
+
+[password_validation_failed]
+other = "Password validation failed"
+
+[press_enter]
+other = "Press Enter to continue."
+
+[press_esc]
+other = "Press ESC to return to the wallet list."
+
+[private_key]
+other = "Private Key:"
+
+[private_key_title]
+other = "Import Wallet via Private Key"
+
+[public_key]
+other = "Public Key:"
+
+[quit_app]
+other = "Quit Application"
+
+[quit_app_desc]
+other = "Exit the program"
+
+[retry_description_directory_scan_failed]
+other = "Choose a different directory or fix permissions"
+
+[retry_description_file_not_found]
+other = "Select valid keystore files that exist"
+
+[retry_description_generic]
+other = "Review and fix the identified issues"
+
+[retry_description_incorrect_password]
+other = "Use the correct password for each keystore"
+
+[retry_description_password_file_empty]
+other = "Add content to empty password files"
+
+[retry_description_password_file_not_found]
+other = "Enter passwords manually for files without .pwd files"
+
+[retry_description_password_file_unreadable]
+other = "Fix file permissions or recreate password files"
+
+[retry_description_password_input_timeout]
+other = "Respond more quickly to password prompts"
+
+[rpc_endpoint]
+other = "RPC Endpoint"
+
+[rpc_endpoint_placeholder]
+other = "RPC URL will be filled automatically"
+
+[rpc_endpoint_required]
+other = "RPC endpoint is required"
+
+[rpc_endpoint_tip]
+other = "Use reliable RPC endpoints for better performance"
+
+[rpc_validation_failed]
+other = "RPC validation failed"
+
+[rpc_validation_failed_guidance]
+other = "Verify the RPC URL is correct and reachable."
+
+[search_networks]
+other = "Search Networks"
+
+[search_networks_placeholder]
+other = "Type to search networks (e.g., Ethereum, Polygon)"
+
+[search_networks_tip]
+other = "Search for networks by name and select from suggestions"
+
+[searching_networks]
+other = "Searching networks"
+
+[select_wallet_prompt]
+other = "Select a wallet and enter the password to view the details."
+
+[sensitive_data_hidden]
+other = "Hidden - use the explicit export flow"
+
+[status]
+other = "Status"
+
+[status_bar_instructions]
+other = "{{.View}} | Press 'ESC' to return | Ctrl+Q to quit"
+
+[suggestions]
+other = "Suggestions"
+
+[symbol]
+other = "Symbol"
+
+[symbol_placeholder]
+other = "Symbol will be filled automatically"
+
+[symbol_required]
+other = "Symbol is required"
+
+[tips]
+other = "Tips"
+
+[unknown_error]
+other = "Unknown error"
+
+[view_wallet]
+other = "View Details"
+
+[wallet_action_title]
+other = "Wallet Actions"
+
+[wallet_count]
+one = "{{.Count}} wallet"
+other = "{{.Count}} wallets"
+
+[wallet_created]
+other = "Wallet created successfully!"
+
+[wallet_deleted]
+other = "Wallet deleted successfully."
+
+[wallet_details_title]
+other = "Wallet Details"
+
+[wallet_imported]
+other = "Wallet imported successfully!"
+
+[wallet_list_instructions]
+other = "Use the arrow keys to navigate, Enter to view details, and 'ESC' to return to the menu."
+
+[wallet_list_status_bar]
+other = "{{.View}} | Press 'ESC' to return | Ctrl+Q to quit"
+
+[wallet_type]
+other = "Type"
+
+[wallets]
+other = "Wallets"
+
+[welcome_message]
+other = "Welcome to the BLOCO Wallet!\n\nSelect an option from the menu."
+
+[yes]
+other = "Yes"
+
+[list_wallets_title]
+other = "My Wallets"
+
+[no_wallets_message]
+other = "No wallets found. Create a new wallet to get started."
+
+[name]
+other = "Name"
+
+[safe_menu_title]
+other = "Safe multisig"
+
+[safe_menu_description]
+other = "Review and approve Safe proposals"
+
+[language_code_label]
+other = "Language: {{.Code}}"
+
+[popup_password_required]
+other = "Password Required"
+
+[popup_keystore_password_placeholder]
+other = "Enter keystore password..."
+
+[popup_file_label]
+other = "File: {{.File}}"
+
+[popup_attempts_remaining]
+other = "Attempts remaining: {{.Count}}"
+
+[popup_max_attempts]
+other = "Maximum attempts reached"
+
+[popup_error_label]
+other = "Error: {{.Error}}"
+
+[popup_instructions]
+other = "ENTER: Confirm • ESC: Cancel • Ctrl+S: Skip file"
+
+[detail_name]
+other = "Name"
+
+[detail_address]
+other = "Address"
+
+[detail_account_id]
+other = "Account ID"
+
+[detail_signer]
+other = "Signer"
+
+[detail_state]
+other = "State"
+
+[detail_derivation_path]
+other = "Derivation path"
+
+[detail_bip39_language]
+other = "BIP39 language"
+
+[detail_passphrase_configured]
+other = "BIP39 passphrase configured"
+
+[detail_related_account]
+other = "Related account"
+
+[detail_custody_watch_only]
+other = "Custody: Watch-only"
+
+[detail_watch_only_note]
+other = "No signing secrets are stored for this account."
+
+[wallet_details_identity]
+other = "Identity"
+
+[wallet_details_security]
+other = "Security and derivation"
+
+[wallet_details_balances]
+other = "Balances"
+
+[wallet_details_loading_balances]
+other = "Loading after explicit approval..."
+
+[wallet_details_unavailable]
+other = "unavailable"
+
+[wallet_details_provider_warning]
+other = "Provider warning"
+
+[wallet_details_privacy_notice]
+other = "Privacy: fetching balances sends this public address to each active provider."
+
+[transaction_submitted_notice]
+other = "Transaction submitted or outcome pending: {{.Hash}}"
+
+[help_scroll_up]
+other = "scroll up"
+
+[help_scroll_down]
+other = "scroll down"
+
+[help_page_up]
+other = "page up"
+
+[help_page_down]
+other = "page down"
+
+[help_lock]
+other = "Lock"
+
+[help_rotate]
+other = "Rotate password"
+
+[help_export_keystore]
+other = "Export Keystore"
+
+[help_encrypted_backup]
+other = "Encrypted backup"
+
+[help_recovery]
+other = "Recovery"
+
+[help_fetch_balances]
+other = "Fetch balances"
+
+[help_history]
+other = "Local history"
+
+[help_sign_message]
+other = "Sign message"
+
+[help_sign_typed_data]
+other = "Sign typed data"
+
+[help_send_native]
+other = "Send native"
+
+[help_send_erc20]
+other = "Send ERC-20"
+
+[help_send_nft]
+other = "Send NFT"
+
+[help_send_1155]
+other = "Send 1155"
+
+[help_send_1155_batch]
+other = "Send 1155 batch"
+
+[help_contract_call]
+other = "Contract call"
+
+[help_wc_sessions]
+other = "WC sessions"
+
+[help_security_keys]
+other = "Security keys"
+
+[help_approve_erc20]
+other = "Approve ERC-20"
+
+[help_resume_backup]
+other = "Resume backup"
+
+[help_more]
+other = "More help"
+
+[help_back]
+other = "Back"
+
+[canonical_import_title]
+other = "Canonical wallet import"
+
+[canonical_state_unavailable]
+other = "Import state is unavailable"
+
+[canonical_cancelling]
+other = "Cancelling safely. Waiting for in-flight cryptographic work to stop."
+
+[canonical_processing]
+other = "Processing bounded cryptographic work."
+
+[canonical_stage_processing]
+other = "Processing"
+
+[canonical_stage_validating]
+other = "Validating"
+
+[canonical_stage_importing]
+other = "Importing"
+
+[canonical_batch_progress]
+other = "Found {{.Found}} | Processed {{.Done}}/{{.Total}} | Imported {{.Imported}} | Already imported {{.Already}} | Failed {{.Failed}}"
+
+[canonical_batch_preview_title]
+other = "Authenticated batch preview:"
+
+[canonical_preview_error]
+other = "ERROR: {{.Err}}"
+
+[canonical_preview_summary]
+other = "Source: {{.Source}}\nAddress: {{.Address}}\nSigner: {{.Signer}}\nSecret material: {{.Secret}}\nPath: {{.Path}}\nLanguage: {{.Language}}\nPassphrase present: {{.Passphrase}}"
+
+[canonical_step]
+other = "Step {{.Step}}/{{.Total}}"
+
+[field_required]
+other = "{{.Field}} is required"
+
+[canonical_invalid_keystore_path]
+other = "Path must be an absolute Keystore V3 .json file"
+
+[canonical_sidecar_read_error]
+other = "Keystore password sidecar could not be read"
+
+[canonical_secret_none]
+other = "none"
+
+[canonical_err_cancelled]
+other = "Import cancelled"
+
+[canonical_err_source_read]
+other = "Source file or password sidecar could not be read"
+
+[canonical_err_keystore_validation]
+other = "Keystore validation or decryption failed"
+
+[canonical_err_mnemonic_validation]
+other = "Mnemonic validation failed"
+
+[canonical_err_private_key_validation]
+other = "Private key validation failed"
+
+[canonical_err_import_failed]
+other = "Wallet import failed"
+
+[canonical_result_error]
+other = "{{.Name}} | ERROR: {{.Err}}"
+
+[canonical_result_already]
+other = "{{.Name}} | already imported"
+
+[canonical_result_imported]
+other = "{{.Name}} | {{.Address}} | imported"
+
+[canonical_result_summary]
+other = "Summary: {{.Found}} found, {{.Processed}} processed, {{.Imported}} imported, {{.Already}} already imported, {{.Failed}} failed"
+
+[canonical_warn_log_dir]
+other = "WARNING: failure log could not be written (log directory unavailable)"
+
+[canonical_warn_log_write]
+other = "WARNING: failure log could not be written"
+
+[canonical_failure_log]
+other = "Failure log: {{.Path}}"
+
+[canonical_label_name]
+other = "Account name"
+
+[canonical_label_mnemonic]
+other = "BIP39 mnemonic (12/15/18/21/24 words)"
+
+[canonical_label_language]
+other = "Language (blank = auto-detect)"
+
+[canonical_label_passphrase]
+other = "Optional BIP39 passphrase"
+
+[canonical_label_path]
+other = "EVM derivation path (blank = m/44'/60'/0'/0/0)"
+
+[canonical_label_private_key]
+other = "Private key"
+
+[canonical_label_keystore_path]
+other = "Absolute Keystore V3 path"
+
+[canonical_label_source_password_keystore]
+other = "Keystore source password (may be empty)"
+
+[canonical_label_directory_keystore]
+other = "Directory containing Keystore V3 files"
+
+[canonical_label_directory_mnemonic]
+other = "Directory containing .mnemonic/.seedphrase/.phrase files"
+
+[canonical_label_directory_private_key]
+other = "Directory containing private key files"
+
+[canonical_label_encrypted_path]
+other = "Absolute Bloco encrypted export path"
+
+[canonical_label_source_password_encrypted]
+other = "Encrypted export password"
+
+[canonical_label_address]
+other = "EVM address"
+
+[canonical_label_storage_password]
+other = "New vault storage password"
+
+[canonical_label_confirm_password]
+other = "Confirm vault storage password"
+
+[suggestion_item_desc]
+other = "Chain ID: {{.ChainID}}, Symbol: {{.Symbol}}"
+
+[decimals_placeholder]
+other = "Native currency decimals (0-36)"
+
+[native_decimals_label]
+other = "Native currency decimals"
+
+[rpc_endpoint_placeholder_full]
+other = "RPC URL will be filled automatically or env:VARIABLE_NAME"
+
+[rpc_unsafe_chars]
+other = "RPC endpoint contains unsafe display characters"
+
+[rpc_credential_unavailable]
+other = "RPC credential reference is unavailable"
+
+[decimals_range_error]
+other = "Native currency decimals must be between 0 and 36"
+
+[network_col_type_identity]
+other = "Type / Identity / Privacy"
+
+[network_type_custom]
+other = "Custom"
+
+[network_identity_unchecked]
+other = "not checked now"
+
+[network_type_registry_claim]
+other = "Registry claim"
+
+[network_identity_observed]
+other = "previously observed"
+
+[network_health_label]
+other = "health"
+
+[no_networks_found]
+other = "No networks found. Add a network to get started."
+
+[network_op_failed]
+other = "Network operation failed"
+
+[network_op_hint]
+other = "Press r to reload, v to revalidate the selected provider, or e to correct its settings."
+
+[network_selected]
+other = "Selected network"
+
+[network_registry_not_listed]
+other = "Not listed or not verified"
+
+[network_registry_claim]
+other = "Stored ChainList claim"
+
+[network_registry_listed]
+other = "Listed as {{.Name}}"
+
+[network_identity_not_verified]
+other = "Not verified in this session"
+
+[network_identity_verified]
+other = "Verified against the configured chain ID now"
+
+[network_identity_prev]
+other = "Previously verified; press v to verify again"
+
+[network_detail_source]
+other = "Source"
+
+[network_detail_registry]
+other = "Registry"
+
+[network_detail_chain_identity]
+other = "Chain identity"
+
+[network_detail_health]
+other = "Health"
+
+[network_detail_privacy]
+other = "Privacy tracking"
+
+[network_detail_confidence]
+other = "Provider confidence"
+
+[network_revalidate_hint]
+other = "Press v to revalidate or e to correct the provider settings."
+
+[help_up]
+other = "up"
+
+[help_down]
+other = "down"
+
+[help_add_network]
+other = "Add Network"
+
+[help_edit_network]
+other = "Edit Network"
+
+[help_delete_network]
+other = "Delete Network"
+
+[help_refresh]
+other = "Refresh"
+
+[help_revalidate]
+other = "Revalidate"
+
+[net_status_refreshed]
+other = "Network information refreshed"
+
+[net_health_verified]
+other = "reachable and chain ID verified now"
+
+[net_status_revalidated]
+other = "Network provider and chain identity revalidated"
+
+[net_err_load_config]
+other = "Failed to load configuration: {{.Err}}"
+
+[net_err_load_networks]
+other = "Failed to load networks: {{.Err}}"
+
+[net_err_not_found]
+other = "Network not found"
+
+[net_err_remove]
+other = "Failed to remove network: {{.Err}}"
+
+[net_err_reload_config]
+other = "Failed to reload configuration: {{.Err}}"
+
+[net_busy_reload]
+other = "Reloading stored network information..."
+
+[net_busy_revalidate]
+other = "Revalidating provider, chain identity, registry metadata, and privacy information..."
+
+[net_err_no_config_save]
+other = "No configuration to save"
+
+[net_err_save_config]
+other = "Failed to save configuration: {{.Err}}"
+
+[net_err_init_config_mgr]
+other = "Failed to initialize configuration manager: {{.Err}}"
+
+[net_feedback_added]
+other = "Network added successfully"
+
+[net_feedback_updated]
+other = "Network updated successfully"
+
+[net_feedback_added_registry]
+other = "Network added as a registry-listed network"
+
+[net_feedback_added_custom]
+other = "Network added as a custom network"
+
+[net_err_name_empty]
+other = "Network name cannot be empty"
+
+[net_err_rpc_empty]
+other = "RPC endpoint or credential reference cannot be empty"
+
+[net_err_symbol_empty]
+other = "Symbol cannot be empty"
+
+[net_op_failed_wrap]
+other = "Network operation failed: {{.Err}}"
+
+[net_err_already_exists]
+other = "Network with key {{.Key}} already exists"
+
+[net_err_key_not_found]
+other = "Network with key {{.Key}} not found"
+
+[net_err_update_exists]
+other = "Cannot update network: a network with key {{.Key}} already exists"
+
+[net_err_resolve_rpc]
+other = "Failed to resolve RPC endpoint: {{.Err}}"
+
+[net_err_classify]
+other = "Failed to classify network: {{.Err}}"
+
+[net_err_classify_updated]
+other = "Failed to classify updated network: {{.Err}}"
+
+[net_err_save_migrated]
+other = "Failed to save migrated configuration: {{.Err}}"
+
+[net_tracking_unknown]
+other = "unknown/not checked now"
+
+[net_tracking_observed]
+other = "previously observed {{.Tracking}}"
+
+[net_health_unchecked]
+other = "not checked"
+
+[net_confidence_none]
+other = "none (single provider)"
+
+[net_source_manual]
+other = "manual"
+
+[net_source_registry]
+other = "stored_registry_claim"
+
+[recovery_show_mnemonic]
+other = "Show recovery phrase"
+
+[recovery_export_mnemonic]
+other = "Export recovery phrase"
+
+[recovery_show_passphrase]
+other = "Show BIP39 passphrase"
+
+[recovery_export_passphrase]
+other = "Export BIP39 passphrase"
+
+[recovery_show_key]
+other = "Show private key"
+
+[recovery_export_key]
+other = "Export private key"
+
+[recovery_placeholder_password]
+other = "Vault storage password"
+
+[recovery_placeholder_destination]
+other = "Absolute destination path"
+
+[recovery_placeholder_export]
+other = "Type EXPORT to confirm"
+
+[recovery_placeholder_reveal]
+other = "Type REVEAL to confirm"
+
+[recovery_err_destination_abs]
+other = "Destination must be an absolute path"
+
+[recovery_err_password_required]
+other = "Vault password is required"
+
+[recovery_err_type_exact]
+other = "Type {{.Token}} exactly to confirm"
+
+[recovery_err_auth]
+other = "Incorrect password or recovery material could not be authenticated"
+
+[recovery_err_confirm]
+other = "Recovery confirmation does not match the account"
+
+[recovery_err_unavailable]
+other = "This recovery material is unavailable for the selected account"
+
+[recovery_err_denied]
+other = "Recovery is not allowed for this account"
+
+[recovery_err_state_changed]
+other = "Account state changed; try again"
+
+[recovery_err_vault_closed]
+other = "Wallet vault is closed"
+
+[recovery_err_account_gone]
+other = "Account is no longer available"
+
+[recovery_err_dest_exists]
+other = "Destination exists; choose another path"
+
+[recovery_err_cancelled]
+other = "Operation cancelled"
+
+[recovery_err_failed]
+other = "Recovery operation failed"
+
+[recovery_kind_mnemonic]
+other = "Recovery phrase"
+
+[recovery_kind_private_key]
+other = "Private key"
+
+[recovery_kind_passphrase]
+other = "BIP39 passphrase"
+
+[recovery_kind_secret]
+other = "Secret"
+
+[recovery_title]
+other = "Recovery / export secrets"
+
+[recovery_account_line]
+other = "Account: {{.Name}} | Address: {{.Address}} | Account ID: {{.ID}}"
+
+[recovery_no_phrase]
+other = "This account was imported from a private key or keystore; no recovery phrase exists for it."
+
+[recovery_requires_confirm]
+other = "Each reveal or export requires the vault password and a typed confirmation. Reveals are hidden after 60 seconds, when you leave, or when the window loses focus."
+
+[recovery_destination_warning]
+other = "Destination (recommended {{.Hint}} extension). The file is written UNENCRYPTED and existing files are never overwritten."
+
+[recovery_confirm_action]
+other = "Confirm {{.Action}}"
+
+[recovery_kind_line]
+other = "Kind: {{.Kind}} | Derivation path: {{.Path}} | BIP39 language: {{.Lang}} | BIP39 passphrase configured: {{.Passphrase}}"
+
+[recovery_kind_line_reveal]
+other = "Kind: {{.Kind}} | Derivation path: {{.Path}} | Language: {{.Lang}}"
+
+[recovery_destination_label]
+other = "Destination: {{.Path}}"
+
+[recovery_warn_file_unencrypted]
+other = "WARNING: the file will contain UNENCRYPTED secret material. Anyone who reads it can steal funds."
+
+[recovery_warn_screen_plaintext]
+other = "WARNING: the secret will be shown on screen in plaintext for up to 60 seconds."
+
+[recovery_passphrase_also_required]
+other = "A BIP39 passphrase is also required to recover this account; the phrase alone is NOT sufficient and the derivation path must match."
+
+[recovery_passphrase_account_note]
+other = "This account also uses a BIP39 passphrase; the phrase alone is NOT sufficient to recover it, and the derivation path must match."
+
+[recovery_key_controls_only]
+other = "This private key controls only this account."
+
+[recovery_key_controls_only_note]
+other = "This private key controls only this account; it does not recover other accounts derived from a phrase."
+
+[recovery_passphrase_label]
+other = "BIP39 passphrase:"
+
+[recovery_passphrase_store_exact]
+other = "Store it exactly as shown; the recovery phrase alone is NOT sufficient."
+
+[recovery_warn_unencrypted_secret]
+other = "UNENCRYPTED SECRET — keep this screen private"
+
+[recovery_secret_hidden]
+other = "Secret hidden. Authenticate again to reveal."
+
+[recovery_cancelling]
+other = "Cancelling safely. Waiting for the operation to finish."
+
+[recovery_working]
+other = "Working."
+
+[recovery_notice_export_created]
+other = "Export file created at {{.Path}}"
+
+[recovery_status_export_completed]
+other = "Export completed: {{.Path}}"
+
+[recovery_status_export_warning]
+other = "Export file was created at {{.Path}} but cleanup or durability confirmation reported a warning"
+
+[recovery_status_export_cancelled]
+other = "Export cancelled"
+
+[recovery_status_reveal_cancelled]
+other = "Reveal cancelled"
+
+[recovery_status_reveal_discarded]
+other = "Reveal discarded"
+
+[recovery_status_expired]
+other = "Reveal expired; authenticate again"
+
+[delete_confirm_placeholder]
+other = "Type the full account ID to confirm"
+
+[vault_storage_password_placeholder]
+other = "Vault storage password"
+
+[delete_account_deleted]
+other = "Account deleted"
+
+[delete_err_mismatch]
+other = "Confirmation does not match the account ID"
+
+[delete_err_confirmation]
+other = "Deletion confirmation failed"
+
+[delete_err_pending]
+other = "Account has pending operations or active dependents"
+
+[delete_err_unsupported]
+other = "Account storage does not support protected deletion"
+
+[delete_err_cancelled]
+other = "Deletion cancelled"
+
+[delete_err_failed]
+other = "Account deletion failed"
+
+[delete_title]
+other = "Delete local account"
+
+[delete_body]
+other = "This removes the local wallet and its stored secret only. A backup is required to recover it. History is preserved when records exist; while that record is retained, re-importing the same source is currently blocked. Source files, funds, and external or hardware keys are untouched. This is a logical deletion, not secure erasure of backups or media."
+
+[delete_account_lines]
+other = "Account: {{.Name}}\nAddress: {{.Address}}\nAccount ID: {{.ID}}"
+
+[delete_working]
+other = "Deleting account."
+
+[delete_confirm_id_label]
+other = "Confirm account ID:"
+
+[vault_storage_password_label]
+other = "Vault storage password:"
+
+[create_select_option]
+other = "Select an option"
+
+[create_word_count_title]
+other = "Word count"
+
+[create_words_suffix]
+other = "{{.Count}} words"
+
+[create_bip39_language_title]
+other = "BIP39 language"
+
+[create_bip39_wordlist_desc]
+other = "Official BIP39 word list"
+
+[create_derivation_title]
+other = "EVM derivation path"
+
+[create_path_account0]
+other = "Standard account 0"
+
+[create_path_account0_desc]
+other = "Recommended default for the first EVM account"
+
+[create_path_account1]
+other = "Standard account 1"
+
+[create_path_account1_desc]
+other = "Separate BIP44 account index"
+
+[create_path_next_address]
+other = "Next address"
+
+[create_path_next_address_desc]
+other = "Address index 1 under the default account"
+
+[create_path_custom]
+other = "Custom path…"
+
+[create_path_custom_desc]
+other = "Enter another validated EVM BIP44 path"
+
+[create_entropy_12]
+other = "128-bit entropy • recommended for most wallets"
+
+[create_entropy_15]
+other = "160-bit entropy"
+
+[create_entropy_18]
+other = "192-bit entropy"
+
+[create_entropy_21]
+other = "224-bit entropy"
+
+[create_entropy_24]
+other = "256-bit entropy • longest backup"
+
+[create_entropy_default]
+other = "BIP39 mnemonic"
+
+[hist_scroll_up]
+other = "scroll up"
+
+[hist_scroll_down]
+other = "scroll down"
+
+[hist_page_up]
+other = "page up"
+
+[hist_page_down]
+other = "page down"
+
+[hist_next]
+other = "next results"
+
+[hist_previous]
+other = "previous results"
+
+[hist_refresh]
+other = "refresh"
+
+[hist_more_help]
+other = "more help"
+
+[hist_back]
+other = "back"
+
+[hist_unavailable]
+other = "Local history is unavailable."
+
+[hist_title]
+other = "Local EVM Activity"
+
+[hist_subtitle]
+other = "Outgoing transactions created by this wallet for the selected address. This is not complete on-chain history."
+
+[hist_address_page]
+other = "Address: {{.Address}}\nPage: {{.Page}}"
+
+[hist_loading]
+other = "Loading local history and analytics..."
+
+[hist_unavailable_detail]
+other = "History unavailable: {{.Error}}\nPress r to retry."
+
+[hist_analytics_line]
+other = "Analytics\nTransactions: {{.Tx}} | Reorgs observed: {{.Reorgs}}"
+
+[hist_states_prefix]
+other = "States: "
+
+[hist_operations_prefix]
+other = "Operations: "
+
+[hist_fee_line]
+other = "Chain {{.Chain}} receipt fees: {{.Fee}} wei across {{.Count}} transactions"
+
+[hist_assets_header]
+other = "Intent amounts by chain, operation, and asset:"
+
+[hist_asset_line]
+other = "  Chain {{.Chain}} | {{.Op}} | {{.Asset}} | amount {{.Amount}} | {{.Count}} records"
+
+[hist_asset_native]
+other = "native"
+
+[hist_tx_header]
+other = "Transactions"
+
+[hist_no_transactions]
+other = "No local outgoing transactions were found for this address."
+
+[hist_token_line]
+other = "  Token ID: {{.ID}} | Contract: {{.Contract}}"
+
+[hist_amount_line]
+other = "  Amount: {{.Amount}} | Asset: {{.Asset}}"
+
+[hist_to_line]
+other = "  To: {{.To}} | Nonce: {{.Nonce}}"
+
+[hist_tx_prefix]
+other = "  Tx: "
+
+[hist_receipt_line]
+other = "  Receipt: block {{.Block}} | fee {{.Fee}} wei | confirmations {{.Conf}}/{{.Target}}"
+
+[hist_result_prefix]
+other = "  Result: "
+
+[hist_reorg_line]
+other = "  Reorg observations: {{.Count}}"
+
+[hist_amount_unavailable]
+other = "unavailable"
+
+[sign_edit_message]
+other = "edit message"
+
+[sign_prev_step]
+other = "previous step"
+
+[sign_next_step]
+other = "next step"
+
+[sign_approve]
+other = "approve and sign"
+
+[sign_message_placeholder]
+other = "Message to sign (EIP-191 personal_sign)"
+
+[sign_storage_password_placeholder]
+other = "Storage password"
+
+[sign_err_message_too_long]
+other = "message exceeds the 64 KiB policy limit"
+
+[sign_err_password_required]
+other = "storage password is required for software accounts"
+
+[sign_unavailable]
+other = "Message signing is unavailable."
+
+[sign_title]
+other = "Sign Message (EIP-191 personal_sign)"
+
+[sign_entry_body]
+other = "Account: {{.Account}}"
+
+[sign_preview_body]
+other = "Account: {{.Account}}\nMessage length: {{.Length}} bytes\nUTF-8: {{.UTF8}}\nMessage:\n{{.Message}}\n\nDigest: {{.Digest}}\nIntent: {{.Intent}}\n\nYou are signing exactly these bytes with personal_sign. The signature has no chain binding.\n\nPress a to approve and sign, p to edit the message, or esc to cancel."
+
+[sign_external_prompt]
+other = "Press Enter, then confirm this message on the external signer."
+
+[sign_submitting]
+other = "Signing with reinforced confirmation after durable approval..."
+
+[sign_failed]
+other = "Message signing failed."
+
+[sign_result_signature]
+other = "Signature (Ethereum V=27/28):"
+
+[sign_result_record]
+other = "Signing record: "
+
+[sign_result_recovered]
+other = "Recovered account: "
+
+[sign_result_return]
+other = "Press esc to return to wallet details."
+
+[eip712_prev_network]
+other = "previous network"
+
+[eip712_next_network]
+other = "next network"
+
+[eip712_placeholder]
+other = "EIP-712 typed data JSON"
+
+[eip712_no_network]
+other = "No active network with chain ID is configured"
+
+[eip712_err_too_long]
+other = "typed data exceeds the 64 KiB policy limit"
+
+[eip712_unavailable]
+other = "EIP-712 signing is unavailable."
+
+[eip712_title]
+other = "Sign EIP-712 Typed Data"
+
+[eip712_select_chain]
+other = "Select the chain for this signature:"
+
+[eip712_press_n_continue]
+other = "Press n to continue or esc to cancel."
+
+[eip712_press_n_preview]
+other = "Press n to validate and preview or esc to cancel."
+
+[eip712_chain_prefix]
+other = "Chain: "
+
+[eip712_preview_body]
+other = "Chain: {{.Chain}} ({{.ID}})\nDigest: {{.Digest}}\nIntent: {{.Intent}}"
+
+[eip712_external_prompt]
+other = "Press Enter, then confirm the typed data or hashes shown by the external signer. Hash-only hardware requires explicit blind-signing policy."
+
+[eip712_failed]
+other = "EIP-712 signing failed."
+
+[account_prefix]
+other = "Account: "
+
+[eip712_choice_line]
+other = " (chain {{.ID}})"
+
+[call_approve_send]
+other = "approve and send"
+
+[call_addr_placeholder]
+other = "0x contract address"
+
+[call_abi_placeholder]
+other = "ABI JSON array"
+
+[call_method_placeholder]
+other = "method name (e.g. deposit)"
+
+[call_args_placeholder]
+other = "arguments JSON array (e.g. [\"0x…\",\"7\"])"
+
+[call_value_placeholder]
+other = "Native value in base units (0 allowed)"
+
+[call_approve_placeholder]
+other = "Type APPROVE"
+
+[call_err_type_approve]
+other = "Type APPROVE exactly to reinforce this contract call"
+
+[call_err_password_session]
+other = "Password is required unless a temporary session is active"
+
+[call_unavailable]
+other = "Contract call is unavailable."
+
+[call_title]
+other = "Contract Call (known ABI)"
+
+[call_select_network]
+other = "Select network:"
+
+[call_enter_select_esc]
+other = "ENTER: select • ESC: back"
+
+[call_enter_continue_esc]
+other = "ENTER: continue • ESC: back"
+
+[call_preparing]
+other = "Preparing contract call..."
+
+[call_preview_body]
+other = "Contract: {{.Contract}}\nMethod: {{.Method}}\nABI source: {{.Source}}\nABI hash: {{.Hash}}\nValue: {{.Value}}\nSimulated output: {{.Output}}"
+
+[call_nonce_gas]
+other = "Nonce: {{.Nonce}}\nGas limit: {{.Gas}}\n"
+
+[call_risk_line]
+other = "Risk [{{.Severity}}]: {{.ID}} ({{.Subject}})\n"
+
+[call_plan_digest]
+other = "Plan: 0x{{.Plan}}\nDigest: 0x{{.Digest}}\n"
+
+[call_approve_intent]
+other = "ENTER: approve exact structured intent • ESC: cancel"
+
+[call_critical_approve]
+other = "Critical: this call moves native value or grants broad control. Verify the contract independently.\n\nType APPROVE to perform the second confirmation:"
+
+[call_enter_password]
+other = "Enter storage password to sign this approved transaction:"
+
+[call_enter_sign_broadcast]
+other = "ENTER: sign and broadcast • ESC: cancel"
+
+[call_external_review]
+other = "Press Enter, then review and confirm the exact transaction on the external signer.\n\nENTER: continue • ESC: cancel"
+
+[call_submitting]
+other = "Signing approved structured intent and broadcasting exact bytes..."
+
+[call_tracking_line]
+other = "Transaction: {{.Hash}}\nTracking receipt and confirmations"
+
+[call_tracking_state]
+other = "State: {{.State}}\nConfirmations: {{.Count}}"
+
+[call_rebroadcast_hint]
+other = "B: rebroadcast persisted bytes • ESC: return; tracking resumes after restart"
+
+[call_final_line]
+other = "Transaction {{.State}}\nTransaction hash: {{.Hash}}\n\nEnter or ESC: return"
+
+[call_choice_chain]
+other = " (chain {{.ID}})"
+
+[tx_contract_placeholder]
+other = "0x token contract"
+
+[tx_recipient_placeholder]
+other = "0x recipient address"
+
+[tx_amount_placeholder]
+other = "Amount"
+
+[tx_token_id_placeholder]
+other = "Token ID"
+
+[tx_no_network]
+other = "No active network with validated native currency metadata is configured"
+
+[tx_err_contract]
+other = "Token contract must be a non-zero 20-byte EVM address"
+
+[tx_err_recipient]
+other = "Recipient must be a 20-byte EVM address"
+
+[tx_err_recipient_same]
+other = "Recipient must differ from sender"
+
+[tx_err_token_id]
+other = "Token ID must be an exact unsigned base-10 integer"
+
+[tx_err_create_op]
+other = "Unable to create transaction operation"
+
+[tx_err_type_approve_spender]
+other = "Type APPROVE exactly to reinforce this spender approval"
+
+[tx_unavailable]
+other = "Transaction flow is unavailable"
+
+[tx_title_native]
+other = "Send native asset"
+
+[tx_title_erc20]
+other = "Send ERC-20 token"
+
+[tx_title_approve]
+other = "Approve ERC-20 spender"
+
+[tx_title_erc721]
+other = "Send ERC-721 token"
+
+[tx_title_erc1155]
+other = "Send ERC-1155 token"
+
+[tx_title_erc1155_batch]
+other = "Send ERC-1155 batch"
+
+[tx_validating]
+other = "Validating provider and chain identity..."
+
+[tx_token_contract_label]
+other = "Token contract:"
+
+[tx_recipient_label]
+other = "Recipient"
+
+[tx_spender_label]
+other = "Spender"
+
+[tx_token_id_label]
+other = "Token ID (exact base-10 identifier):"
+
+[tx_effects_label]
+other = "Effects as JSON pairs [[id,amount],...] (max 64):"
+
+[tx_amount_symbol]
+other = "Amount ({{.Symbol}}):"
+
+[tx_amount_base]
+other = "Amount in exact base units:"
+
+[tx_token_amount_base]
+other = "Token amount in exact base units:"
+
+[tx_enter_prepare_esc]
+other = "ENTER: prepare and simulate • ESC: back"
+
+[tx_preparing]
+other = "Reserving nonce, estimating fees, and simulating..."
+
+[tx_review]
+other = "Review exact transaction"
+
+[tx_network_line]
+other = "Network: {{.Name}} (chain {{.Chain}})"
+
+[tx_op_from]
+other = "Operation: {{.Op}}\nFrom: {{.From}}"
+
+[tx_native_line]
+other = "To: {{.To}}\nAmount: {{.Wei}} wei ({{.Amount}} {{.Symbol}})"
+
+[tx_erc721_line]
+other = "Contract: {{.Contract}}\nRecipient: {{.Recipient}}\nToken ID: {{.TokenID}}"
+
+[tx_erc1155_line]
+other = "Contract: {{.Contract}}\nRecipient: {{.Recipient}}\nToken ID: {{.TokenID}}\nAmount: {{.Amount}}"
+
+[tx_effects_header]
+other = "Contract: {{.Contract}}\nRecipient: {{.Recipient}}\nEffects:"
+
+[tx_effect_line]
+other = "  Token ID {{.ID}} × {{.Amount}}"
+
+[tx_calldata_line]
+other = "Calldata:"
+
+[tx_default_line]
+other = "Contract: {{.Contract}}\n{{.Label}}: {{.To}}\nToken: {{.Name}} ({{.Symbol}}), decimals {{.Decimals}}\nRaw amount: {{.Amount}}"
+
+[tx_fee_eip1559]
+other = "Max fee per gas: {{.Fee}} wei\nPriority fee per gas: {{.Tip}} wei"
+
+[tx_fee_legacy]
+other = "Gas price: {{.Price}} wei"
+
+[tx_max_lines]
+other = "Maximum gas cost: {{.Gas}} wei ({{.GasFmt}} {{.Symbol}})\nMaximum total debit: {{.Debit}} wei ({{.DebitFmt}} {{.Symbol}})"
+
+[tx_conf_target]
+other = "Confirmation target: {{.Blocks}} blocks"
+
+[tx_simulation]
+other = "Simulation block: {{.Block}} ({{.Hash}})\nSimulation/policy commitment: {{.Commit}}\nPlan: 0x{{.Plan}}\nDigest: 0x{{.Digest}}"
+
+[tx_critical_approve]
+other = "Critical warning: this grants a contract permission to spend token units. Verify the spender independently.\n\nType APPROVE to perform the second confirmation:"
+
+[tx_tracking_state]
+other = "State: {{.State}}\nConfirmations: {{.Conf}}/{{.Target}}"
+
+[tx_network_line_suffix]
+other = " ({{.ID}}) {{.Symbol}}"
+
+[safe_name_placeholder]
+other = "Safe name"
+
+[safe_owners_placeholder]
+other = "Owner addresses, comma separated"
+
+[safe_threshold_placeholder]
+other = "Threshold (e.g. 2)"
+
+[safe_import_addr_placeholder]
+other = "Safe address (checksummed)"
+
+[safe_to_placeholder]
+other = "Recipient address"
+
+[safe_value_placeholder]
+other = "Value in wei"
+
+[safe_data_placeholder]
+other = "Calldata (hex, optional)"
+
+[safe_err_required]
+other = "Name, owners, and threshold are required."
+
+[safe_err_threshold_int]
+other = "Threshold must be a positive integer."
+
+[safe_err_owner_addr]
+other = "Owner \"{{.Owner}}\" must be a checksummed address."
+
+[safe_err_threshold_range]
+other = "Threshold must be between 1 and the owner count."
+
+[safe_err_no_deployer]
+other = "No local account can pay the deployment fee."
+
+[safe_deployed_result]
+other = "Deployed {{.Address}} tx={{.Tx}}"
+
+[safe_err_import_required]
+other = "A name and a checksummed address are required."
+
+[safe_imported_result]
+other = "Imported {{.Address}}"
+
+[safe_err_recipient]
+other = "Recipient must be a valid address."
+
+[safe_err_value]
+other = "Value must be a non-negative integer in wei."
+
+[safe_err_calldata]
+other = "Calldata must be even-length hex."
+
+[safe_proposed_result]
+other = "Proposed {{.ID}}"
+
+[safe_err_no_signer]
+other = "No local owner account can sign this proposal."
+
+[safe_signed_result]
+other = "Owner signature recorded."
+
+[safe_err_no_payer]
+other = "No local account can pay the execution fee."
+
+[safe_executed_result]
+other = "Executed tx={{.Tx}}"
+
+[safe_view_unavailable]
+other = "Safe view unavailable."
+
+[safe_network_prefix]
+other = "Network: "
+
+[safe_network_switch]
+other = "  (r: switch)"
+
+[safe_no_accounts]
+other = "No Safe accounts yet. Press n to deploy one or i to import."
+
+[safe_deployed_yes]
+other = "Deployed: yes • owners: {{.Owners}} • threshold: {{.Threshold}} • nonce: {{.Nonce}}"
+
+[safe_deployed_no]
+other = "Deployed: no (pending deployment)"
+
+[safe_help_list]
+other = "n/c deploy • i import • enter proposals • r network • esc back"
+
+[safe_field_name]
+other = "Name"
+
+[safe_field_owners]
+other = "Owners (checksummed, comma separated)"
+
+[safe_field_threshold]
+other = "Threshold"
+
+[safe_help_deploy]
+other = "TAB: next field • ENTER: prepare • ESC: back"
+
+[safe_deploy_title]
+other = "Deploy a new Safe — official v1.5.0 contracts"
+
+[safe_fund_address]
+other = "Fund the predicted Safe address first:"
+
+[safe_deployer_label]
+other = "Deployer paying the factory call:"
+
+[safe_password_mask]
+other = "Storage password: {{.Mask}}"
+
+[safe_help_deploy_run]
+other = "↑/↓: deployer • ENTER: broadcast • ESC: back"
+
+[safe_deploy_run_title]
+other = "Deploy Safe"
+
+[safe_help_import]
+other = "ENTER: import • TAB: next field • ESC: back"
+
+[safe_import_title]
+other = "Import an existing Safe"
+
+[safe_proposal_recipient]
+other = "New proposal — Recipient"
+
+[safe_value_wei]
+other = "Value (wei)"
+
+[safe_calldata_label]
+other = "Calldata (hex, optional)"
+
+[safe_no_proposals]
+other = "(no proposals yet)"
+
+[safe_section_new_proposal]
+other = "New proposal"
+
+[safe_section_proposals]
+other = "Proposals"
+
+[safe_help_proposals]
+other = "ENTER: propose • TAB: next field • ENTER/a: review proposal • ESC: back"
+
+[safe_proposals_title]
+other = "{{.Name}} — proposals"
+
+[safe_no_proposal]
+other = "No proposal selected"
+
+[safe_proposal_line]
+other = "Proposal: {{.ID}}"
+
+[safe_to_line]
+other = "To: {{.To}}"
+
+[safe_value_line]
+other = "Value: {{.Value}}"
+
+[safe_digest_line]
+other = "Digest: {{.Digest}}"
+
+[safe_signatures_line]
+other = "Signatures: {{.Sigs}}/{{.Threshold}}"
+
+[safe_owners_header]
+other = "Owners available to sign:"
+
+[safe_help_details]
+other = "↑/↓: owner • a: sign • x: execute • ESC: back"
+
+[safe_details_title]
+other = "Proposal details"
+
+[safe_signing_as]
+other = "Signing as {{.Name}}  {{.Address}}"
+
+[safe_password_label]
+other = "Storage password: "
+
+[safe_help_sign]
+other = "ENTER: sign • ESC: back"
+
+[safe_sign_title]
+other = "Confirm owner signature"
+
+[safe_gas_payer]
+other = "Gas payer (pays the execution fee):"
+
+[safe_help_execute]
+other = "↑/↓: gas payer • ENTER: execute • ESC: back"
+
+[safe_execute_title]
+other = "Execute proposal"
+
+[wc_previous]
+other = "previous"
+
+[wc_next]
+other = "next"
+
+[wc_select]
+other = "select"
+
+[wc_revoke]
+other = "revoke session"
+
+[wc_approve]
+other = "approve proposal"
+
+[wc_reject]
+other = "reject proposal"
+
+[wc_unavailable]
+other = "WalletConnect is unavailable."
+
+[wc_no_sessions]
+other = "No active sessions for this account.\n\nPair a dApp to begin."
+
+[wc_active_sessions]
+other = "Active sessions:"
+
+[wc_session_expires]
+other = " — expires {{.Time}}"
+
+[wc_chains_line]
+other = "    chains: {{.Chains}}"
+
+[wc_sessions_hint]
+other = "ENTER: session • r: revoke • ESC: back"
+
+[wc_session_lines]
+other = "Session: {{.Peer}}\nTopic: {{.Topic}}\nAccount: {{.Account}}\nExpires: {{.Expires}}"
+
+[wc_namespaces_header]
+other = "Namespaces:"
+
+[wc_namespace_line]
+other = "  {{.Ns}}: chains [{{.Chains}}] methods [{{.Methods}}] accounts [{{.Accounts}}]"
+
+[wc_revoke_confirm]
+other = "This revokes the session immediately. ENTER: confirm • ESC: back"
+
+[wc_no_proposal]
+other = "No pending proposal."
+
+[wc_proposal_incoming]
+other = "Incoming session proposal from {{.Name}}\nURL: {{.URL}}"
+
+[wc_required_namespaces]
+other = "Required namespaces:"
+
+[wc_namespace_req]
+other = "  {{.Ns}}: chains [{{.Chains}}]\n    methods [{{.Methods}}]\n    events [{{.Events}}]"
+
+[wc_binding_account]
+other = "Binding account: {{.Account}}\n\na: approve • x: reject • ESC: back"
+
+[wc_no_request]
+other = "No pending request."
+
+[wc_request_lines]
+other = "Request from {{.Peer}}\nChain: {{.Chain}}\nMethod: {{.Method}}"
+
+[wc_request_approve]
+other = "Complete the approval in the wallet's normal signing flow."
+
+[fido2_previous]
+other = "previous"
+
+[fido2_next]
+other = "next"
+
+[fido2_register]
+other = "register key"
+
+[fido2_authenticate]
+other = "authenticate"
+
+[fido2_submit]
+other = "submit"
+
+[fido2_response_placeholder]
+other = "Paste the WebAuthn response JSON"
+
+[fido2_err_unavailable]
+other = "FIDO2 service is unavailable"
+
+[fido2_reg_challenge]
+other = "Registration challenge (base64url):"
+
+[fido2_auth_challenge]
+other = "Authentication challenge (base64url):"
+
+[fido2_paste_response]
+other = "Paste the authenticator response JSON below."
+
+[fido2_err_response]
+other = "Response must be the authenticator JSON"
+
+[fido2_authenticated]
+other = "Authenticated. Counter now {{.Count}}."
+
+[fido2_unavailable]
+other = "FIDO2 is unavailable."
+
+[fido2_title]
+other = "FIDO2 Security Keys"
+
+[fido2_no_keys]
+other = "No security keys registered.\n\nr: register a key • ESC: back"
+
+[fido2_registered]
+other = "Registered security keys:"
+
+[fido2_credential_line]
+other = " (RP {{.RP}}, counter {{.Count}})"
+
+[fido2_list_hint]
+other = "r: register • a: authenticate • ESC: back"
+
+[fido2_verify_store]
+other = "ENTER: verify and store • ESC: back"
+
+[fido2_verify]
+other = "ENTER: verify • ESC: back"
+
+[fido2_key_registered]
+other = "Security key registered and stored.\n\nENTER: return"
+
+[popup_title]
+other = "Password Required"
+
+[create_wallet_title]
+other = "Create New Wallet"
+
+[create_wallet_name_prompt]
+other = "Enter a name for your new wallet:"
+
+[create_options_title]
+other = "Configure BIP39 account"
+
+[create_step_progress]
+other = "Step {{.Step}}/4"
+
+[create_passphrase_body]
+other = "Optional BIP39 passphrase"
+
+[create_custom_path_body]
+other = "Custom EVM derivation path"
+
+[create_enter_continue]
+other = "Press Enter to continue or Esc to cancel."
+
+[backup_confirm_words]
+other = "Confirm only the requested words in order ({{.Indices}}):"
+
+[backup_metadata]
+other = "Backup metadata (no re-entry required):\nPath: {{.Path}}\nLanguage: {{.Language}}\n"
+
+[backup_passphrase_note]
+other = "Back up any configured BIP39 passphrase separately; it cannot be recovered from these words.\n"
+
+[pwd_rule_required]
+other = " required\n"
+
+[pwd_rule_length]
+other = " has 15 characters or more\n"
+
+[pwd_rule_utf8]
+other = " is valid UTF-8\n"
+
+[pwd_rule_printable]
+other = " contains only printable characters\n"
+
+[pwd_rule_whitespace]
+other = " preserves whitespace exactly"
+
+[confirm_storage_password_label]
+other = "Confirm storage password:"
+
+[terminal_too_small]
+other = "Terminal too small\nResize to at least {{.Width}} × {{.Height}}"
+
+[vault_rotate_title]
+other = "Rotate storage password"
+
+[vault_export_keystore_title]
+other = "Export Keystore V3"
+
+[vault_export_encrypted_title]
+other = "Export Bloco encrypted backup"
+
+[vault_export_format_keystore]
+other = "Keystore V3 (derived private key only)"
+
+[vault_export_format_encrypted]
+other = "Bloco encrypted backup (canonical secret)"
+
+[vault_export_confirm_title]
+other = "Confirm secret export"
+
+[vault_export_confirm_body]
+other = "Account: {{.Name}}\nAddress: {{.Address}}\nFormat: {{.Format}}\nDestination: {{.Destination}}\n\nThis operation writes an exportable secret artifact."
+
+[vault_current_password]
+other = "Current password:"
+
+[vault_new_password]
+other = "New password:"
+
+[vault_confirm_password]
+other = "Confirm new password:"
+
+[vault_destination]
+other = "Destination:"
+
+[enhanced_import_not_init]
+other = "Enhanced import not initialized"
+
+[import_keystore_tab_hint]
+other = " | Tab to show/cycle through suggestions"
+
+[amount_unavailable]
+other = "unavailable"
+
+[version_label]
+other = "Version: {{.Version}}"
+
+[footer_wallets_count]
+other = "Wallets: {{.Count}}"
+
+[footer_date]
+other = "Date: {{.Date}}"
+
+[view_splash]
+other = "Splash"
+
+[view_import_keystore]
+other = "Import Keystore"
+
+[view_import_wallet]
+other = "Import Wallet"
+
+[view_change_password]
+other = "Change Password"
+
+[view_export_wallet]
+other = "Export Wallet"
+
+[view_recovery]
+other = "Recovery"
+
+[view_local_history]
+other = "Local History"
+
+[view_sign_message]
+other = "Sign Message"
+
+[view_sign_typed_data]
+other = "Sign Typed Data"
+
+[view_contract_call]
+other = "Contract Call"
+
+[view_send]
+other = "Send"
+
+[view_security_keys]
+other = "Security Keys"
+
+[view_delete_wallet]
+other = "Delete Wallet"
+
+[hint_cancel]
+other = "Cancel"
+
+[hint_quit]
+other = "Quit"
+
+[hint_continue]
+other = "Continue"
+
+[hint_delete]
+other = "Delete"
+
+[hint_select]
+other = "Select"
+
+[hint_confirm]
+other = "Confirm"
+
+[hint_navigate]
+other = "Navigate"
+
+[hint_open]
+other = "Open"
+
+[hint_back]
+other = "Back"
+
+[hint_wallets]
+other = "Wallets"
+
+[hint_import]
+other = "Import"
+
+[hint_preview]
+other = "Preview"
+
+[hint_complete]
+other = "Complete"
+
+[hint_suggestions]
+other = "Suggestions"
+
+[hint_reveal]
+other = "Reveal"
+
+[hint_export]
+other = "Export"
+
+[hint_scroll]
+other = "Scroll"
+
+[hint_hide]
+other = "Hide"
+
+[hint_change_password]
+other = "Change password"
+
+[hint_cancel_quit]
+other = "Cancel & Quit"
+
+[footer_view_prefix]
+other = "View: "
+
+[balance_no_networks]
+other = "No active networks with validated providers"
+
+[focus_lost_hidden]
+other = "Window focus lost; secrets hidden"
+
+[too_small_hidden]
+other = "Terminal too small; secret hidden"
+
+[create_select_required]
+other = "Select an option before continuing"
+
+[password_confirm_mismatch]
+other = "Storage password confirmation does not match"
+
+[vault_err_new_password_mismatch]
+other = "New password confirmation does not match"
+
+[vault_err_export_abs]
+other = "Export destination must be absolute"
+
+[vault_export_done]
+other = "Export completed successfully"
+
+[wallet_name_placeholder]
+other = "Enter the wallet name"
+
+[word_count_placeholder]
+other = "Word count"
+
+[bip39_language_placeholder]
+other = "BIP39 language"
+
+[passphrase_optional_placeholder]
+other = "Optional BIP39 passphrase"
+
+[evm_path_placeholder]
+other = "EVM derivation path"
+
+[backup_reenter_path]
+other = "Re-enter the derivation path"
+
+[backup_reenter_language]
+other = "Re-enter the BIP39 language"
+
+[backup_reenter_passphrase]
+other = "Re-enter the BIP39 passphrase"
+
+[confirm_storage_placeholder]
+other = "Confirm storage password"
+
+[current_storage_placeholder]
+other = "Current storage password"
+
+[new_password_placeholder]
+other = "New password"
+
+[export_destination_placeholder]
+other = "Absolute export destination"
+
+[wallet_name_empty_err]
+other = "wallet name cannot be empty"
+
+[eimp_phase_files]
+other = "File Selection"
+
+[eimp_phase_importing]
+other = "Importing"
+
+[eimp_phase_password]
+other = "Password Input"
+
+[eimp_phase_complete]
+other = "Complete"
+
+[eimp_phase_cancelled]
+other = "Cancelled"
+
+[eimp_phase_unknown]
+other = "Unknown"
+
+[eimp_pause_password]
+other = "Waiting for password input"
+
+[eimp_no_picker]
+other = "File picker not initialized"
+
+[eimp_no_progress]
+other = "Progress bar not initialized"
+
+[eimp_no_popup]
+other = "Password popup not initialized"
+
+[eimp_unknown_phase]
+other = "Unknown phase: {{.Phase}}"
+
+[eimp_complete_title]
+other = "✓ Import Complete"
+
+[eimp_stats]
+other = "Total: {{.Total}} | Success: {{.Success}} | Failed: {{.Failed}} | Skipped: {{.Skipped}}"
+
+[eimp_errors_label]
+other = "Errors:"
+
+[eimp_error_failed]
+other = "Failed"
+
+[eimp_error_skipped]
+other = "Skipped"
+
+[eimp_return_hint]
+other = "Press ENTER to return to menu or R to retry failed imports"
+
+[eimp_cancelled_title]
+other = "✗ Import Cancelled"
+
+[eimp_cancelled_stats]
+other = "Processed: {{.Done}}/{{.Total}} files before cancellation"
+
+[eimp_cancelled_imported]
+other = "Successfully imported: {{.Count}} wallets"
+
+[eimp_enter_menu]
+other = "Press ENTER to return to menu"
+
+[fp_up]
+other = "up"
+
+[fp_down]
+other = "down"
+
+[fp_top]
+other = "top"
+
+[fp_bottom]
+other = "bottom"
+
+[fp_back]
+other = "back"
+
+[fp_open]
+other = "open"
+
+[fp_open_confirm]
+other = "open/confirm"
+
+[fp_select]
+other = "select"
+
+[fp_select_all]
+other = "select all"
+
+[fp_clear_all]
+other = "clear all"
+
+[fp_confirm_selection]
+other = "confirm selection"
+
+[fp_cancel]
+other = "cancel"
+
+[fp_empty]
+other = "No files found in this directory"
+
+[fp_selected_suffix]
+other = " ({{.Count}} selected)"
+
+[fp_hint_select]
+other = "Space: select"
+
+[fp_hint_confirm]
+other = "Tab: confirm"
+
+[fp_hint_select_all]
+other = "Ctrl+A: select all"
+
+[fp_hint_clear]
+other = "Ctrl+C: clear"
+
+[fp_hint_open]
+other = "ENTER: open"
+
+[fp_hint_back]
+other = "ESC: back"
+
+[fp_hint_cancel]
+other = "Ctrl+Q: cancel"
+
+[ip_title]
+other = "Import Progress"
+
+[ip_progress_stats]
+other = "Progress: {{.Done}}/{{.Total}} files ({{.Percent}}%)"
+
+[ip_processing]
+other = "Processing: {{.File}}"
+
+[ip_paused_on]
+other = "Paused on: {{.File}}"
+
+[ip_completed]
+other = "✓ Import completed in {{.Elapsed}}"
+
+[ip_summary]
+other = "Success: {{.Success}}, Failed: {{.Failed}}, Skipped: {{.Skipped}}"
+
+[ip_paused]
+other = "⏸ Import paused"
+
+[ip_importing]
+other = "⏳ Importing... (elapsed: {{.Elapsed}})"
+
+[ip_errors_title]
+other = "Errors:"
+
+[ip_more_errors]
+other = "... and {{.Count}} more errors"
+
+[ip_error_line]
+other = "• {{.Type}}: {{.File}} - {{.Error}}"
+
+[ip_cancel_hint]
+other = "Press ESC to cancel import"
+
+[ip_continue_hint]
+other = "Press ENTER to continue or R to retry failed imports"
+
+[ip_completed_in]
+other = "Import completed in {{.Elapsed}}"
+
+[ip_total_files]
+other = "Total files: {{.Count}}"
+
+[ip_successful]
+other = "Successful: {{.Count}}"
+
+[ip_failed_count]
+other = "Failed: {{.Count}}"
+
+[ip_skipped_count]
+other = "Skipped: {{.Count}}"
+
+[ic_return_menu]
+other = "Return to Main Menu"
+
+[ic_return_menu_desc]
+other = "Go back to the main wallet management menu"
+
+[ic_select_files]
+other = "Select Different Files"
+
+[ic_select_files_desc]
+other = "Choose different keystore files to import"
+
+[ic_retry_failed]
+other = "Retry Failed Imports ({{.Count}})"
+
+[ic_retry_failed_desc]
+other = "Retry importing files that failed due to errors"
+
+[ic_retry_skipped]
+other = "Retry Skipped Imports ({{.Count}})"
+
+[ic_retry_skipped_desc]
+other = "Retry importing files that were skipped (password input cancelled)"
+
+[ic_retry_all]
+other = "Retry All Failed/Skipped ({{.Count}})"
+
+[ic_retry_all_desc]
+other = "Retry all files that failed or were skipped"
+
+[ic_view_errors]
+other = "View Error Details ({{.Count}})"
+
+[ic_view_errors_desc]
+other = "View detailed information about errors that occurred"
+
+[ic_title_success]
+other = "✓ Import Completed Successfully"
+
+[ic_title_issues]
+other = "⚠ Import Completed with Issues"
+
+[ic_title_failed]
+other = "✗ Import Failed"
+
+[ic_success_rate]
+other = "Success Rate: {{.Rate}}%"
+
+[ic_completed_in]
+other = "Completed in: {{.Elapsed}}"
+
+[ic_avg_per_file]
+other = " (avg: {{.Avg}} per file)"
+
+[ic_issues_title]
+other = "Issues Encountered:"
+
+[ic_failed_label]
+other = "Failed:"
+
+[ic_skipped_label]
+other = "Skipped:"
+
+[ic_more]
+other = "  ... and {{.Count}} more"
+
+[ic_actions_title]
+other = "Available Actions:"
+
+[ic_nav_actions]
+other = "Use ↑/↓ or j/k to navigate actions"
+
+[ic_enter_action]
+other = "Press ENTER to execute selected action"
+
+[ic_esc_menu]
+other = "Press ESC or Q to return to main menu"
+
+[ic_press_e]
+other = "Press E to view detailed error information"
+
+[ic_no_errors]
+other = "No errors to display"
+
+[ic_error_details]
+other = "Error Details"
+
+[ic_error_nav]
+other = "Error {{.Index}} of {{.Total}}"
+
+[ic_nav_errors]
+other = "Use ↑/↓ or j/k to navigate between errors"
+
+[ic_retry_file]
+other = "Press R to retry this specific file"
+
+[ic_esc_summary]
+other = "Press ESC or Q to return to summary"
+
+[ic_file_label]
+other = "File: {{.File}}"
+
+[ic_status_label]
+other = "Status: {{.Status}}"
+
+[ic_details_label]
+other = "Error Details:"
+
+[ic_suggested]
+other = "Suggested Actions:"
+
+[ic_sug_skipped]
+other = "File was skipped due to user cancellation"
+
+[ic_sug_retry_manual]
+other = "Retry with manual password input"
+
+[ic_sug_password]
+other = "Verify the password is correct"
+
+[ic_sug_pwdfile]
+other = "Check if a .pwd file exists with the correct password"
+
+[ic_sug_format]
+other = "Verify the file is a valid KeyStore V3 format"
+
+[ic_sug_corrupt]
+other = "Check if the file is corrupted"
+
+[ic_sug_perms]
+other = "Check file permissions"
+
+[ic_sug_locked]
+other = "Ensure the file is not locked by another process"
+
+[ic_sug_details]
+other = "Check the error details above"
+
+[ic_sug_accessible]
+other = "Verify the file is accessible and valid"
+
+[unknown_view]
+other = "Unknown view"
+
+[unknown_state]
+other = "Unknown state"
+
+[all_words_required]
+other = "All words are required"
+
+[invalid_private_key]
+other = "Invalid private key"
+
+[error_loading_wallets]
+other = "Error loading wallets"
+
+[id]
+other = "ID"
+
+[word]
+other = "Word"
+
+[confirm]
+other = "Confirm"
+
+[confirm_delete_wallet]
+other = "Delete this wallet?"
+
+[sign_entry_hint]
+other = "Press n to preview the exact signed message or esc to cancel."
+
+[eip712_preview_hint]
+other = "Press a to approve and sign, p to edit, or esc to cancel."
+
+[create_passphrase_hint]
+other = "Leave blank for no passphrase. This value cannot be recovered from the mnemonic."
+
+[create_custom_path_hint]
+other = "The path must remain inside the EVM BIP44 namespace m/44'/60'."
+
+[bip39_language_english]
+other = "English"
+
+[bip39_language_chinese_simplified]
+other = "中文（简体）"
+
+[bip39_language_chinese_traditional]
+other = "中文（繁體）"
+
+[bip39_language_czech]
+other = "Čeština"
+
+[bip39_language_french]
+other = "Français"
+
+[bip39_language_italian]
+other = "Italiano"
+
+[bip39_language_japanese]
+other = "日本語"
+
+[bip39_language_korean]
+other = "한국어"
+
+[bip39_language_portuguese]
+other = "Português"
+
+[bip39_language_spanish]
+other = "Español"
+
+[keystore_not_found_detail]
+other = "Keystore file not found at path: {{.Path}}"
+
+[keystore_access_error_detail]
+other = "Error accessing keystore file: {{.Path}}"
+
+[keystore_too_large_detail]
+other = "Keystore file too large: {{.Size}} bytes (max {{.Max}} bytes)"
+
+[call_validate_address]
+other = "Contract must be a non-zero 20-byte EVM address"
+
+[call_validate_method]
+other = "Method name is required"
+
+[call_validate_value]
+other = "Value must be an exact unsigned base-10 integer"
+
+[tx_effects_json]
+other = "Effects must be JSON like [[id,amount],...]"
+
+[tx_effects_count]
+other = "Effects must contain between 1 and 64 pairs"
+
+[tx_effect_pair]
+other = "Each effect must be [id, amount]"
+
+[tx_token_id_uint]
+other = "Token ID must be an exact unsigned base-10 integer"
+
+[tx_amount_positive]
+other = "Amount must be an exact positive base-10 integer"
+
+[tx_amount_uint]
+other = "Token amount must be an exact unsigned base-unit integer"
+
+[tx_unsupported_op]
+other = "Unsupported transaction operation"
+
+[hist_entry_line]
+other = "{{.When}} | Chain {{.Chain}} | {{.Op}} | {{.State}}"
+
+[list_help_prev_page]
+other = "prev page"
+
+[list_help_next_page]
+other = "next page"
+
+[list_help_go_start]
+other = "go to start"
+
+[list_help_go_end]
+other = "go to end"
+
+[list_help_filter]
+other = "filter"
+
+[list_help_clear_filter]
+other = "clear filter"
+
+[list_help_cancel_filter]
+other = "cancel"
+
+[list_help_accept_filter]
+other = "apply filter"
+
+[list_help_more]
+other = "more"
+
+[list_help_close]
+other = "close help"
+
+[list_help_quit]
+other = "quit"
+
+[list_help_force_quit]
+other = "force quit"
+
+[menu_keepass]
+other = "KeePass backups"
+[desc_keepass]
+other = "Manage KeePass credential backup vault"
+[help_keepass]
+other = "KeePass backup"
+[hint_keepass_toggle]
+other = "toggle KeePass credential"
+[hint_keepass_remove]
+other = "also remove backup"
+[keepass_account_title]
+other = "KeePass backup"
+[keepass_save_backup]
+other = "Save/update backup"
+[keepass_view_status]
+other = "View backup status"
+[keepass_master_title]
+other = "KeePass vault"
+[keepass_master_body]
+other = "Enter the KeePass vault master password to continue."
+[keepass_master_placeholder]
+other = "Master password"
+[keepass_master_required]
+other = "Master password is required"
+[keepass_master_label]
+other = "Master password:"
+[keepass_confirm_label]
+other = "Confirm master password:"
+[keepass_confirm_placeholder]
+other = "Confirm master password"
+[keepass_path_label]
+other = "Vault file path (.kdbx):"
+[keepass_path_placeholder]
+other = "/path/to/bloco-wallet.kdbx"
+[keepass_path_required]
+other = "A .kdbx vault path is required"
+[keepass_consent_label]
+other = "Type ENABLE to continue:"
+[keepass_consent_required]
+other = "Type the exact confirmation token to continue"
+[keepass_disable_confirm]
+other = "Type DISABLE to turn off KeePass backups (vault file is kept):"
+[keepass_recovery_warning]
+other = "The KeePass vault stores account passwords, private keys, and recovery phrases. Keep a copy of the vault file and master password; losing either makes backups unrecoverable."
+[keepass_enabled_notice]
+other = "KeePass credential backups enabled"
+[keepass_disabled_notice]
+other = "KeePass credential backups disabled; vault file preserved"
+[keepass_created_save_failed]
+other = "Vault file created at {{.Path}} but saving configuration failed; use Link to activate it"
+[keepass_test_ok]
+other = "Vault opened successfully"
+[keepass_pending_empty]
+other = "No pending credential backups"
+[keepass_retry_done]
+other = "Backup sync finished: {{.Saved}} saved, {{.Deleted}} deleted"
+[keepass_retry_confirm_label]
+other = "Type the account ID to confirm backup removal:"
+[keepass_status_enabled]
+other = "enabled"
+[keepass_status_disabled]
+other = "disabled"
+[keepass_status_line]
+other = "Status: {{.Status}}  Path: {{.Path}}"
+[keepass_action_create]
+other = "Create new vault"
+[keepass_action_link]
+other = "Link existing vault"
+[keepass_action_test]
+other = "Test vault unlock"
+[keepass_action_pending]
+other = "Pending backups"
+[keepass_action_disable]
+other = "Disable backups"
+[keepass_action_back]
+other = "Back"
+[keepass_method_keepass]
+other = "Credential: KeePass vault"
+[keepass_method_manual]
+other = "Credential: manual password"
+[keepass_backup_pending_notice]
+other = "Operation completed; credential backup is pending — retry from Settings > KeePass backups"
+[keepass_err_auth]
+other = "Wrong master password"
+[keepass_err_busy]
+other = "Vault is busy; try again"
+[keepass_err_missing]
+other = "Vault or credential entry not found"
+[keepass_err_conflict]
+other = "Vault or configuration changed; reload and retry"
+[keepass_err_cancelled]
+other = "Operation cancelled"
+[keepass_err_failed]
+other = "KeePass operation failed"
+[keepass_err_durability]
+other = "Vault changes were installed, but durability could not be confirmed. Backup remains pending; retry to confirm it."
+[keepass_err_unavailable]
+other = "Credential backup service is not available"
+[passwords_do_not_match]
+other = "Passwords do not match"
+
+[keepass_remove_toggle]
+other = "Remove credential backup: {{.Status}}"
+
+[backup_suspended_resume]
+other = "Backup suspended. Resume it from the account details with the existing storage password."
+
+[keepass_confirmation_reauth]
+other = "KeePass authentication expired. Enter the existing wallet password to resume backup confirmation."
+
+[canonical_import_committed_notice]
+other = "Import committed to the vault."
+
+[keepass_commit_summary]
+other = "Backups: {{.Saved}} saved, {{.Pending}} pending."
+
+[keepass_delete_entries_warning]
+other = "All backup entries for this account will be removed from KeePass. Previous .bak copies are not affected."
+
+[keepass_item_account]
+other = "Account credentials"
+
+[keepass_lookup_label]
+other = "KeePass lookup for missing .pwd sidecars: {{.Status}}"
+
+[keepass_old_backups_warning]
+other = "Previously exported encrypted backups remain on disk and may still contain the old secrets."
+
+[keepass_pending_more]
+other = "... and {{.Count}} more pending entries. Use ↑/↓ to scroll."
+
+[keepass_pending_path_label]
+other = "Artifact file path"
+
+[keepass_source_kdbx]
+other = "[KeePass]"
+
+[keepass_source_password_label]
+other = "Source file password"
+
+[keepass_stage_syncing]
+other = "Syncing credential backups..."
+
+[keepass_state_delete_pending]
+other = "delete pending"
+
+[keepass_state_not_registered]
+other = "not registered"
+
+[keepass_state_pending]
+other = "pending"
+
+[keepass_state_prepared]
+other = "prepared"
+
+[keepass_state_synced]
+other = "synced"
+
+[keepass_wallet_password_label]
+other = "Wallet storage password"
+
+[vault_export_committed]
+other = "Export file written to {{.Path}}."
+
+[vault_password_rotated]
+other = "Storage password rotated."
+
+[keepass_master_weak]
+other = "Master password must be at least 12 characters"
+
+[keepass_password_required]
+other = "Enter the wallet storage password"
+
+[keepass_err_digest]
+other = "Selected file does not match the pending artifact"
+
+[keepass_config_warning]
+other = "Configuration was written but durability could not be fully confirmed"
+
+[keepass_config_committed_error]
+other = "Configuration was saved but activation failed: {{.Reason}}"
+
+[keepass_confirmed_notice]
+other = "Backup confirmed."

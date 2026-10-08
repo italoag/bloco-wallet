@@ -9,6 +9,7 @@ import (
 
 	"blocowallet/internal/constants"
 	"blocowallet/internal/wallet"
+	"blocowallet/pkg/localization"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -131,6 +132,7 @@ type safeResultMsg struct {
 	generation uint64
 	kind       string
 	result     string
+	deployment *SafeDeploymentSummary
 	err        error
 }
 
@@ -140,6 +142,7 @@ func (model *CLIModel) ConfigureSafeService(service SafeService) {
 }
 
 func (model *CLIModel) initSafeView() {
+	model.credentialUseKeePass = false
 	model.safeView = &safeViewState{phase: safeViewList}
 	model.currentView = constants.SafeView
 	if err := model.refreshSafeAccounts(); err != nil {
@@ -205,13 +208,13 @@ func (model *CLIModel) initSafeDeploy() {
 	state := model.safeView
 	state.phase = safeViewDeploy
 	state.nameInput = textinput.New()
-	state.nameInput.Placeholder = "Safe name"
+	state.nameInput.Placeholder = localization.Get("safe_name_placeholder")
 	state.nameInput.CharLimit = 64
 	state.ownersInput = textinput.New()
-	state.ownersInput.Placeholder = "Owner addresses, comma separated"
+	state.ownersInput.Placeholder = localization.Get("safe_owners_placeholder")
 	state.ownersInput.CharLimit = 1024
 	state.thresholdInput = textinput.New()
-	state.thresholdInput.Placeholder = "Threshold (e.g. 2)"
+	state.thresholdInput.Placeholder = localization.Get("safe_threshold_placeholder")
 	state.thresholdInput.CharLimit = 4
 	state.deployAccount = 0
 	state.deployAccounts = nil
@@ -228,10 +231,10 @@ func (model *CLIModel) initSafeImport() {
 	state := model.safeView
 	state.phase = safeViewImport
 	state.importNameInput = textinput.New()
-	state.importNameInput.Placeholder = "Safe name"
+	state.importNameInput.Placeholder = localization.Get("safe_name_placeholder")
 	state.importNameInput.CharLimit = 64
 	state.importAddrInput = textinput.New()
-	state.importAddrInput.Placeholder = "Safe address (checksummed)"
+	state.importAddrInput.Placeholder = localization.Get("safe_import_addr_placeholder")
 	state.importAddrInput.CharLimit = 42
 	state.err = ""
 	state.importNameInput.Focus()
@@ -241,13 +244,13 @@ func (model *CLIModel) initSafeProposals() {
 	state := model.safeView
 	state.phase = safeViewProposals
 	state.proposeToInput = textinput.New()
-	state.proposeToInput.Placeholder = "Recipient address"
+	state.proposeToInput.Placeholder = localization.Get("safe_to_placeholder")
 	state.proposeToInput.CharLimit = 42
 	state.proposeValueInput = textinput.New()
-	state.proposeValueInput.Placeholder = "Value in wei"
+	state.proposeValueInput.Placeholder = localization.Get("safe_value_placeholder")
 	state.proposeValueInput.CharLimit = 96
 	state.proposeDataInput = textinput.New()
-	state.proposeDataInput.Placeholder = "Calldata (hex, optional)"
+	state.proposeDataInput.Placeholder = localization.Get("safe_data_placeholder")
 	state.proposeDataInput.CharLimit = 4096
 	state.err = ""
 	if err := model.reloadSafeProposals(state); err != nil {
@@ -294,6 +297,9 @@ func (model *CLIModel) updateSafeView(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if err := model.reloadSafeProposals(state); err != nil {
 				state.err = safeError(err)
 			}
+		case "deploy_prepared":
+			state.deployment = message.deployment
+			state.phase = safeViewDeployRun
 		}
 		return model, nil
 	case tea.KeyMsg:
@@ -427,24 +433,24 @@ func (model *CLIModel) runSafeDeploy(state *safeViewState) tea.Cmd {
 	rawOwners := strings.TrimSpace(state.ownersInput.Value())
 	thresholdText := strings.TrimSpace(state.thresholdInput.Value())
 	if name == "" || rawOwners == "" || thresholdText == "" {
-		state.err = "Name, owners, and threshold are required."
+		state.err = localization.Get("safe_err_required")
 		return nil
 	}
 	threshold, err := strconv.ParseUint(thresholdText, 10, 64)
 	if err != nil {
-		state.err = "Threshold must be a positive integer."
+		state.err = localization.Get("safe_err_threshold_int")
 		return nil
 	}
 	owners := strings.Split(rawOwners, ",")
 	for index := range owners {
 		owners[index] = strings.TrimSpace(owners[index])
 		if !common.IsHexAddress(owners[index]) || common.HexToAddress(owners[index]).Hex() != owners[index] {
-			state.err = fmt.Sprintf("Owner %q must be a checksummed address.", owners[index])
+			state.err = localization.T("safe_err_owner_addr", map[string]interface{}{"Owner": owners[index]})
 			return nil
 		}
 	}
 	if threshold == 0 || threshold > uint64(len(owners)) {
-		state.err = "Threshold must be between 1 and the owner count."
+		state.err = localization.Get("safe_err_threshold_range")
 		return nil
 	}
 	state.generation++
@@ -458,8 +464,7 @@ func (model *CLIModel) runSafeDeploy(state *safeViewState) tea.Cmd {
 		if err != nil {
 			return safeResultMsg{generation: generation, kind: "deploy", err: err}
 		}
-		state.deployment = deployment
-		return safeResultMsg{generation: generation, kind: "deploy_prepared", result: deployment.SafeAddress.Hex()}
+		return safeResultMsg{generation: generation, kind: "deploy_prepared", result: deployment.SafeAddress.Hex(), deployment: deployment}
 	}
 }
 
@@ -469,34 +474,56 @@ func (model *CLIModel) updateSafeDeployRun(message tea.KeyMsg, state *safeViewSt
 		return nil
 	}
 	switch {
-	case keyIs(message, "down", "j"):
+	case keyIs(message, "down"):
 		if state.deployAccount < len(state.deployAccounts)-1 {
 			state.deployAccount++
 		}
-	case keyIs(message, "up", "k"):
+	case keyIs(message, "up"):
 		if state.deployAccount > 0 {
 			state.deployAccount--
 		}
+	case keyIs(message, "ctrl+k") && len(state.deployAccounts) > 0 && state.deployAccount >= 0 && state.deployAccount < len(state.deployAccounts) && model.credentialEligibleSigner(state.deployAccounts[state.deployAccount].SignerKind):
+		model.credentialUseKeePass = !model.credentialUseKeePass
+		if model.credentialUseKeePass {
+			state.password = ""
+		}
+		return nil
 	case keyIs(message, "enter"):
-		if len(state.deployAccounts) == 0 {
-			state.err = "No local account can pay the deployment fee."
+		if len(state.deployAccounts) == 0 || state.deployAccount < 0 || state.deployAccount >= len(state.deployAccounts) {
+			state.err = localization.Get("safe_err_no_deployer")
 			return nil
 		}
 		password := []byte(state.password)
 		state.password = ""
-		state.generation++
-		generation := state.generation
-		deployment := state.deployment
-		accountID := state.deployAccounts[state.deployAccount].AccountID
-		service := model.safeService
-		return func() tea.Msg {
-			defer clear(password)
-			hash, err := service.BroadcastDeploy(context.Background(), deployment, accountID, password)
-			if err != nil {
-				return safeResultMsg{generation: generation, kind: "deploy", err: err}
+		deployer := state.deployAccounts[state.deployAccount]
+		useKeePass := model.credentialUseKeePass && model.credentialEligibleSigner(deployer.SignerKind)
+		deploy := func() tea.Cmd {
+			state.generation++
+			generation := state.generation
+			deployment := state.deployment
+			accountID := deployer.AccountID
+			service := model.safeService
+			ctx, cancel, op := model.credentialWorkerContext(canonicalImportTimeout)
+			worker := func() tea.Msg {
+				defer clear(password)
+				defer cancel()
+				if op != nil {
+					defer op.Close()
+				}
+				var hash string
+				err := runWithAccountCredential(ctx, op, accountID, password, useKeePass, func(resolved []byte) error {
+					var inner error
+					hash, inner = service.BroadcastDeploy(ctx, deployment, accountID, resolved)
+					return inner
+				})
+				if err != nil {
+					return safeResultMsg{generation: generation, kind: "deploy", err: err}
+				}
+				return safeResultMsg{generation: generation, kind: "deploy", result: localization.T("safe_deployed_result", map[string]interface{}{"Address": deployment.SafeAddress.Hex(), "Tx": hash})}
 			}
-			return safeResultMsg{generation: generation, kind: "deploy", result: "Deployed " + deployment.SafeAddress.Hex() + " tx=" + hash}
+			return tea.Sequence(worker, func() tea.Msg { return credentialOpDoneMsg{op: op} })
 		}
+		return model.submitWithCredentialCancel(useKeePass, deploy, func() { clear(password) })
 	case message.Type == tea.KeyBackspace:
 		if len(state.password) > 0 {
 			state.password = state.password[:len(state.password)-1]
@@ -515,7 +542,7 @@ func (model *CLIModel) updateSafeImport(message tea.KeyMsg, state *safeViewState
 		name := strings.TrimSpace(state.importNameInput.Value())
 		address := strings.TrimSpace(state.importAddrInput.Value())
 		if name == "" || !common.IsHexAddress(address) || common.HexToAddress(address).Hex() != address {
-			state.err = "A name and a checksummed address are required."
+			state.err = localization.Get("safe_err_import_required")
 			return nil
 		}
 		state.generation++
@@ -527,7 +554,7 @@ func (model *CLIModel) updateSafeImport(message tea.KeyMsg, state *safeViewState
 			if err != nil {
 				return safeResultMsg{generation: generation, kind: "import", err: err}
 			}
-			return safeResultMsg{generation: generation, kind: "import", result: "Imported " + address}
+			return safeResultMsg{generation: generation, kind: "import", result: localization.T("safe_imported_result", map[string]interface{}{"Address": address})}
 		}
 	}
 	if keyIs(message, "tab") {
@@ -554,12 +581,12 @@ func (model *CLIModel) updateSafeProposals(message tea.KeyMsg, state *safeViewSt
 			to := strings.TrimSpace(state.proposeToInput.Value())
 			value := strings.TrimSpace(state.proposeValueInput.Value())
 			if !common.IsHexAddress(to) {
-				state.err = "Recipient must be a valid address."
+				state.err = localization.Get("safe_err_recipient")
 				return nil
 			}
 			amount, ok := new(big.Int).SetString(value, 10)
 			if !ok || amount.Sign() < 0 {
-				state.err = "Value must be a non-negative integer in wei."
+				state.err = localization.Get("safe_err_value")
 				return nil
 			}
 			var calldata []byte
@@ -567,7 +594,7 @@ func (model *CLIModel) updateSafeProposals(message tea.KeyMsg, state *safeViewSt
 			if dataText != "" {
 				trimmed := strings.TrimPrefix(dataText, "0x")
 				if len(trimmed)%2 != 0 {
-					state.err = "Calldata must be even-length hex."
+					state.err = localization.Get("safe_err_calldata")
 					return nil
 				}
 				calldata = common.FromHex(trimmed)
@@ -581,7 +608,7 @@ func (model *CLIModel) updateSafeProposals(message tea.KeyMsg, state *safeViewSt
 				if err != nil {
 					return safeResultMsg{generation: generation, kind: "propose", err: err}
 				}
-				return safeResultMsg{generation: generation, kind: "propose", result: "Proposed " + proposalID}
+				return safeResultMsg{generation: generation, kind: "propose", result: localization.T("safe_proposed_result", map[string]interface{}{"ID": proposalID})}
 			}
 		}
 		if state.proposeToInput.Focused() {
@@ -639,7 +666,7 @@ func (model *CLIModel) updateSafeDetails(message tea.KeyMsg, state *safeViewStat
 			return nil
 		}
 		if len(state.owners) == 0 {
-			state.err = "No local owner account can sign this proposal."
+			state.err = localization.Get("safe_err_no_signer")
 			return nil
 		}
 		state.phase = safeViewSigning
@@ -665,25 +692,47 @@ func (model *CLIModel) updateSafeDetails(message tea.KeyMsg, state *safeViewStat
 }
 
 func (model *CLIModel) updateSafeSigning(message tea.KeyMsg, state *safeViewState) tea.Cmd {
+	if state.ownerIndex < 0 || state.ownerIndex >= len(state.owners) {
+		return nil
+	}
+	owner := state.owners[state.ownerIndex]
 	switch {
+	case keyIs(message, "ctrl+k") && model.credentialEligibleSigner(owner.SignerKind):
+		model.credentialUseKeePass = !model.credentialUseKeePass
+		if model.credentialUseKeePass {
+			state.password = ""
+		}
+		return nil
 	case keyIs(message, "enter"):
 		password := []byte(state.password)
 		state.password = ""
 		state.err = ""
-		state.generation++
-		generation := state.generation
-		proposalID := state.proposal.ProposalID
-		ownerAccountID := state.owners[state.ownerIndex].AccountID
-		chainID := state.chainID
-		service := model.safeService
-		return func() tea.Msg {
-			defer clear(password)
-			err := service.Sign(context.Background(), proposalID, ownerAccountID, chainID, password)
-			if err != nil {
-				return safeResultMsg{generation: generation, kind: "sign", err: err}
+		useKeePass := model.credentialUseKeePass && model.credentialEligibleSigner(owner.SignerKind)
+		sign := func() tea.Cmd {
+			state.generation++
+			generation := state.generation
+			proposalID := state.proposal.ProposalID
+			ownerAccountID := owner.AccountID
+			chainID := state.chainID
+			service := model.safeService
+			ctx, cancel, op := model.credentialWorkerContext(canonicalImportTimeout)
+			worker := func() tea.Msg {
+				defer clear(password)
+				defer cancel()
+				if op != nil {
+					defer op.Close()
+				}
+				err := runWithAccountCredential(ctx, op, ownerAccountID, password, useKeePass, func(resolved []byte) error {
+					return service.Sign(ctx, proposalID, ownerAccountID, chainID, resolved)
+				})
+				if err != nil {
+					return safeResultMsg{generation: generation, kind: "sign", err: err}
+				}
+				return safeResultMsg{generation: generation, kind: "sign", result: localization.Get("safe_signed_result")}
 			}
-			return safeResultMsg{generation: generation, kind: "sign", result: "Owner signature recorded."}
+			return tea.Sequence(worker, func() tea.Msg { return credentialOpDoneMsg{op: op} })
 		}
+		return model.submitWithCredentialCancel(useKeePass, sign, func() { clear(password) })
 	case message.Type == tea.KeyBackspace:
 		if len(state.password) > 0 {
 			state.password = state.password[:len(state.password)-1]
@@ -698,35 +747,57 @@ func (model *CLIModel) updateSafeSigning(message tea.KeyMsg, state *safeViewStat
 
 func (model *CLIModel) updateSafeExecute(message tea.KeyMsg, state *safeViewState) tea.Cmd {
 	switch {
-	case keyIs(message, "down", "j"):
+	case keyIs(message, "down"):
 		if state.gasIndex < len(state.gasPayers)-1 {
 			state.gasIndex++
 		}
-	case keyIs(message, "up", "k"):
+	case keyIs(message, "up"):
 		if state.gasIndex > 0 {
 			state.gasIndex--
 		}
+	case keyIs(message, "ctrl+k") && len(state.gasPayers) > 0 && state.gasIndex < len(state.gasPayers) && model.credentialEligibleSigner(state.gasPayers[state.gasIndex].SignerKind):
+		model.credentialUseKeePass = !model.credentialUseKeePass
+		if model.credentialUseKeePass {
+			state.password = ""
+		}
+		return nil
 	case keyIs(message, "enter"):
-		if len(state.gasPayers) == 0 {
-			state.err = "No local account can pay the execution fee."
+		if len(state.gasPayers) == 0 || state.gasIndex < 0 || state.gasIndex >= len(state.gasPayers) {
+			state.err = localization.Get("safe_err_no_payer")
 			return nil
 		}
 		password := []byte(state.password)
 		state.password = ""
-		state.generation++
-		generation := state.generation
-		proposalID := state.proposal.ProposalID
-		gasPayerID := state.gasPayers[state.gasIndex].AccountID
-		chainID := state.chainID
-		service := model.safeService
-		return func() tea.Msg {
-			defer clear(password)
-			hash, err := service.Execute(context.Background(), proposalID, gasPayerID, chainID, password)
-			if err != nil {
-				return safeResultMsg{generation: generation, kind: "execute", err: err}
+		gasPayer := state.gasPayers[state.gasIndex]
+		useKeePass := model.credentialUseKeePass && model.credentialEligibleSigner(gasPayer.SignerKind)
+		execute := func() tea.Cmd {
+			state.generation++
+			generation := state.generation
+			proposalID := state.proposal.ProposalID
+			gasPayerID := gasPayer.AccountID
+			chainID := state.chainID
+			service := model.safeService
+			ctx, cancel, op := model.credentialWorkerContext(canonicalImportTimeout)
+			worker := func() tea.Msg {
+				defer clear(password)
+				defer cancel()
+				if op != nil {
+					defer op.Close()
+				}
+				var hash string
+				err := runWithAccountCredential(ctx, op, gasPayerID, password, useKeePass, func(resolved []byte) error {
+					var inner error
+					hash, inner = service.Execute(ctx, proposalID, gasPayerID, chainID, resolved)
+					return inner
+				})
+				if err != nil {
+					return safeResultMsg{generation: generation, kind: "execute", err: err}
+				}
+				return safeResultMsg{generation: generation, kind: "execute", result: localization.T("safe_executed_result", map[string]interface{}{"Tx": hash})}
 			}
-			return safeResultMsg{generation: generation, kind: "execute", result: "Executed tx=" + hash}
+			return tea.Sequence(worker, func() tea.Msg { return credentialOpDoneMsg{op: op} })
 		}
+		return model.submitWithCredentialCancel(useKeePass, execute, func() { clear(password) })
 	case message.Type == tea.KeyBackspace:
 		if len(state.password) > 0 {
 			state.password = state.password[:len(state.password)-1]
@@ -788,7 +859,7 @@ func (model *CLIModel) loadSafeOwners(state *safeViewState) {
 func (model *CLIModel) viewSafe() string {
 	state := model.safeView
 	if state == nil {
-		return "Safe view unavailable."
+		return localization.Get("safe_view_unavailable")
 	}
 	if state.err != "" {
 		return model.styles.ErrorStyle.Render(safeInline(state.err))
@@ -840,12 +911,12 @@ func (model *CLIModel) viewSafeList(state *safeViewState) string {
 	if state.networkIndex < len(state.networks) {
 		networkName = state.networks[state.networkIndex].Name
 	}
-	networkLine := model.styles.SafeFieldLabel.Render("Network: ") +
+	networkLine := model.styles.SafeFieldLabel.Render(localization.Get("safe_network_prefix")) +
 		model.styles.SelectedStyle.Render(safeShort(networkName)) +
-		model.styles.SafeFieldLabel.Render("  (r: switch)")
+		model.styles.SafeFieldLabel.Render(localization.Get("safe_network_switch"))
 	body.WriteString(networkLine + "\n\n")
 	if len(state.accounts) == 0 {
-		body.WriteString(model.styles.SafeFieldLabel.Render("No Safe accounts yet. Press n to deploy one or i to import.") + "\n")
+		body.WriteString(model.styles.SafeFieldLabel.Render(localization.Get("safe_no_accounts")) + "\n")
 	} else {
 		rows := make([]string, 0, len(state.accounts))
 		for _, account := range state.accounts {
@@ -856,29 +927,28 @@ func (model *CLIModel) viewSafeList(state *safeViewState) string {
 		if summary, err := model.safeService.SummarizeSafe(context.Background(), selected.AccountID, state.chainID); err == nil {
 			_, _ = fmt.Fprintf(&body, "\n%s\n", safeShort(selected.Address.Hex()))
 			if summary.Deployed {
-				_, _ = fmt.Fprintf(&body, "Deployed: yes • owners: %d • threshold: %d • nonce: %s\n",
-					len(summary.Owners), summary.Threshold, summary.Nonce.String())
+				_, _ = body.WriteString(localization.T("safe_deployed_yes", map[string]interface{}{"Owners": len(summary.Owners), "Threshold": summary.Threshold, "Nonce": summary.Nonce.String()}) + "\n")
 			} else {
-				body.WriteString("Deployed: no (pending deployment)\n")
+				body.WriteString(localization.Get("safe_deployed_no") + "\n")
 			}
 		}
 	}
 	panel := model.styles.SafePanel.Render(body.String())
-	help := model.safeHelpBar("n/c deploy • i import • enter proposals • r network • esc back")
-	return lipgloss.JoinVertical(lipgloss.Left, model.safeTitle("Safe multisig"), panel, state.done, state.err, help)
+	help := model.safeHelpBar(localization.Get("safe_help_list"))
+	return lipgloss.JoinVertical(lipgloss.Left, model.safeTitle(localization.Get("safe_menu_title")), panel, state.done, state.err, help)
 }
 
 func (model *CLIModel) viewSafeDeploy(state *safeViewState) string {
 	var body strings.Builder
-	body.WriteString(model.styles.SafeFieldLabel.Render("Name") + "\n")
+	body.WriteString(model.styles.SafeFieldLabel.Render(localization.Get("safe_field_name")) + "\n")
 	body.WriteString(state.nameInput.View() + "\n\n")
-	body.WriteString(model.styles.SafeFieldLabel.Render("Owners (checksummed, comma separated)") + "\n")
+	body.WriteString(model.styles.SafeFieldLabel.Render(localization.Get("safe_field_owners")) + "\n")
 	body.WriteString(state.ownersInput.View() + "\n\n")
-	body.WriteString(model.styles.SafeFieldLabel.Render("Threshold") + "\n")
+	body.WriteString(model.styles.SafeFieldLabel.Render(localization.Get("safe_field_threshold")) + "\n")
 	body.WriteString(state.thresholdInput.View())
 	panel := model.styles.SafePanel.Render(body.String())
-	help := model.safeHelpBar("tab: next field • enter: prepare • esc: back")
-	return lipgloss.JoinVertical(lipgloss.Left, model.safeTitle("Deploy a new Safe — official v1.5.0 contracts"), panel, state.err, help)
+	help := model.safeHelpBar(localization.Get("safe_help_deploy"))
+	return lipgloss.JoinVertical(lipgloss.Left, model.safeTitle(localization.Get("safe_deploy_title")), panel, state.err, help)
 }
 
 func (model *CLIModel) viewSafeDeployRun(state *safeViewState) string {
@@ -887,16 +957,16 @@ func (model *CLIModel) viewSafeDeployRun(state *safeViewState) string {
 		return model.viewSafeDeploy(state)
 	}
 	var rows strings.Builder
-	rows.WriteString(model.styles.SafeFieldLabel.Render("Fund the predicted Safe address first:") + "\n")
+	rows.WriteString(model.styles.SafeFieldLabel.Render(localization.Get("safe_fund_address")) + "\n")
 	_, _ = fmt.Fprintf(&rows, "%s\n\n", safeShort(state.deployment.SafeAddress.Hex()))
-	rows.WriteString(model.styles.SafeFieldLabel.Render("Deployer paying the factory call:") + "\n")
+	rows.WriteString(model.styles.SafeFieldLabel.Render(localization.Get("safe_deployer_label")) + "\n")
 	for _, account := range state.deployAccounts {
 		_, _ = fmt.Fprintf(&rows, "%-18s  %s\n", safeShort(account.Name), safeShort(account.Address))
 	}
 	panel := model.styles.SafePanel.Render(model.safeRows(splitLines(rows.String()), state.deployAccount))
-	password := model.styles.SafeFieldLabel.Render("Storage password: " + strings.Repeat("•", len(state.password)))
-	help := model.safeHelpBar("up/down: deployer • enter: broadcast • esc: back")
-	return lipgloss.JoinVertical(lipgloss.Left, model.safeTitle("Deploy Safe"), panel, password, state.err, help)
+	password := model.styles.SafeFieldLabel.Render(localization.Get("safe_password_label") + strings.Repeat("•", len(state.password)))
+	help := model.safeHelpBar(localization.Get("safe_help_deploy_run"))
+	return lipgloss.JoinVertical(lipgloss.Left, model.safeTitle(localization.Get("safe_deploy_run_title")), panel, password, state.err, help)
 }
 
 func splitLines(value string) []string {
@@ -909,27 +979,27 @@ func splitLines(value string) []string {
 
 func (model *CLIModel) viewSafeImport(state *safeViewState) string {
 	var body strings.Builder
-	body.WriteString(model.styles.SafeFieldLabel.Render("Name") + "\n")
+	body.WriteString(model.styles.SafeFieldLabel.Render(localization.Get("safe_field_name")) + "\n")
 	body.WriteString(state.importNameInput.View() + "\n\n")
-	body.WriteString(model.styles.SafeFieldLabel.Render("Safe address (checksummed)") + "\n")
+	body.WriteString(model.styles.SafeFieldLabel.Render(localization.Get("safe_import_addr_placeholder")) + "\n")
 	body.WriteString(state.importAddrInput.View())
 	panel := model.styles.SafePanel.Render(body.String())
-	help := model.safeHelpBar("enter: import • tab: next field • esc: back")
-	return lipgloss.JoinVertical(lipgloss.Left, model.safeTitle("Import an existing Safe"), panel, state.err, help)
+	help := model.safeHelpBar(localization.Get("safe_help_import"))
+	return lipgloss.JoinVertical(lipgloss.Left, model.safeTitle(localization.Get("safe_import_title")), panel, state.err, help)
 }
 
 func (model *CLIModel) viewSafeProposals(state *safeViewState) string {
 	account := state.accounts[state.selected]
 	var form strings.Builder
-	form.WriteString(model.styles.SafeFieldLabel.Render("New proposal — Recipient") + "\n")
+	form.WriteString(model.styles.SafeFieldLabel.Render(localization.Get("safe_proposal_recipient")) + "\n")
 	form.WriteString(state.proposeToInput.View() + "\n")
-	form.WriteString(model.styles.SafeFieldLabel.Render("Value (wei)") + "\n")
+	form.WriteString(model.styles.SafeFieldLabel.Render(localization.Get("safe_value_wei")) + "\n")
 	form.WriteString(state.proposeValueInput.View() + "\n")
-	form.WriteString(model.styles.SafeFieldLabel.Render("Calldata (hex, optional)") + "\n")
+	form.WriteString(model.styles.SafeFieldLabel.Render(localization.Get("safe_calldata_label")) + "\n")
 	form.WriteString(state.proposeDataInput.View())
 	var list strings.Builder
 	if len(state.proposals) == 0 {
-		list.WriteString(model.styles.SafeFieldLabel.Render("(no proposals yet)"))
+		list.WriteString(model.styles.SafeFieldLabel.Render(localization.Get("safe_no_proposals")))
 	} else {
 		rows := make([]string, 0, len(state.proposals))
 		for _, proposal := range state.proposals {
@@ -941,28 +1011,28 @@ func (model *CLIModel) viewSafeProposals(state *safeViewState) string {
 	}
 	panel := model.styles.SafePanel.Render(
 		lipgloss.JoinVertical(lipgloss.Left,
-			model.styles.SafeSectionTitle.Render("New proposal"),
+			model.styles.SafeSectionTitle.Render(localization.Get("safe_section_new_proposal")),
 			form.String(),
 			"",
-			model.styles.SafeSectionTitle.Render("Proposals"),
+			model.styles.SafeSectionTitle.Render(localization.Get("safe_section_proposals")),
 			list.String(),
 		),
 	)
-	help := model.safeHelpBar("enter: propose • tab: next field • enter/a: review proposal • esc: back")
-	return lipgloss.JoinVertical(lipgloss.Left, model.safeTitle(safeShort(account.Name)+" — proposals"), panel, state.done, state.err, help)
+	help := model.safeHelpBar(localization.Get("safe_help_proposals"))
+	return lipgloss.JoinVertical(lipgloss.Left, model.safeTitle(localization.T("safe_proposals_title", map[string]interface{}{"Name": safeShort(account.Name)})), panel, state.done, state.err, help)
 }
 
 func (model *CLIModel) viewSafeDetails(state *safeViewState) string {
 	if state.proposal == nil {
-		return model.safeTitle("No proposal selected")
+		return model.safeTitle(localization.Get("safe_no_proposal"))
 	}
 	var body strings.Builder
-	_, _ = fmt.Fprintf(&body, "Proposal: %s\n", safeShort(state.proposal.ProposalID))
-	_, _ = fmt.Fprintf(&body, "To: %s\n", safeShort(state.proposal.To.Hex()))
-	_, _ = fmt.Fprintf(&body, "Value: %s\n", state.proposal.Value.String())
-	_, _ = fmt.Fprintf(&body, "Digest: %x\n", state.proposal.Digest)
-	_, _ = fmt.Fprintf(&body, "Signatures: %d/%d\n", state.proposal.Signatures, state.proposal.Threshold)
-	body.WriteString("\nOwners available to sign:\n")
+	_, _ = body.WriteString(localization.T("safe_proposal_line", map[string]interface{}{"ID": safeShort(state.proposal.ProposalID)}) + "\n")
+	_, _ = body.WriteString(localization.T("safe_to_line", map[string]interface{}{"To": safeShort(state.proposal.To.Hex())}) + "\n")
+	_, _ = body.WriteString(localization.T("safe_value_line", map[string]interface{}{"Value": state.proposal.Value.String()}) + "\n")
+	_, _ = body.WriteString(localization.T("safe_digest_line", map[string]interface{}{"Digest": fmt.Sprintf("%x", state.proposal.Digest)}) + "\n")
+	_, _ = body.WriteString(localization.T("safe_signatures_line", map[string]interface{}{"Sigs": state.proposal.Signatures, "Threshold": state.proposal.Threshold}) + "\n")
+	body.WriteString("\n" + localization.Get("safe_owners_header") + "\n")
 	for index, owner := range state.owners {
 		marker := "  "
 		if index == state.ownerIndex {
@@ -971,23 +1041,23 @@ func (model *CLIModel) viewSafeDetails(state *safeViewState) string {
 		_, _ = fmt.Fprintf(&body, "%s%s  %s\n", marker, safeShort(owner.Name), safeShort(owner.Address))
 	}
 	panel := model.styles.SafePanel.Render(body.String())
-	help := model.safeHelpBar("up/down: owner • a: sign • x: execute • esc: back")
-	return lipgloss.JoinVertical(lipgloss.Left, model.safeTitle("Proposal details"), panel, state.done, state.err, help)
+	help := model.safeHelpBar(localization.Get("safe_help_details"))
+	return lipgloss.JoinVertical(lipgloss.Left, model.safeTitle(localization.Get("safe_details_title")), panel, state.done, state.err, help)
 }
 
 func (model *CLIModel) viewSafeSigning(state *safeViewState) string {
 	owner := state.owners[state.ownerIndex]
 	var body strings.Builder
-	_, _ = fmt.Fprintf(&body, "Signing as %s  %s\n\n", safeShort(owner.Name), safeShort(owner.Address))
-	body.WriteString("Storage password: " + strings.Repeat("•", len(state.password)))
+	_, _ = body.WriteString(localization.T("safe_signing_as", map[string]interface{}{"Name": safeShort(owner.Name), "Address": safeShort(owner.Address)}) + "\n\n")
+	body.WriteString(localization.Get("safe_password_label") + strings.Repeat("•", len(state.password)))
 	panel := model.styles.SafePanel.Render(body.String())
-	help := model.safeHelpBar("enter: sign • esc: back")
-	return lipgloss.JoinVertical(lipgloss.Left, model.safeTitle("Confirm owner signature"), panel, state.err, help)
+	help := model.safeHelpBar(localization.Get("safe_help_sign"))
+	return lipgloss.JoinVertical(lipgloss.Left, model.safeTitle(localization.Get("safe_sign_title")), panel, state.err, help)
 }
 
 func (model *CLIModel) viewSafeExecute(state *safeViewState) string {
 	var rows strings.Builder
-	rows.WriteString("Gas payer (pays the execution fee):\n\n")
+	rows.WriteString(localization.Get("safe_gas_payer") + "\n\n")
 	for index, account := range state.gasPayers {
 		marker := "  "
 		if index == state.gasIndex {
@@ -996,9 +1066,9 @@ func (model *CLIModel) viewSafeExecute(state *safeViewState) string {
 		_, _ = fmt.Fprintf(&rows, "%s%s  %s\n", marker, safeShort(account.Name), safeShort(account.Address))
 	}
 	panel := model.styles.SafePanel.Render(rows.String())
-	password := model.styles.SafeFieldLabel.Render("Storage password: " + strings.Repeat("•", len(state.password)))
-	help := model.safeHelpBar("up/down: gas payer • enter: execute • esc: back")
-	return lipgloss.JoinVertical(lipgloss.Left, model.safeTitle("Execute proposal"), panel, password, state.err, help)
+	password := model.styles.SafeFieldLabel.Render(localization.Get("safe_password_label") + strings.Repeat("•", len(state.password)))
+	help := model.safeHelpBar(localization.Get("safe_help_execute"))
+	return lipgloss.JoinVertical(lipgloss.Left, model.safeTitle(localization.Get("safe_execute_title")), panel, password, state.err, help)
 }
 
 func keyIs(message tea.KeyMsg, keys ...string) bool {

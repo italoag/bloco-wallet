@@ -7,7 +7,6 @@ import (
 	"blocowallet/pkg/localization"
 	"context"
 	"errors"
-	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -22,7 +21,7 @@ func (m *CLIModel) ensureConfigAndNetworksLoaded() error {
 	if m.currentConfig == nil {
 		cfg, err := loadOrCreateConfig()
 		if err != nil {
-			return fmt.Errorf("failed to load configuration: %w", err)
+			return localization.WrapError("net_err_load_config", err)
 		}
 		m.currentConfig = cfg
 	}
@@ -30,7 +29,7 @@ func (m *CLIModel) ensureConfigAndNetworksLoaded() error {
 	// Ensure networks are properly loaded using NetworkManager
 	networks, err := loadNetworksWithManager()
 	if err != nil {
-		return fmt.Errorf("failed to load networks: %w", err)
+		return localization.WrapError("net_err_load_networks", err)
 	}
 
 	// Update the current config with loaded networks
@@ -111,17 +110,17 @@ func networkListReloadCmd(networkKey string, network *config.Network) tea.Cmd {
 		if err != nil {
 			return networkListReloadMsg{err: err}
 		}
-		status := "Network information refreshed"
+		status := localization.Get("net_status_refreshed")
 		if network != nil {
 			for key, networkInfo := range info {
 				if networkInfo.Network.ChainID == network.ChainID {
 					networkInfo.IsValidated = true
 					networkInfo.PreviouslyValidated = true
-					networkInfo.CurrentHealth = "reachable and chain ID verified now"
+					networkInfo.CurrentHealth = "verified"
 					info[key] = networkInfo
 				}
 			}
-			status = "Network provider and chain identity revalidated"
+			status = localization.Get("net_status_revalidated")
 		}
 		return networkListReloadMsg{config: cfg, info: info, status: status}
 	}
@@ -143,26 +142,26 @@ func (m *CLIModel) updateNetworkList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Edit the selected network
 			key := m.networkListComponent.GetSelectedNetworkKey()
 			if key == "" {
-				m.networkListComponent.SetError(errors.New(localization.Labels["no_network_selected"]))
+				m.networkListComponent.SetError(errors.New(localization.Get("no_network_selected")))
 				return m, nil
 			}
 
 			// Ensure configuration and networks are loaded
 			if err := m.ensureConfigAndNetworksLoaded(); err != nil {
-				m.networkListComponent.SetError(fmt.Errorf("failed to load configuration: %v", err))
+				m.networkListComponent.SetError(localization.WrapError("net_err_load_config", err))
 				return m, nil
 			}
 
 			// Check if we have networks
 			if len(m.currentConfig.Networks) == 0 {
-				m.networkListComponent.SetError(errors.New(localization.Labels["no_network_selected"]))
+				m.networkListComponent.SetError(errors.New(localization.Get("no_network_selected")))
 				return m, nil
 			}
 
 			// Get the network to edit
 			network, exists := m.currentConfig.Networks[key]
 			if !exists {
-				m.networkListComponent.SetError(fmt.Errorf("network not found"))
+				m.networkListComponent.SetError(errors.New(localization.Get("net_err_not_found")))
 				return m, nil
 			}
 
@@ -195,32 +194,32 @@ func (m *CLIModel) updateNetworkList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Delete the selected network
 			key := m.networkListComponent.GetSelectedNetworkKey()
 			if key == "" {
-				m.networkListComponent.SetError(errors.New(localization.Labels["no_network_selected"]))
+				m.networkListComponent.SetError(errors.New(localization.Get("no_network_selected")))
 				return m, nil
 			}
 
 			// Ensure configuration and networks are loaded
 			if err := m.ensureConfigAndNetworksLoaded(); err != nil {
-				m.networkListComponent.SetError(fmt.Errorf("failed to load configuration: %v", err))
+				m.networkListComponent.SetError(localization.WrapError("net_err_load_config", err))
 				return m, nil
 			}
 
 			// Check if we have networks
 			if len(m.currentConfig.Networks) == 0 {
-				m.networkListComponent.SetError(errors.New(localization.Labels["no_network_selected"]))
+				m.networkListComponent.SetError(errors.New(localization.Get("no_network_selected")))
 				return m, nil
 			}
 
 			// Remove the network using NetworkManager
 			err := removeNetworkWithManager(key)
 			if err != nil {
-				m.networkListComponent.SetError(fmt.Errorf("failed to remove network: %v", err))
+				m.networkListComponent.SetError(localization.WrapError("net_err_remove", err))
 				return m, nil
 			}
 
 			// Reload configuration to get the updated networks
 			if err := m.ensureConfigAndNetworksLoaded(); err != nil {
-				m.networkListComponent.SetError(fmt.Errorf("failed to reload configuration: %v", err))
+				m.networkListComponent.SetError(localization.WrapError("net_err_reload_config", err))
 				return m, nil
 			}
 
@@ -230,22 +229,22 @@ func (m *CLIModel) updateNetworkList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case key.Matches(msg, m.networkListComponent.keys.Refresh):
-			m.networkListComponent.SetBusy("Reloading stored network information...")
+			m.networkListComponent.SetBusy(localization.Get("net_busy_reload"))
 			m.networkListComponent.updateKeyAvailability()
 			return m, networkListReloadCmd("", nil)
 
 		case key.Matches(msg, m.networkListComponent.keys.Revalidate):
 			networkKey := m.networkListComponent.GetSelectedNetworkKey()
 			if networkKey == "" || m.currentConfig == nil {
-				m.networkListComponent.SetError(errors.New(localization.Labels["no_network_selected"]))
+				m.networkListComponent.SetError(errors.New(localization.Get("no_network_selected")))
 				return m, nil
 			}
 			network, exists := m.currentConfig.Networks[networkKey]
 			if !exists {
-				m.networkListComponent.SetError(fmt.Errorf("network not found"))
+				m.networkListComponent.SetError(errors.New(localization.Get("net_err_not_found")))
 				return m, nil
 			}
-			m.networkListComponent.SetBusy("Revalidating provider, chain identity, registry metadata, and privacy information...")
+			m.networkListComponent.SetBusy(localization.Get("net_busy_revalidate"))
 			m.networkListComponent.updateKeyAvailability()
 			return m, networkListReloadCmd(networkKey, &network)
 
@@ -281,7 +280,7 @@ func (m *CLIModel) updateNetworkList(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Ensure configuration and networks are loaded
 		if err := m.ensureConfigAndNetworksLoaded(); err != nil {
-			m.err = fmt.Errorf("failed to load configuration: %v", err)
+			m.err = localization.WrapError("net_err_load_config", err)
 			m.currentView = constants.DefaultView
 			return m, nil
 		}
@@ -302,7 +301,7 @@ func (m *CLIModel) updateNetworkList(msg tea.Msg) (tea.Model, tea.Cmd) {
 // saveConfigToFile saves the current configuration to the config file using ConfigurationManager
 func (m *CLIModel) saveConfigToFile() error {
 	if m.currentConfig == nil {
-		return fmt.Errorf("no configuration to save")
+		return errors.New(localization.Get("net_err_no_config_save"))
 	}
 
 	// Get the ConfigurationManager
@@ -313,13 +312,13 @@ func (m *CLIModel) saveConfigToFile() error {
 		// Try to load the configuration to initialize the ConfigurationManager
 		_, err := cm.LoadConfiguration()
 		if err != nil {
-			return fmt.Errorf("failed to initialize configuration manager: %w", err)
+			return localization.WrapError("net_err_init_config_mgr", err)
 		}
 	}
 
 	// Save the configuration
 	if err := cm.SaveConfiguration(m.currentConfig); err != nil {
-		return fmt.Errorf("failed to save configuration: %w", err)
+		return localization.WrapError("net_err_save_config", err)
 	}
 
 	return nil
@@ -352,16 +351,16 @@ func (m *CLIModel) updateAddNetwork(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.addNetworkComponent.adding = false
 		if msg.err != nil {
-			m.addNetworkComponent.SetError(fmt.Errorf("network operation failed: %w", msg.err))
+			m.addNetworkComponent.SetError(localization.WrapError("net_op_failed_wrap", msg.err))
 			return m, nil
 		}
-		feedback := "Network added successfully"
+		feedback := localization.Get("net_feedback_added")
 		if msg.edited {
-			feedback = "Network updated successfully"
+			feedback = localization.Get("net_feedback_updated")
 		} else if msg.classification != nil && msg.classification.Type == blockchain.NetworkTypeStandard {
-			feedback = "Network added as a registry-listed network"
+			feedback = localization.Get("net_feedback_added_registry")
 		} else if msg.classification != nil && msg.classification.Type == blockchain.NetworkTypeCustom {
-			feedback = "Network added as a custom network"
+			feedback = localization.Get("net_feedback_added_custom")
 		}
 		m.lastOperationNotice = feedback
 		m.editingNetworkKey = ""
@@ -386,23 +385,23 @@ func (m *CLIModel) updateAddNetwork(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Parse and validate chain ID
 		chainID, err := strconv.ParseInt(msg.ChainID, 10, 64)
 		if err != nil {
-			m.addNetworkComponent.SetError(errors.New(localization.Labels["invalid_chain_id"]))
+			m.addNetworkComponent.SetError(errors.New(localization.Get("invalid_chain_id")))
 			return m, nil
 		}
 
 		// Validate required fields
 		if strings.TrimSpace(msg.Name) == "" {
-			m.addNetworkComponent.SetError(fmt.Errorf("network name cannot be empty"))
+			m.addNetworkComponent.SetError(errors.New(localization.Get("net_err_name_empty")))
 			return m, nil
 		}
 
 		if strings.TrimSpace(msg.RPCEndpoint) == "" && strings.TrimSpace(msg.RPCEndpointRef) == "" {
-			m.addNetworkComponent.SetError(fmt.Errorf("RPC endpoint or credential reference cannot be empty"))
+			m.addNetworkComponent.SetError(errors.New(localization.Get("net_err_rpc_empty")))
 			return m, nil
 		}
 
 		if strings.TrimSpace(msg.Symbol) == "" {
-			m.addNetworkComponent.SetError(fmt.Errorf("symbol cannot be empty"))
+			m.addNetworkComponent.SetError(errors.New(localization.Get("net_err_symbol_empty")))
 			return m, nil
 		}
 

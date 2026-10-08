@@ -7,6 +7,8 @@ import (
 	"net/netip"
 	"net/url"
 	"os"
+	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -46,6 +48,13 @@ type persistentNetworkPolicyConfig struct {
 	AllowedLocalTargets []string `toml:"allowed_local_targets"`
 }
 
+type persistentKeePassConfig struct {
+	Enabled  bool   `toml:"enabled"`
+	Path     string `toml:"path,omitempty"`
+	TargetID string `toml:"target_id,omitempty"`
+	VaultID  string `toml:"vault_id,omitempty"`
+}
+
 type persistentNetworkConfig struct {
 	Name               string `toml:"name"`
 	RPCEndpoint        string `toml:"rpc_endpoint,omitempty"`
@@ -67,6 +76,7 @@ type persistentConfig struct {
 	Database      persistentDatabaseConfig           `toml:"database"`
 	Security      persistentSecurityConfig           `toml:"security"`
 	NetworkPolicy persistentNetworkPolicyConfig      `toml:"network_policy"`
+	KeePass       persistentKeePassConfig            `toml:"keepass"`
 	Fonts         persistentFontsConfig              `toml:"fonts"`
 	Networks      map[string]persistentNetworkConfig `toml:"networks"`
 }
@@ -143,6 +153,28 @@ func validateExplorerURL(rawURL string) error {
 	return nil
 }
 
+var keepassUUIDPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
+
+func validateKeePassConfig(keepass KeePassConfig) error {
+	bound := keepass.Path != "" || keepass.TargetID != "" || keepass.VaultID != ""
+	if keepass.Enabled && !bound {
+		return fmt.Errorf("keepass integration requires a vault path and identifiers")
+	}
+	if !bound {
+		return nil
+	}
+	if keepass.Path == "" || keepass.TargetID == "" || keepass.VaultID == "" {
+		return fmt.Errorf("keepass vault binding is incomplete")
+	}
+	if !filepath.IsAbs(keepass.Path) || strings.ToLower(filepath.Ext(keepass.Path)) != ".kdbx" || strings.ContainsAny(keepass.Path, "\x00\r\n\x1b") {
+		return fmt.Errorf("keepass vault path must be an absolute .kdbx path")
+	}
+	if !keepassUUIDPattern.MatchString(keepass.TargetID) || !keepassUUIDPattern.MatchString(keepass.VaultID) {
+		return fmt.Errorf("keepass vault identifiers must be canonical UUIDv4")
+	}
+	return nil
+}
+
 func isEnvironmentCredentialValue(value string) bool {
 	if value == "" {
 		return false
@@ -164,6 +196,9 @@ func marshalPersistentConfig(cfg *Config) ([]byte, error) {
 		return nil, fmt.Errorf("network configuration exceeds entry budget")
 	}
 	if err := validateAllowedLocalTargets(cfg.NetworkPolicy.AllowedLocalTargets); err != nil {
+		return nil, err
+	}
+	if err := validateKeePassConfig(cfg.KeePass); err != nil {
 		return nil, err
 	}
 	if cfg.Database.DSN != "" && cfg.Database.DSNRef != "" {
@@ -202,6 +237,7 @@ func marshalPersistentConfig(cfg *Config) ([]byte, error) {
 			TransactionAuthorizationMode: authorizationMode,
 		},
 		NetworkPolicy: persistentNetworkPolicyConfig{AllowedLocalTargets: append([]string(nil), cfg.NetworkPolicy.AllowedLocalTargets...)},
+		KeePass:       persistentKeePassConfig{Enabled: cfg.KeePass.Enabled, Path: cfg.KeePass.Path, TargetID: cfg.KeePass.TargetID, VaultID: cfg.KeePass.VaultID},
 		Fonts:         persistentFontsConfig{Available: append([]string(nil), cfg.Fonts...)},
 		Networks:      make(map[string]persistentNetworkConfig, len(cfg.Networks)),
 	}

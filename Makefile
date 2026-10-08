@@ -186,6 +186,10 @@ test-ui: ## Run only UI package tests
 	@$(RUN_GO_ISOLATED) CGO_LDFLAGS="$(CGO_LDFLAGS)" $(GO) test ./internal/ui/... -v -count=1 -shuffle=on
 	@echo "$(GREEN)✓ UI tests complete$(RESET)"
 
+.PHONY: test-keepass
+test-keepass:
+	@$(GO) -C third_party/gokeepasslib test ./... -count=1
+
 ##@ Code Quality Targets
 
 .PHONY: lint

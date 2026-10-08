@@ -343,26 +343,26 @@ func TestCanonicalBatchFlowImportsAndLogsFailures(t *testing.T) {
 
 	previewProgress := drainCanonicalCmd(model, cmd)
 	require.NotEmpty(t, previewProgress)
-	assert.Equal(t, "Validating", previewProgress[0].stage)
+	assert.Equal(t, "canonical_stage_validating", previewProgress[0].stage)
 	assert.Equal(t, 3, previewProgress[0].progress.Total)
 	require.False(t, state.busy)
 	require.NotNil(t, state.preview)
 	assert.Len(t, state.batchPreviews, 3)
 	view := model.viewCanonicalImport()
 	assert.Contains(t, view, "Authenticated batch preview")
-	assert.Contains(t, view, "keystore validation or decryption failed")
+	assert.Contains(t, view, "Keystore validation or decryption failed")
 
 	_, cmd = model.updateCanonicalImport(tea.KeyMsg{Type: tea.KeyEnter})
 	require.NotNil(t, cmd)
 	commitProgress := drainCanonicalCmd(model, cmd)
 	require.NotEmpty(t, commitProgress)
-	assert.Equal(t, "Importing", commitProgress[0].stage)
+	assert.Equal(t, "canonical_stage_importing", commitProgress[0].stage)
 	assert.Equal(t, 3, commitProgress[len(commitProgress)-1].progress.Completed)
 	require.False(t, state.busy)
 	require.NotEmpty(t, state.resultLines)
 	joined := strings.Join(state.resultLines, "\n")
 	assert.Contains(t, joined, "imported")
-	assert.Contains(t, joined, "keystore validation or decryption failed")
+	assert.Contains(t, joined, "Keystore validation or decryption failed")
 	assert.Contains(t, joined, "Failure log: ")
 	assert.Contains(t, joined, "Summary: 3 found, 3 processed, 2 imported, 0 already imported, 1 failed")
 	assert.NotContains(t, joined, "batch secret")
@@ -399,7 +399,7 @@ func TestCanonicalBatchFlowImportsAndLogsFailures(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(lines[1]), &record))
 	assert.Equal(t, "failure", record["type"])
 	assert.Equal(t, filepath.Join(source, "broken.json"), record["path"])
-	assert.Equal(t, "keystore validation or decryption failed", record["reason"])
+	assert.Equal(t, "Keystore validation or decryption failed", record["reason"])
 }
 
 func TestCanonicalPathSuggestions(t *testing.T) {
@@ -761,18 +761,18 @@ func TestCanonicalBatchCancelledCommitLogsFailures(t *testing.T) {
 	state.batchPreviews = []canonicalBatchPreview{{name: items[0].Name, digest: hex.EncodeToString(digest[:])}}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	summary, lines, err := executeCanonicalImport(ctx, nil, state)
+	summary, lines, err := executeCanonicalImport(ctx, nil, state, nil, false)
 	require.NoError(t, err)
 	assert.Empty(t, summary.AccountID)
 	joined := strings.Join(lines, "\n")
-	assert.Contains(t, joined, "import cancelled")
+	assert.Contains(t, joined, "Import cancelled")
 	assert.Contains(t, joined, "Failure log: ")
 	matches, globErr := filepath.Glob(filepath.Join(cfg.AppDir, "keystore-import-failures-*.log"))
 	require.NoError(t, globErr)
 	require.Len(t, matches, 1)
 	content, readErr := os.ReadFile(matches[0])
 	require.NoError(t, readErr)
-	assert.Contains(t, string(content), "import cancelled")
+	assert.Contains(t, string(content), "Import cancelled")
 }
 
 func TestCanonicalBatchBusyViewRendersProgress(t *testing.T) {
@@ -832,31 +832,28 @@ func TestCanonicalSourcePasswordMsgDiscardedCleanup(t *testing.T) {
 	assert.False(t, stale.canonicalImport.sourcePasswordFromFile)
 }
 
-func TestReadCanonicalSecretBatchMnemonicUsesMatchingFilesAndSidecar(t *testing.T) {
+func TestReadCanonicalMnemonicBatchUsesMatchingFiles(t *testing.T) {
 	root := t.TempDir()
 	mnemonic := "test test test test test test test test test test test junk"
 	require.NoError(t, os.WriteFile(filepath.Join(root, "alpha.mnemonic"), []byte(mnemonic+"\n"), 0600))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "beta.phrase"), []byte("  "+mnemonic+"  "), 0600))
-	require.NoError(t, os.WriteFile(filepath.Join(root, "alpha.pwd"), []byte("side passphrase\n"), 0600))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "ignored.txt"), []byte(mnemonic), 0600))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "empty.mnemonic"), []byte("   \n"), 0600))
-	items, err := readCanonicalSecretBatch(root, canonicalMnemonicBatchMethod)
+	items, err := readCanonicalMnemonicBatch(root)
 	require.NoError(t, err)
-	defer clearCanonicalSecretBatchItems(items)
+	defer clearCanonicalMnemonicItems(items)
 	require.Len(t, items, 3)
 	assert.Equal(t, "alpha", items[0].Name)
 	assert.Equal(t, "beta", items[1].Name)
 	assert.Equal(t, "empty", items[2].Name)
 	require.Nil(t, items[0].PreflightErr)
-	assert.Equal(t, mnemonic, string(items[0].SecretData))
-	assert.Equal(t, []byte("side passphrase"), items[0].Passphrase)
+	assert.Equal(t, mnemonic+"\n", string(items[0].Mnemonic))
 	require.Nil(t, items[1].PreflightErr)
-	assert.Equal(t, mnemonic, string(items[1].SecretData))
-	assert.Empty(t, items[1].Passphrase)
-	assert.ErrorIs(t, items[2].PreflightErr, errCanonicalSecretValidation)
+	assert.Equal(t, "  "+mnemonic+"  ", string(items[1].Mnemonic))
+	require.Nil(t, items[2].PreflightErr)
 }
 
-func TestReadCanonicalSecretBatchPrivateKeyExtensionsAndErrors(t *testing.T) {
+func TestReadCanonicalPrivateKeyBatchExtensionsAndErrors(t *testing.T) {
 	root := t.TempDir()
 	key := "0x" + strings.Repeat("ab", 32)
 	require.NoError(t, os.WriteFile(filepath.Join(root, "one.key"), []byte(key), 0600))
@@ -864,34 +861,31 @@ func TestReadCanonicalSecretBatchPrivateKeyExtensionsAndErrors(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(root, "three.pk"), []byte(key), 0600))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "four.KEY"), []byte(key), 0600))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "five.mnemonic"), []byte("test test test test test test test test test test test junk"), 0600))
-	items, err := readCanonicalSecretBatch(root, canonicalPrivateKeyBatchMethod)
+	items, err := readCanonicalPrivateKeyBatch(root)
 	require.NoError(t, err)
-	defer clearCanonicalSecretBatchItems(items)
+	defer clearCanonicalPrivateKeyItems(items)
 	require.Len(t, items, 4)
+	byName := make(map[string]wallet.PrivateKeyBatchItem, len(items))
 	for _, item := range items {
 		require.Nil(t, item.PreflightErr)
-		assert.Equal(t, key, string(item.SecretData))
-		assert.Empty(t, item.Passphrase)
+		byName[item.Name] = item
 	}
+	assert.Equal(t, key, string(byName["one"].PrivateKey))
+	assert.Equal(t, key+"\n", string(byName["two"].PrivateKey))
 
-	relative, err := readCanonicalSecretBatch("relative/dir", canonicalPrivateKeyBatchMethod)
+	relative, err := readCanonicalPrivateKeyBatch("relative/dir")
 	assert.Error(t, err)
 	assert.Nil(t, relative)
 
 	empty := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(empty, "notes.txt"), []byte("x"), 0600))
-	_, err = readCanonicalSecretBatch(empty, canonicalMnemonicBatchMethod)
+	_, err = readCanonicalPrivateKeyBatch(empty)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "no matching secret files")
-
-	_, err = readCanonicalSecretBatch(root, wallet.ImportMethodMnemonic)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unsupported")
+	assert.Contains(t, err.Error(), "no private key files")
 }
 
-func TestCanonicalSecretItemDigestCoversPassphrase(t *testing.T) {
-	base := &wallet.SecretBatchItem{Name: "a", SecretData: []byte("secret")}
-	withPass := &wallet.SecretBatchItem{Name: "a", SecretData: []byte("secret"), Passphrase: []byte("p")}
-	assert.NotEqual(t, canonicalSecretItemDigest(base), canonicalSecretItemDigest(withPass))
-	assert.Equal(t, canonicalSecretItemDigest(base), canonicalSecretItemDigest(&wallet.SecretBatchItem{SecretData: []byte("secret")}))
+func TestClearCanonicalBatchPreviewsWipesSecretSnapshots(t *testing.T) {
+	previews := []canonicalBatchPreview{{name: "a", secret: []byte("sensitive")}}
+	clearCanonicalBatchPreviews(previews)
+	assert.Equal(t, make([]byte, len("sensitive")), previews[0].secret)
 }

@@ -7,9 +7,6 @@ import (
 )
 
 func TestKeystoreImportLabels(t *testing.T) {
-	// Initialize Labels map
-	Labels = make(map[string]string)
-
 	tests := []struct {
 		name     string
 		language string
@@ -152,23 +149,19 @@ func TestKeystoreImportLabels(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Set the current language
-			SetCurrentLanguage(tt.language)
+			useLang(t, tt.language)
 
 			// Add wallet import messages for the current language
-			AddWalletImportMessages()
 
 			// Check if the label exists and has the expected value
-			actual, exists := Labels[tt.key]
-			assert.True(t, exists, "Label %s should exist for language %s", tt.key, tt.language)
+			actual := Get(tt.key)
+			assert.NotEqual(t, tt.key, actual, "Label %s should exist for language %s", tt.key, tt.language)
 			assert.Equal(t, tt.expected, actual, "Label %s should have correct value for language %s", tt.key, tt.language)
 		})
 	}
 }
 
 func TestGetNoMnemonicAvailableMessageForKeystore(t *testing.T) {
-	// Initialize Labels map
-	Labels = make(map[string]string)
-
 	tests := []struct {
 		name         string
 		language     string
@@ -204,10 +197,9 @@ func TestGetNoMnemonicAvailableMessageForKeystore(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Set the current language
-			SetCurrentLanguage(tt.language)
+			useLang(t, tt.language)
 
 			// Add wallet import messages for the current language
-			AddWalletImportMessages()
 
 			// Test the function
 			actual := GetNoMnemonicAvailableMessage(tt.importMethod)
@@ -217,9 +209,6 @@ func TestGetNoMnemonicAvailableMessageForKeystore(t *testing.T) {
 }
 
 func TestGetKeystoreImportStageMessage(t *testing.T) {
-	// Initialize Labels map
-	Labels = make(map[string]string)
-
 	tests := []struct {
 		name     string
 		language string
@@ -303,10 +292,9 @@ func TestGetKeystoreImportStageMessage(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Set the current language
-			SetCurrentLanguage(tt.language)
+			useLang(t, tt.language)
 
 			// Add wallet import messages for the current language
-			AddWalletImportMessages()
 
 			// Test the function
 			actual := GetKeystoreImportStageMessage(tt.stage)
