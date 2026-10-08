@@ -45,6 +45,8 @@ func NewImportMenu() []menuItem {
 		{title: localization.Labels["import_private_key"], description: localization.Labels["import_private_key_desc"]},
 		{title: localization.Labels["import_keystore"], description: localization.Labels["import_keystore_desc"]},
 		{title: localization.Labels["import_batch_keystore"], description: localization.Labels["import_batch_keystore_desc"]},
+		{title: localization.Labels["import_batch_mnemonic"], description: localization.Labels["import_batch_mnemonic_desc"]},
+		{title: localization.Labels["import_batch_private_key"], description: localization.Labels["import_batch_private_key_desc"]},
 		{title: localization.Labels["import_encrypted_backup"], description: localization.Labels["import_encrypted_backup_desc"]},
 		{title: localization.Labels["import_watch_only"], description: localization.Labels["import_watch_only_desc"]},
 		{title: localization.Labels["back_to_menu"], description: localization.Labels["back_to_menu_desc"]},

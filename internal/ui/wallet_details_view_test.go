@@ -329,14 +329,14 @@ func TestKeystoreImportUsesCanonicalMenu(t *testing.T) {
 func TestWatchOnlyImportUsesCanonicalAddressOnlyFlow(t *testing.T) {
 	cfg := &config.Config{Language: "en", LocaleDir: "../../pkg/localization/locales"}
 	require.NoError(t, localization.InitLocalization(cfg))
-	found := false
-	for _, item := range NewImportMenu() {
+	watchOnlyIndex := -1
+	for index, item := range NewImportMenu() {
 		if item.title == "Watch-only Address" {
-			found = true
+			watchOnlyIndex = index
 		}
 	}
-	assert.True(t, found)
-	model := &CLIModel{selectedMenu: 5, styles: createStyles()}
+	require.NotEqual(t, -1, watchOnlyIndex)
+	model := &CLIModel{selectedMenu: watchOnlyIndex, styles: createStyles()}
 	_, _ = model.updateImportMethodSelection(tea.KeyMsg{Type: tea.KeyEnter})
 	require.NotNil(t, model.canonicalImport)
 	assert.Equal(t, wallet.ImportMethodWatchOnly, model.canonicalImport.method)

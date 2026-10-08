@@ -1169,10 +1169,14 @@ func (m *CLIModel) updateImportMethodSelection(msg tea.Msg) (tea.Model, tea.Cmd)
 			case 3:
 				m.initCanonicalBatchImport()
 			case 4:
-				m.initCanonicalImport(canonicalEncryptedMethod)
+				m.initCanonicalImport(canonicalMnemonicBatchMethod)
 			case 5:
-				m.initCanonicalImport(wallet.ImportMethodWatchOnly)
+				m.initCanonicalImport(canonicalPrivateKeyBatchMethod)
 			case 6:
+				m.initCanonicalImport(canonicalEncryptedMethod)
+			case 7:
+				m.initCanonicalImport(wallet.ImportMethodWatchOnly)
+			case 8:
 				m.clearImportSecrets()
 				m.menuItems = NewMenu()
 				m.selectedMenu = 0
