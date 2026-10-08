@@ -182,10 +182,10 @@
       "computedHash": "b954d74c219c805bf353d6642251a713c9b2e9cfdb11babfe588bcfe7dfd16d5"
     },
     "unlazy": {
-      "source": "leonxlnx/unlazy",
+      "source": "Leonxlnx/unlazy",
       "sourceType": "github",
       "skillPath": "SKILL.md",
-      "computedHash": "4698d03d4a287f20e509627c44b25fa97c8e77b698b1e67148397be160aba7f4"
+      "computedHash": "7fcb511111a6d234d56dc1d9d38e0ae754c1762945ad7cd26679e799ee5e64ed"
     },
     "wait-what": {
       "source": "mattpocock/skills",
