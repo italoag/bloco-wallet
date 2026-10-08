@@ -1,0 +1,60 @@
+.agents/skills/dagu/SKILL.md
+  h_ba256230c5d53f 1-218
+.agents/skills/unlazy/.github/workflows/test.yml
+  h_ba256230c5d53f 31-50
+.agents/skills/unlazy/CHANGELOG.md
+  h_ba256230c5d53f 9-10,20-22,32,39,43,50,61-63,71,75,93,95-96
+.agents/skills/unlazy/README.md
+  h_ba256230c5d53f 91,117,175-176
+.agents/skills/unlazy/SECURITY.md
+  h_ba256230c5d53f 18,28,42,44-46,66
+.agents/skills/unlazy/SKILL.md
+  h_ba256230c5d53f 3,12-14,32,40,53-55,96,98,102
+.agents/skills/unlazy/scripts/dispatch-check.mjs
+  h_ba256230c5d53f 22-54,64,107,119,128
+.agents/skills/unlazy/scripts/gate-check.mjs
+  h_ba256230c5d53f 17-22,66,68,79,231-234,239-244,246-247,255,299-303,337-345,373,382-384,388,398-399,402-404,412,418,424,426,436-440,445-446,450-455,478-479,506-507,598-602,607,626-632,638-639,643-644,677-678,693-696,739-747,788,814-821,840,843-844,846-847,850-854,896-898,900
+.agents/skills/unlazy/scripts/gate-lint.mjs
+  h_ba256230c5d53f 24,35-71,98,121-136,143-148,150,204,207,209-222,234-235,237,239,243-245
+.agents/skills/unlazy/scripts/install-hooks.mjs
+  h_ba256230c5d53f 5,11-13,70-72,76-77
+.agents/skills/unlazy/scripts/lib/dispatch.mjs
+  h_ba256230c5d53f 5,9,11-12,155,157-162,164,176,188,223,285-292
+.agents/skills/unlazy/scripts/lib/gates.mjs
+  h_ba256230c5d53f 6,10,14-15,22-23,29-215,445-484,488-492,563,565-566,574-575,577-583,586-588,592,594-596,599-602,605,608-618,633-642,649,652,657-659,662,671-672,732-736,743-765,768-770,800,839-841,845-853,866-873,879-886,888-893,920-928,931
+.agents/skills/unlazy/scripts/stop-hook.mjs
+  h_ba256230c5d53f 4,7-8,13-14,16,37-52,80-85,88-89,92-94,105-108,110,116,132,135-139,156-157,172,185-192
+.agents/skills/unlazy/templates/PLAN.md
+  h_ba256230c5d53f 40-41,45-48,50-56,58-104,113,116
+.agents/skills/unlazy/templates/gates-node.md
+  h_ba256230c5d53f 5-6,25,34-37,44-45
+.agents/skills/unlazy/tests/dispatch-tests.mjs
+  h_ba256230c5d53f 4-8,19-21,45,48,50,63-73,95-127,232-348,558,566-567,569-593,597,603-618,620-636
+.agents/skills/unlazy/tests/hardening-tests.mjs
+  h_ba256230c5d53f 5-6,15-17,56,70,105-219,235-238,241,346-375,386,441-595,601-606,620-628,631-633,639,642,659-661,663-679,785-865,936-978,1020-1076
+.agents/skills/unlazy/tests/lint-tests.mjs
+  h_ba256230c5d53f 10-12,38-48,110-116,182-228,250-338
+.agents/skills/unlazy/tests/run-tests.mjs
+  h_ba256230c5d53f 11,366-470
+.agents/skills/unlazy/tests/self-check.mjs
+  h_ba256230c5d53f 38-40,44-165,253-329
+.agents/skills/unlazy/tests/stress-tests.mjs
+  h_ba256230c5d53f 5-6,12-14,48-52,96-274,346-501,596-613
+.qoder/skills/unlazy
+  h_ba256230c5d53f 1
+Makefile
+  h_ba256230c5d53f 54-61,361
+skills-lock.json
+  h_ba256230c5d53f 185,188
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "afb256c3391d632f17ad2fabf9190f3d9d2884a3",
+  "prompts": {},
+  "humans": {
+    "h_ba256230c5d53f": {
+      "author": "Italo A. G. <182202+italoag@users.noreply.github.com>"
+    }
+  }
+}
