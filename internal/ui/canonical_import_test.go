@@ -831,3 +831,61 @@ func TestCanonicalSourcePasswordMsgDiscardedCleanup(t *testing.T) {
 	assert.Nil(t, stale.canonicalImport.sourcePassword)
 	assert.False(t, stale.canonicalImport.sourcePasswordFromFile)
 }
+
+func TestReadCanonicalMnemonicBatchUsesMatchingFiles(t *testing.T) {
+	root := t.TempDir()
+	mnemonic := "test test test test test test test test test test test junk"
+	require.NoError(t, os.WriteFile(filepath.Join(root, "alpha.mnemonic"), []byte(mnemonic+"\n"), 0600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "beta.phrase"), []byte("  "+mnemonic+"  "), 0600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "ignored.txt"), []byte(mnemonic), 0600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "empty.mnemonic"), []byte("   \n"), 0600))
+	items, err := readCanonicalMnemonicBatch(root)
+	require.NoError(t, err)
+	defer clearCanonicalMnemonicItems(items)
+	require.Len(t, items, 3)
+	assert.Equal(t, "alpha", items[0].Name)
+	assert.Equal(t, "beta", items[1].Name)
+	assert.Equal(t, "empty", items[2].Name)
+	require.Nil(t, items[0].PreflightErr)
+	assert.Equal(t, mnemonic+"\n", string(items[0].Mnemonic))
+	require.Nil(t, items[1].PreflightErr)
+	assert.Equal(t, "  "+mnemonic+"  ", string(items[1].Mnemonic))
+	require.Nil(t, items[2].PreflightErr)
+}
+
+func TestReadCanonicalPrivateKeyBatchExtensionsAndErrors(t *testing.T) {
+	root := t.TempDir()
+	key := "0x" + strings.Repeat("ab", 32)
+	require.NoError(t, os.WriteFile(filepath.Join(root, "one.key"), []byte(key), 0600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "two.privatekey"), []byte(key+"\n"), 0600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "three.pk"), []byte(key), 0600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "four.KEY"), []byte(key), 0600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "five.mnemonic"), []byte("test test test test test test test test test test test junk"), 0600))
+	items, err := readCanonicalPrivateKeyBatch(root)
+	require.NoError(t, err)
+	defer clearCanonicalPrivateKeyItems(items)
+	require.Len(t, items, 4)
+	byName := make(map[string]wallet.PrivateKeyBatchItem, len(items))
+	for _, item := range items {
+		require.Nil(t, item.PreflightErr)
+		byName[item.Name] = item
+	}
+	assert.Equal(t, key, string(byName["one"].PrivateKey))
+	assert.Equal(t, key+"\n", string(byName["two"].PrivateKey))
+
+	relative, err := readCanonicalPrivateKeyBatch("relative/dir")
+	assert.Error(t, err)
+	assert.Nil(t, relative)
+
+	empty := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(empty, "notes.txt"), []byte("x"), 0600))
+	_, err = readCanonicalPrivateKeyBatch(empty)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no private key files")
+}
+
+func TestClearCanonicalBatchPreviewsWipesSecretSnapshots(t *testing.T) {
+	previews := []canonicalBatchPreview{{name: "a", secret: []byte("sensitive")}}
+	clearCanonicalBatchPreviews(previews)
+	assert.Equal(t, make([]byte, len("sensitive")), previews[0].secret)
+}

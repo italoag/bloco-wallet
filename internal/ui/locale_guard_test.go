@@ -62,6 +62,7 @@ var (
 		"add-network-%d":        true,
 		"keystore_v3_batch:%d":  true,
 		"bip39_batch:%d":        true,
+		"private_key_batch:%d":  true,
 		"custom_%s":             true,
 		"Key":                   true, // hidden network-key column (Width: 0)
 		"%s | %s | sha256:%s\n": true,

@@ -88,7 +88,7 @@ func (m *CLIModel) viewCreateWalletOptions() string {
 
 func (m *CLIModel) viewCreateWalletBackup() string {
 
-	backupWordValues := strings.Fields(m.mnemonic)
+	var backupWordValues []string
 	confirmationLabel := localization.Get("confirm_mnemonic")
 	confirmationInput := m.backupConfirmationInput.View()
 	materialNotice := ""
@@ -354,80 +354,6 @@ func (m *CLIModel) renderMainView() string {
 	return finalView
 }
 
-// viewImportWallet renderiza a visualização de importação de wallet
-func (m *CLIModel) viewImportWallet() string {
-
-	var view strings.Builder
-
-	// Renderizando o título com destaque
-	title := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("#7D56F4")).
-		MarginBottom(1).
-		Render(localization.Get("import_wallet_title"))
-
-	view.WriteString(title + "\n")
-
-	// Pequena descrição do método de importação por mnemônica
-	desc := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#AAAAAA")).
-		Render(localization.Get("import_mnemonic_desc"))
-	view.WriteString(desc + "\n\n")
-
-	// Estilo para o campo ativo
-	activeStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#00FF00")).
-		Bold(true)
-
-	// Estilo para campos inativos
-	inactiveStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#AAAAAA"))
-
-	// Renderizar cada campo de entrada
-	for i, ti := range m.textInputs {
-		wordLabel := fmt.Sprintf("%s %d:", localization.Get("word"), i+1)
-		paddedLabel := fmt.Sprintf("%-10s", wordLabel) // Padding para alinhamento
-
-		if i == m.importStage {
-			// Campo ativo com destaque
-			view.WriteString(activeStyle.Render(paddedLabel) + " " + ti.View() + "\n\n")
-		} else {
-			// Campos inativos
-			view.WriteString(inactiveStyle.Render(paddedLabel) + " " + ti.View() + "\n")
-		}
-	}
-
-	// Instruções para o usuário
-	instructions := lipgloss.NewStyle().
-		MarginTop(1).
-		Italic(true).
-		Render(localization.Get("press_enter"))
-
-	view.WriteString("\n" + instructions)
-
-	// Adicionar uma borda ao redor de tudo
-	content := view.String()
-	return lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("#7D56F4")).
-		Padding(1, 2).
-		Render(content)
-}
-
-// viewImportWalletPassword renderiza a visualização de senha após importação
-func (m *CLIModel) viewImportWalletPassword() string {
-
-	var view strings.Builder
-	view.WriteString(
-		lipgloss.NewStyle().Bold(true).Render(localization.Get("enter_password")+"\n\n") +
-			m.passwordInput.View() + "\n\n" +
-			m.renderPasswordValidation(m.passwordInput.Value()) + "\n\n" +
-			localization.Get("press_enter"),
-	)
-	return view.String()
-}
-
-// viewImportMethodSelection renderiza a visualização de seleção de methods de importação
 func (m *CLIModel) viewImportMethodSelection() string {
 
 	// Em vez de renderizar o menu de importação novamente, exibir apenas uma mensagem informativa
@@ -443,170 +369,45 @@ func (m *CLIModel) viewConfigMenu() string {
 	return localization.Get("welcome_message")
 }
 
-// viewImportPrivateKey renderiza a visualização de importação de chave privada
-func (m *CLIModel) viewImportPrivateKey() string {
-	// Use MenuTitle style for the header instead of non-existent Title style
-	title := m.styles.MenuTitle.Render(localization.Get("private_key_title"))
-	desc := m.styles.MenuDesc.Render(localization.Get("import_private_key_desc")) // brief help about method
-	input := m.privateKeyInput.View()
-	// Use MenuDesc instead of non-existent Instructions style
-	instructions := m.styles.MenuDesc.Render(localization.Get("press_enter"))
-
-	return lipgloss.JoinVertical(
-		lipgloss.Left,
-		title,
-		"",
-		desc,
-		"",
-		input,
-		"",
-		instructions,
-	)
-}
-
-// viewImportKeystore renderiza a visualização de importação de arquivo keystore
-func (m *CLIModel) viewImportKeystore() string {
-	// Use MenuTitle style for the header
-	title := m.styles.MenuTitle.Render(localization.Get("keystore_title"))
-	input := m.privateKeyInput.View()
-
-	// Instructions for the user
-	instructions := m.styles.MenuDesc.Render(localization.Get("press_enter") + localization.Get("import_keystore_tab_hint"))
-
-	return lipgloss.JoinVertical(
-		lipgloss.Left,
-		title,
-		"",
-		input,
-		"",
-		instructions,
-	)
-}
-
-// viewListWallets renderiza a visualização de listagem de wallets
 func (m *CLIModel) viewListWallets() string {
 
 	if m.accountDeletion != nil {
 		return m.viewAccountDeletion()
 	}
 
-	// Se não há diálogo de exclusão, retornar apenas a tabela
-	if m.deletingWallet == nil {
-		var view strings.Builder
+	var view strings.Builder
 
-		// Adicionar título à visualização
-		title := lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("#7D56F4")).
-			MarginBottom(1).
-			Render(localization.Get("list_wallets_title"))
+	// Adicionar título à visualização
+	title := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("#7D56F4")).
+		MarginBottom(1).
+		Render(localization.Get("list_wallets_title"))
 
-		view.WriteString(title + "\n")
+	view.WriteString(title + "\n")
 
-		// Verificar se há wallets para exibir
-		if len(m.wallets) == 0 && len(m.accounts) == 0 {
-			// Exibir mensagem quando não há wallets
-			message := localization.Get("no_wallets_message")
-			noWalletsMsg := lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#5C5C5C")).
-				Render(message)
+	// Verificar se há wallets para exibir
+	if len(m.wallets) == 0 && len(m.accounts) == 0 {
+		// Exibir mensagem quando não há wallets
+		message := localization.Get("no_wallets_message")
+		noWalletsMsg := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#5C5C5C")).
+			Render(message)
 
-			view.WriteString(noWalletsMsg)
-		} else {
-			// Adicionar a visualização da tabela
-			tableView := m.walletTable.View()
-			view.WriteString(tableView)
-		}
-
-		if m.lastOperationNotice != "" {
-			view.WriteString("\n" + lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#5C5C5C")).
-				Render(safeInline(m.lastOperationNotice)))
-		}
-
-		return view.String()
-	}
-
-	// Se há um diálogo de confirmação de exclusão, renderizar o diálogo
-	return m.renderDeleteConfirmationDialog()
-}
-
-// renderDeleteConfirmationDialog renderiza o diálogo de confirmação de exclusão
-func (m *CLIModel) renderDeleteConfirmationDialog() string {
-	// Primeiro, renderizar a tabela de wallets
-	var tableView string
-	if len(m.wallets) > 0 {
-		tableView = m.walletTable.View()
+		view.WriteString(noWalletsMsg)
 	} else {
-		// Se não há wallets, criar uma área vazia para o diálogo
-		tableView = strings.Repeat("\n", 10)
+		// Adicionar a visualização da tabela
+		tableView := m.walletTable.View()
+		view.WriteString(tableView)
 	}
 
-	// Caixa de diálogo centralizada com botões estilizados e seleção
-	question := localization.Get("confirm_delete_wallet")
-	address := fmt.Sprintf("%s: %s", localization.Get("ethereum_address"), safeShort(m.deletingWallet.Address))
-
-	// Botões com seleção (garante espaçamento entre os textos)
-	var confirmBtn, cancelBtn string
-	if m.dialogButtonIndex == 0 {
-		confirmBtn = m.styles.DialogButtonActive.Render(localization.Get("confirm"))
-		cancelBtn = m.styles.DialogButton.Render(localization.Get("cancel"))
-	} else {
-		confirmBtn = m.styles.DialogButton.Render(localization.Get("confirm"))
-		cancelBtn = m.styles.DialogButtonActive.Render(localization.Get("cancel"))
+	if m.lastOperationNotice != "" {
+		view.WriteString("\n" + lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#5C5C5C")).
+			Render(safeInline(m.lastOperationNotice)))
 	}
 
-	buttons := lipgloss.JoinHorizontal(lipgloss.Center, confirmBtn, "   ", cancelBtn)
-	content := lipgloss.JoinVertical(lipgloss.Center, question, address, "", buttons)
-	dialog := m.styles.Dialog.Render(content)
-
-	// Calcular a posição do diálogo para centralizá-lo na área da tabela
-	tableWidth := lipgloss.Width(tableView)
-	tableHeight := lipgloss.Height(tableView)
-	dialogWidth := lipgloss.Width(dialog)
-	dialogHeight := lipgloss.Height(dialog)
-
-	// Calcular posições para centralizar o diálogo na tabela
-	leftPadding := (tableWidth - dialogWidth) / 2
-	if leftPadding < 0 {
-		leftPadding = 0
-	}
-
-	// Dividir a tabela em linhas
-	tableLines := strings.Split(tableView, "\n")
-
-	// Calcular a linha inicial para o diálogo
-	startLine := (tableHeight - dialogHeight) / 2
-	if startLine < 0 {
-		startLine = 0
-	}
-
-	// Dividir o diálogo em linhas
-	dialogLines := strings.Split(dialog, "\n")
-
-	// Inserir o diálogo nas linhas da tabela
-	for i := 0; i < dialogHeight && i+startLine < len(tableLines); i++ {
-		// Garantir que a linha da tabela é longa o suficiente
-		for len(tableLines[i+startLine]) < leftPadding {
-			tableLines[i+startLine] += " "
-		}
-
-		// Inserir a linha do diálogo na posição correta
-		if leftPadding < len(tableLines[i+startLine]) {
-			prefix := tableLines[i+startLine][:leftPadding]
-			suffix := ""
-			if leftPadding+dialogWidth < len(tableLines[i+startLine]) {
-				suffix = tableLines[i+startLine][leftPadding+dialogWidth:]
-			}
-			tableLines[i+startLine] = prefix + dialogLines[i] + suffix
-		} else {
-			padding := strings.Repeat(" ", leftPadding-len(tableLines[i+startLine]))
-			tableLines[i+startLine] += padding + dialogLines[i]
-		}
-	}
-
-	// Reconstruir a visualização da tabela com o diálogo
-	return strings.Join(tableLines, "\n")
+	return view.String()
 }
 
 func (m *CLIModel) viewVaultAction(export bool) string {
@@ -645,19 +446,6 @@ func (m *CLIModel) viewVaultAction(export bool) string {
 	if m.vaultActionError != "" {
 		view.WriteString(m.styles.ErrorStyle.Render(m.vaultActionError) + "\n\n")
 	}
-	return view.String()
-}
-
-// viewWalletPassword renderiza a visualização de entrada de senha para wallet selecionada
-func (m *CLIModel) viewWalletPassword() string {
-
-	var view strings.Builder
-	view.WriteString(
-		lipgloss.NewStyle().Bold(true).Render(localization.Get("enter_wallet_password")+"\n\n") +
-			m.passwordInput.View() + "\n\n" +
-			m.renderPasswordValidation(m.passwordInput.Value()) + "\n\n" +
-			localization.Get("press_enter"),
-	)
 	return view.String()
 }
 
@@ -727,13 +515,4 @@ func (m *CLIModel) viewNetworkMenu() string {
 	// Em vez de renderizar o menu de redes novamente, exibir apenas uma mensagem informativa
 	// já que o menu já é exibido na área padrão de menu
 	return localization.Get("welcome_message")
-}
-
-// viewEnhancedImport renderiza a visualização de importação aprimorada
-func (m *CLIModel) viewEnhancedImport() string {
-	if m.enhancedImportState == nil {
-		return localization.Get("enhanced_import_not_init")
-	}
-
-	return m.enhancedImportState.View()
 }

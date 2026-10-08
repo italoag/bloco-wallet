@@ -2,8 +2,6 @@ package ui
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -34,7 +32,7 @@ func writeMnemonicFile(t *testing.T, dir, name string, content []byte) {
 
 func TestImportMenuRoutesMnemonicBatch(t *testing.T) {
 	menu := NewImportMenu()
-	require.Len(t, menu, 8)
+	require.Len(t, menu, 9)
 
 	model := &CLIModel{Vault: &wallet.WalletVault{}, styles: createStyles()}
 	model.currentView = constants.ImportMethodSelectionView
@@ -43,9 +41,10 @@ func TestImportMenuRoutesMnemonicBatch(t *testing.T) {
 		wallet.ImportMethodPrivateKey,
 		wallet.ImportMethodKeystore,
 		canonicalBatchMethod,
+		canonicalMnemonicBatchMethod,
+		canonicalPrivateKeyBatchMethod,
 		canonicalEncryptedMethod,
 		wallet.ImportMethodWatchOnly,
-		wallet.ImportMethod("mnemonic_batch"),
 	} {
 		model.selectedMenu = index
 		_, _ = model.updateImportMethodSelection(tea.KeyMsg{Type: tea.KeyEnter})
@@ -55,7 +54,7 @@ func TestImportMenuRoutesMnemonicBatch(t *testing.T) {
 		model.canonicalImport = nil
 		model.currentView = constants.ImportMethodSelectionView
 	}
-	model.selectedMenu = 7
+	model.selectedMenu = 8
 	_, _ = model.updateImportMethodSelection(tea.KeyMsg{Type: tea.KeyEnter})
 	assert.Equal(t, constants.DefaultView, model.currentView)
 }
@@ -307,7 +306,6 @@ func TestCanonicalMnemonicBatchCancelledCommitLogsFailures(t *testing.T) {
 	items, err := readCanonicalMnemonicBatch(source)
 	require.NoError(t, err)
 	defer clearCanonicalMnemonicItems(items)
-	digest := sha256.Sum256(items[0].Mnemonic)
 	state := &canonicalImportState{
 		method:        canonicalMnemonicBatchMethod,
 		mnemonicItems: items,
@@ -319,7 +317,7 @@ func TestCanonicalMnemonicBatchCancelledCommitLogsFailures(t *testing.T) {
 	}
 	state.fields[0].input.SetValue("Strong vault pass 1!")
 	state.fields[1].input.SetValue("Strong vault pass 1!")
-	state.batchPreviews = []canonicalBatchPreview{{name: items[0].Name, digest: hex.EncodeToString(digest[:])}}
+	state.batchPreviews = []canonicalBatchPreview{{name: items[0].Name, secret: append([]byte(nil), items[0].Mnemonic...)}}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	summary, lines, err := executeCanonicalImport(ctx, vault, state, nil, false)

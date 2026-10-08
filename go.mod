@@ -9,19 +9,17 @@ require (
 	github.com/charmbracelet/bubbletea v1.3.6
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/charmbracelet/x/ansi v0.10.1
+	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0
 	github.com/digitallyserviced/tdfgo v0.0.0-20230424040827-080313390bfd
 	github.com/ethereum/go-ethereum v1.17.5
 	github.com/fxamacker/cbor/v2 v2.9.3
 	github.com/go-errors/errors v1.5.1
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
-	github.com/mrtnetwork/bitcoin v1.0.0
 	github.com/nicksnyder/go-i18n/v2 v2.6.0
 	github.com/spf13/viper v1.20.1
 	github.com/stretchr/testify v1.12.1
 	github.com/tobischo/gokeepasslib/v3 v3.7.0
-	github.com/tyler-smith/go-bip32 v1.0.0
-	github.com/tyler-smith/go-bip39 v1.1.0
 	go.uber.org/zap v1.27.0
 	golang.org/x/crypto v0.57.0
 	golang.org/x/sys v0.48.0
@@ -33,8 +31,6 @@ require (
 )
 
 require (
-	github.com/FactomProject/basen v0.0.0-20150613233007-fe3947df716e // indirect
-	github.com/FactomProject/btcutilecc v0.0.0-20130527213604-d3a63a5752ec // indirect
 	github.com/ProjectZKM/Ziren/crates/go-runtime/zkvm_runtime v0.0.0-20251001021608-1fe7b43fc4d6 // indirect
 	github.com/arsham/rainbow v1.2.1 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
@@ -47,16 +43,13 @@ require (
 	github.com/common-nighthawk/go-figure v0.0.0-20210622060536-734e95fb86be // indirect
 	github.com/consensys/gnark-crypto v0.19.2 // indirect
 	github.com/crate-crypto/go-eth-kzg v1.5.0 // indirect
-	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/deckarep/golang-set/v2 v2.8.0 // indirect
-	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
 	github.com/ethereum/c-kzg-4844/v2 v2.1.8 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/ghostiam/binstruct v1.4.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
-	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/gookit/color v1.6.0 // indirect
 	github.com/gookit/goutil v0.6.0 // indirect
 	github.com/holiman/uint256 v1.3.2 // indirect
@@ -73,7 +66,6 @@ require (
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
-	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/sagikazarmark/locafero v0.10.0 // indirect

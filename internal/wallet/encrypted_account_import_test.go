@@ -102,7 +102,7 @@ func TestPhaseOneEnvelopeExportsAsCanonicalBackup(t *testing.T) {
 	}
 	mnemonic := "test test test test test test test test test test test junk"
 	path, _ := ParseDerivationPath("m/44'/60'/0'/0/0")
-	privateKey, address, err := deriveEVMAccount(mnemonic, "", BIP39English, path)
+	privateKey, address, _, err := deriveEVMAccount(mnemonic, "", BIP39English, path)
 	if err != nil {
 		t.Fatal(err)
 	}

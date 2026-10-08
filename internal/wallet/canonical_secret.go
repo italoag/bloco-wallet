@@ -89,12 +89,12 @@ func validateCanonicalSecret(secret canonicalSecretV1) error {
 	return nil
 }
 
-func deriveCanonicalSecretIdentity(secret canonicalSecretV1) ([]byte, string, error) {
+func deriveCanonicalSecretIdentity(secret canonicalSecretV1) ([]byte, string, DerivationPath, error) {
 	switch secret.Kind {
 	case SecretTypeMnemonic:
 		path, err := ParseDerivationPath(secret.DerivationPath)
 		if err != nil {
-			return nil, "", err
+			return nil, "", DerivationPath{}, err
 		}
 		return deriveEVMAccount(secret.Mnemonic, secret.BIP39Passphrase, secret.BIP39Language, path)
 	case SecretTypePrivateKey:
@@ -102,13 +102,40 @@ func deriveCanonicalSecretIdentity(secret canonicalSecretV1) ([]byte, string, er
 		key, err := crypto.ToECDSA(privateKey)
 		if err != nil {
 			clear(privateKey)
-			return nil, "", err
+			return nil, "", DerivationPath{}, err
 		}
 		address := crypto.PubkeyToAddress(key.PublicKey).Hex()
-		return privateKey, address, nil
+		return privateKey, address, DerivationPath{}, nil
 	default:
-		return nil, "", fmt.Errorf("unsupported canonical secret kind")
+		return nil, "", DerivationPath{}, fmt.Errorf("unsupported canonical secret kind")
 	}
+}
+
+// canonicalSecretWithIdentity encodes the secret and derives its identity.
+// When a BIP32 invalid-child retry shifts a derivation index, the secret is
+// updated to the effective path and re-encoded so stored derivation metadata
+// stays accurate. The caller must clear the returned canonical bytes.
+func canonicalSecretWithIdentity(secret *canonicalSecretV1) (canonical []byte, address string, effectivePath DerivationPath, err error) {
+	encoded, err := encodeCanonicalSecret(*secret)
+	if err != nil {
+		return nil, "", DerivationPath{}, err
+	}
+	privateKey, address, effectivePath, err := deriveCanonicalSecretIdentity(*secret)
+	if err != nil {
+		clear(encoded)
+		return nil, "", DerivationPath{}, err
+	}
+	clear(privateKey)
+	if secret.Kind == SecretTypeMnemonic && effectivePath.String() != secret.DerivationPath {
+		secret.DerivationPath = effectivePath.String()
+		reencoded, encErr := encodeCanonicalSecret(*secret)
+		clear(encoded)
+		if encErr != nil {
+			return nil, "", DerivationPath{}, encErr
+		}
+		encoded = reencoded
+	}
+	return encoded, address, effectivePath, nil
 }
 
 func canonicalSecretFromStored(account *Account, plaintext []byte) (canonicalSecretV1, error) {
@@ -161,7 +188,8 @@ func deriveStoredSecretIdentity(account *Account, plaintext []byte) ([]byte, str
 		if secret.Kind == SecretTypeMnemonic && (secret.DerivationPath != account.DerivationPath || string(secret.BIP39Language) != account.BIP39Language || (secret.BIP39Passphrase != "") != account.HasBIP39Passphrase) {
 			return nil, "", fmt.Errorf("canonical derivation metadata does not match account")
 		}
-		return deriveCanonicalSecretIdentity(secret)
+		privateKey, address, _, deriveErr := deriveCanonicalSecretIdentity(secret)
+		return privateKey, address, deriveErr
 	}
 	if account.SecretType == SecretTypeMnemonic {
 		language := BIP39Language(account.BIP39Language)
@@ -175,7 +203,8 @@ func deriveStoredSecretIdentity(account *Account, plaintext []byte) ([]byte, str
 		if pathErr != nil {
 			return nil, "", pathErr
 		}
-		return deriveEVMAccount(string(plaintext), "", language, path)
+		privateKey, address, _, deriveErr := deriveEVMAccount(string(plaintext), "", language, path)
+		return privateKey, address, deriveErr
 	}
 	if account.SecretType == SecretTypePrivateKey && len(plaintext) == 32 {
 		return deriveSecretIdentity(SecretTypePrivateKey, plaintext)

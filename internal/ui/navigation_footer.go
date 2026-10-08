@@ -37,15 +37,9 @@ func (m *CLIModel) footerViewName() string {
 		constants.CreateWalletOptionsView:   localization.Get("create_new_wallet"),
 		constants.CreateWalletBackupView:    localization.Get("create_new_wallet"),
 		constants.CreateWalletView:          localization.Get("create_new_wallet"),
-		constants.ImportWalletView:          localization.Get("import_wallet"),
-		constants.ImportWalletPasswordView:  localization.Get("import_wallet"),
-		constants.ImportPrivateKeyView:      localization.Get("import_private_key"),
-		constants.ImportKeystoreView:        localization.Get("view_import_keystore"),
 		constants.ImportMethodSelectionView: localization.Get("import_method_title"),
 		constants.CanonicalImportView:       localization.Get("view_import_wallet"),
-		constants.EnhancedImportView:        localization.Get("view_import_wallet"),
 		constants.ListWalletsView:           localization.Get("list_wallets"),
-		constants.WalletPasswordView:        localization.Get("enter_wallet_password"),
 		constants.WalletDetailsView:         localization.Get("wallet_details_title"),
 		constants.RotatePasswordView:        localization.Get("view_change_password"),
 		constants.ExportAccountView:         localization.Get("view_export_wallet"),
@@ -107,9 +101,6 @@ func (m *CLIModel) navigationHints() []navigationHint {
 				hints = append(hints[:1], append([]navigationHint{hint("Ctrl+K", localization.Get("hint_keepass_toggle"))}, hints[1:]...)...)
 			}
 			return hints
-		}
-		if m.deletingWallet != nil {
-			return []navigationHint{hint("Left/Right", localization.Get("hint_select")), hint("Enter", localization.Get("hint_confirm")), hint("Esc", localization.Get("hint_cancel")), hint("Ctrl+Q", localization.Get("hint_quit"))}
 		}
 		var hints []navigationHint
 		// Se houver espaço, adicionar instruções na parte inferior

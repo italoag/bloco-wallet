@@ -51,13 +51,14 @@ LDFLAGS         := -w -s \
 				   -X main.date=${DATE}
 
 # Colors for output
-RED     := \033[31m
-GREEN   := \033[32m
-YELLOW  := \033[33m
-BLUE    := \033[34m
-PURPLE  := \033[35m
-CYAN    := \033[36m
-WHITE   := \033[37m
+RED     := \033[38;5;203m
+GREEN   := \033[38;5;84m
+YELLOW  := \033[38;5;228m
+BLUE    := \033[38;5;111m
+PURPLE  := \033[38;5;141m
+CYAN    := \033[38;5;87m
+WHITE   := \033[38;5;255m
+BOLD    := \033[1m
 RESET   := \033[0m
 
 .PHONY: help
@@ -361,7 +362,7 @@ info: ## Show build environment information
 
 .PHONY: help
 help: ## Display this help
-	@awk 'BEGIN {FS = ":.*##"; printf "\n$(CYAN)Usage:$(RESET)\n  make $(YELLOW)<target>$(RESET)\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  $(YELLOW)%-15s$(RESET) %s\n", $$1, $$2 } /^##@/ { printf "\n$(CYAN)%s$(RESET)\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*##"; printf "\n$(PURPLE)Usage:$(RESET)\n  make $(CYAN)<target>$(RESET)\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  $(CYAN)%-15s$(RESET) %s\n", $$1, $$2 } /^##@/ { printf "\n$(PURPLE)%s$(RESET)\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
 # Build function for pure-Go cross-compilation
 define build_platform

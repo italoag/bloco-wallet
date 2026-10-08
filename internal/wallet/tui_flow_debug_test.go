@@ -26,7 +26,6 @@ func TestTUIFlowDebug(t *testing.T) {
 
 	// Initialize crypto service (this is what was missing!)
 	cfg := CreateMockConfig(t)
-	InitCryptoService(cfg)
 
 	// Create keystore with test-optimized parameters
 	n, p := GetTestKeystoreParams()
@@ -38,7 +37,7 @@ func TestTUIFlowDebug(t *testing.T) {
 	repo.On("GetAllWallets").Return([]Wallet{}, nil)
 
 	// Create service
-	service := NewWalletService(repo, ks)
+	service := NewWalletService(repo, ks, cfg)
 
 	// Test with the keystore file that works in tests but fails in TUI
 	keystorePath := "testdata/keystores/real_keystore_v3_complex_password.json"
@@ -133,7 +132,6 @@ func TestTUIFlowWithDifferentKeystores(t *testing.T) {
 
 	// Initialize crypto service
 	cfg := CreateMockConfig(t)
-	InitCryptoService(cfg)
 
 	// Create keystore with test-optimized parameters
 	n, p := GetTestKeystoreParams()
@@ -145,7 +143,7 @@ func TestTUIFlowWithDifferentKeystores(t *testing.T) {
 	repo.On("GetAllWallets").Return([]Wallet{}, nil)
 
 	// Create service
-	service := NewWalletService(repo, ks)
+	service := NewWalletService(repo, ks, cfg)
 
 	// Test cases with different keystore files
 	testCases := []struct {

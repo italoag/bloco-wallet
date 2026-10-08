@@ -8,10 +8,8 @@ import (
 	"strconv"
 	"strings"
 
+	"blocowallet/internal/wallet/wordlists"
 	"github.com/ethereum/go-ethereum/crypto"
-	bitcoinbip39 "github.com/mrtnetwork/bitcoin/bip39"
-	"github.com/tyler-smith/go-bip32"
-	"github.com/tyler-smith/go-bip39/wordlists"
 	"golang.org/x/crypto/pbkdf2"
 	"golang.org/x/text/unicode/norm"
 )
@@ -37,24 +35,38 @@ const (
 	BIP39Spanish            BIP39Language = "spanish"
 )
 
-var bip39WordLists = map[BIP39Language][]string{
-	BIP39English:            wordlists.English,
-	BIP39ChineseSimplified:  wordlists.ChineseSimplified,
-	BIP39ChineseTraditional: wordlists.ChineseTraditional,
-	BIP39Czech:              wordlists.Czech,
-	BIP39French:             wordlists.French,
-	BIP39Italian:            wordlists.Italian,
-	BIP39Japanese:           wordlists.Japanese,
-	BIP39Korean:             wordlists.Korean,
-	BIP39Spanish:            wordlists.Spanish,
+// bip39WordListFiles maps each supported language to its embedded BIP-39
+// wordlist file name (see internal/wallet/wordlists).
+var bip39WordListFiles = map[BIP39Language]string{
+	BIP39English:            "english",
+	BIP39ChineseSimplified:  "chinese_simplified",
+	BIP39ChineseTraditional: "chinese_traditional",
+	BIP39Czech:              "czech",
+	BIP39French:             "french",
+	BIP39Italian:            "italian",
+	BIP39Japanese:           "japanese",
+	BIP39Korean:             "korean",
+	BIP39Portuguese:         "portuguese",
+	BIP39Spanish:            "spanish",
 }
+
+func buildBIP39WordLists() map[BIP39Language][]string {
+	lists := make(map[BIP39Language][]string, len(bip39WordListFiles))
+	for language, fileBase := range bip39WordListFiles {
+		words, err := wordlists.Load(fileBase)
+		if err != nil {
+			panic(fmt.Errorf("load BIP39 wordlist for %s: %w", language, err))
+		}
+		lists[language] = words
+	}
+	return lists
+}
+
+var bip39WordLists = buildBIP39WordLists()
 
 var bip39WordIndexes = buildBIP39WordIndexes()
 
 func IsSupportedBIP39Language(language BIP39Language) bool {
-	if language == BIP39Portuguese {
-		return true
-	}
 	_, exists := bip39WordLists[language]
 	return exists
 }
@@ -88,13 +100,6 @@ func generateMnemonicForLanguage(wordCount int, language BIP39Language) (string,
 }
 
 func mnemonicFromEntropy(entropy []byte, language BIP39Language) (string, error) {
-	if language == BIP39Portuguese {
-		provider := &bitcoinbip39.Bip39{Language: bitcoinbip39.Portuguese}
-		if err := provider.LoadLanguages(); err != nil {
-			return "", err
-		}
-		return provider.EntropyToMnemonic(entropy)
-	}
 	wordList, exists := bip39WordLists[language]
 	if !exists || len(wordList) != 2048 {
 		return "", fmt.Errorf("unsupported BIP39 language: %s", language)
@@ -130,16 +135,6 @@ func mnemonicFromEntropy(entropy []byte, language BIP39Language) (string, error)
 func ValidateBIP39Mnemonic(mnemonic string, language BIP39Language) error {
 	if len(mnemonic) == 0 || len(mnemonic) > maxMnemonicInputLength {
 		return fmt.Errorf("BIP39 mnemonic size is outside policy")
-	}
-	if language == BIP39Portuguese {
-		provider := &bitcoinbip39.Bip39{Language: bitcoinbip39.Portuguese}
-		if err := provider.LoadLanguages(); err != nil {
-			return err
-		}
-		if !provider.ValidateMnemonic(norm.NFKD.String(mnemonic)) {
-			return fmt.Errorf("invalid Portuguese BIP39 mnemonic")
-		}
-		return nil
 	}
 	wordList, exists := bip39WordLists[language]
 	if !exists || len(wordList) != 2048 {
@@ -248,11 +243,11 @@ func ParseDerivationPath(value string) (DerivationPath, error) {
 		}
 		component := uint32(index)
 		if hardened {
-			component += bip32.FirstHardenedChild
+			component += firstHardenedChild
 		}
 		components = append(components, component)
 	}
-	if len(components) < 2 || components[0] != bip32.FirstHardenedChild+44 || components[1] != bip32.FirstHardenedChild+60 {
+	if len(components) < 2 || components[0] != firstHardenedChild+44 || components[1] != firstHardenedChild+60 {
 		return DerivationPath{}, fmt.Errorf("derivation path is not an EVM BIP44 path")
 	}
 	return DerivationPath{components: components}, nil
@@ -262,9 +257,9 @@ func (path DerivationPath) String() string {
 	parts := make([]string, 1, len(path.components)+1)
 	parts[0] = "m"
 	for _, component := range path.components {
-		hardened := component >= bip32.FirstHardenedChild
+		hardened := component >= firstHardenedChild
 		if hardened {
-			component -= bip32.FirstHardenedChild
+			component -= firstHardenedChild
 		}
 		part := strconv.FormatUint(uint64(component), 10)
 		if hardened {
@@ -282,41 +277,46 @@ func (path DerivationPath) Components() []uint32 {
 func derivationMetadataForPath(path DerivationPath, language BIP39Language) DerivationMetadata {
 	metadata := DerivationMetadata{Scheme: "bip44", Path: path.String(), Language: string(language)}
 	if len(path.components) > 2 {
-		metadata.AccountIndex = path.components[2] & (bip32.FirstHardenedChild - 1)
+		metadata.AccountIndex = path.components[2] & (firstHardenedChild - 1)
 	}
 	if len(path.components) > 3 {
-		metadata.ChangeIndex = path.components[3] & (bip32.FirstHardenedChild - 1)
+		metadata.ChangeIndex = path.components[3] & (firstHardenedChild - 1)
 	}
 	if len(path.components) > 4 {
-		metadata.AddressIndex = path.components[4] & (bip32.FirstHardenedChild - 1)
+		metadata.AddressIndex = path.components[4] & (firstHardenedChild - 1)
 	}
 	return metadata
 }
 
-func deriveEVMAccount(mnemonic, passphrase string, language BIP39Language, path DerivationPath) ([]byte, string, error) {
+func deriveEVMAccount(mnemonic, passphrase string, language BIP39Language, path DerivationPath) ([]byte, string, DerivationPath, error) {
 	seed, err := bip39Seed(mnemonic, passphrase, language)
 	if err != nil {
-		return nil, "", err
+		return nil, "", DerivationPath{}, err
 	}
 	defer clear(seed)
-	key, err := bip32.NewMasterKey(seed)
+	key, err := newMasterKey(seed)
 	if err != nil {
-		return nil, "", err
+		return nil, "", DerivationPath{}, err
 	}
+	defer func() { key.clear() }()
+	effectiveComponents := make([]uint32, 0, len(path.components))
 	for _, component := range path.components {
-		key, err = key.NewChildKey(component)
-		if err != nil {
-			return nil, "", err
+		child, effectiveIndex, childErr := key.newChildKey(component)
+		key.clear()
+		if childErr != nil {
+			return nil, "", DerivationPath{}, childErr
 		}
+		key = child
+		effectiveComponents = append(effectiveComponents, effectiveIndex)
 	}
-	privateKey := append([]byte(nil), key.Key...)
+	privateKey := append([]byte(nil), key.key...)
 	ecdsaKey, err := crypto.ToECDSA(privateKey)
 	if err != nil {
 		clear(privateKey)
-		return nil, "", err
+		return nil, "", DerivationPath{}, err
 	}
 	address := crypto.PubkeyToAddress(ecdsaKey.PublicKey).Hex()
-	return privateKey, address, nil
+	return privateKey, address, DerivationPath{components: effectiveComponents}, nil
 }
 
 func buildBIP39WordIndexes() map[BIP39Language]map[string]int {

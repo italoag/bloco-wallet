@@ -23,120 +23,13 @@ import (
 
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-type createFlowRepository struct {
-	wallets []wallet.Wallet
-}
-
-func (r *createFlowRepository) AddWallet(w *wallet.Wallet) error {
-	w.ID = len(r.wallets) + 1
-	r.wallets = append(r.wallets, *w)
-	return nil
-}
-
-func (r *createFlowRepository) GetAllWallets() ([]wallet.Wallet, error) {
-	return append([]wallet.Wallet(nil), r.wallets...), nil
-}
-
-func (r *createFlowRepository) DeleteWallet(int) error {
-	return nil
-}
-
-func (r *createFlowRepository) FindBySourceHash(sourceHash string) (*wallet.Wallet, error) {
-	for i := range r.wallets {
-		if r.wallets[i].SourceHash == sourceHash {
-			w := r.wallets[i]
-			return &w, nil
-		}
-	}
-	return nil, nil
-}
-
-func (r *createFlowRepository) FindByAddress(string) ([]wallet.Wallet, error) {
-	return nil, nil
-}
-
-func (r *createFlowRepository) FindByAddressAndMethod(string, string) ([]wallet.Wallet, error) {
-	return nil, nil
-}
-
-func (r *createFlowRepository) Close() error {
-	return nil
-}
-
-func TestDisplayedMnemonicControlsPersistedAccount(t *testing.T) {
-	homeDir := t.TempDir()
-	t.Setenv("HOME", homeDir)
-	globalConfigManager = nil
-	globalNetworkManager = nil
-	t.Cleanup(func() {
-		globalConfigManager = nil
-		globalNetworkManager = nil
-	})
-
-	cfg := &config.Config{
-		AppDir:     homeDir,
-		WalletsDir: filepath.Join(homeDir, "wallets"),
-		Language:   "en",
-		LocaleDir:  "../../pkg/localization/locales",
-		Security: config.SecurityConfig{
-			Argon2Time:    1,
-			Argon2Memory:  64 * 1024,
-			Argon2Threads: 4,
-			Argon2KeyLen:  32,
-			SaltLength:    16,
-		},
-	}
-	require.NoError(t, localization.InitLocalization(cfg))
-	wallet.InitCryptoService(cfg)
-
-	keystoreDir := filepath.Join(homeDir, "keystore")
-	repository := &createFlowRepository{}
-	service := wallet.NewWalletService(
-		repository,
-		keystore.NewKeyStore(keystoreDir, keystore.LightScryptN, keystore.LightScryptP),
-	)
-	model := &CLIModel{Service: service}
-	model.initCreateWallet()
-	displayedMnemonic := model.mnemonic
-
-	model.nameInput.SetValue("Recovery Test")
-	_, _ = model.updateCreateWalletName(tea.KeyMsg{Type: tea.KeyEnter})
-	model.backupConfirmationInput.SetValue(displayedMnemonic)
-	_, _ = model.updateCreateWalletBackup(tea.KeyMsg{Type: tea.KeyEnter})
-	model.passwordInput.SetValue("StrongPassword1!")
-	_, _ = model.updateCreateWalletPassword(tea.KeyMsg{Type: tea.KeyEnter})
-
-	require.NotNil(t, model.walletDetails)
-	require.NotNil(t, model.walletDetails.Mnemonic)
-	if displayedMnemonic != *model.walletDetails.Mnemonic {
-		t.Fatal("displayed mnemonic does not control persisted account")
-	}
-	preview, err := wallet.PreviewMnemonicImport(wallet.MnemonicImportRequest{Mnemonic: displayedMnemonic})
-	require.NoError(t, err)
-	assert.Equal(t, model.walletDetails.Wallet.Address, preview.Address)
-
-	restartedService := wallet.NewWalletService(
-		repository,
-		keystore.NewKeyStore(keystoreDir, keystore.LightScryptN, keystore.LightScryptP),
-	)
-	loaded, err := restartedService.LoadWallet(model.walletDetails.Wallet, "StrongPassword1!")
-	require.NoError(t, err)
-	assert.Equal(t, model.walletDetails.Wallet.Address, loaded.Wallet.Address)
-}
-
-func TestNewCLIModelRequiresVault(t *testing.T) {
-	model, err := NewCLIModel(nil)
-	assert.Error(t, err)
-	assert.Nil(t, model)
-}
-
-func TestVaultBackedCreateFlowPersistsOnlyEncryptedSecret(t *testing.T) {
+func newTestVaultModel(t *testing.T) (*CLIModel, *wallet.WalletVault, *storage.GORMRepository) {
+	t.Helper()
 	root := t.TempDir()
 	cfg := &config.Config{
 		AppDir:       root,
@@ -164,10 +57,19 @@ func TestVaultBackedCreateFlowPersistsOnlyEncryptedSecret(t *testing.T) {
 	require.NoError(t, err)
 	vault, err := wallet.NewWalletVault(repository, codec, wallet.VaultOptions{ChallengeWords: 3, SourceIdentityKey: bytes.Repeat([]byte{0x42}, 32)})
 	require.NoError(t, err)
-	model := &CLIModel{Vault: vault, styles: createStyles()}
+	return &CLIModel{Vault: vault, styles: createStyles()}, vault, repository
+}
+
+func TestNewCLIModelRequiresVault(t *testing.T) {
+	model, err := NewCLIModel(nil)
+	assert.Error(t, err)
+	assert.Nil(t, model)
+}
+
+func TestVaultBackedCreateFlowPersistsOnlyEncryptedSecret(t *testing.T) {
+	model, vault, repository := newTestVaultModel(t)
 
 	model.initCreateWallet()
-	assert.Empty(t, model.mnemonic)
 	model.nameInput.SetValue("Vault UI")
 	_, _ = model.updateCreateWalletName(tea.KeyMsg{Type: tea.KeyEnter})
 	assert.Equal(t, constants.CreateWalletOptionsView, model.currentView)
@@ -198,7 +100,7 @@ func TestVaultBackedCreateFlowPersistsOnlyEncryptedSecret(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, bytes.Contains(stored.SecretEnvelope, []byte(mnemonic)))
 	assert.NotContains(t, model.viewWalletDetails(), mnemonic)
-	countMessage, ok := walletCountCmd(nil, vault)().(walletCountMsg)
+	countMessage, ok := walletCountCmd(vault)().(walletCountMsg)
 	require.True(t, ok)
 	assert.NoError(t, countMessage.err)
 	assert.Equal(t, 1, countMessage.count)
@@ -357,15 +259,36 @@ func TestQIsAcceptedInSecretInput(t *testing.T) {
 }
 
 func TestWalletCreationRequiresMnemonicConfirmation(t *testing.T) {
-	cfg := &config.Config{Language: "en", LocaleDir: "../../pkg/localization/locales"}
-	require.NoError(t, localization.InitLocalization(cfg))
-	model := &CLIModel{}
+	model, _, _ := newTestVaultModel(t)
 	model.initCreateWallet()
 	model.nameInput.SetValue("Unconfirmed")
 	_, _ = model.updateCreateWalletName(tea.KeyMsg{Type: tea.KeyEnter})
-	model.backupConfirmationInput.SetValue("wrong recovery phrase")
+	for range 4 {
+		_, _ = model.updateCreateWalletOptions(tea.KeyMsg{Type: tea.KeyEnter})
+	}
+	require.Equal(t, constants.CreateWalletView, model.currentView)
+	model.passwordInput.SetValue("Strong vault password 1!")
+	_, _ = model.updateCreateWalletPassword(tea.KeyMsg{Type: tea.KeyEnter})
+	model.createPasswordConfirmationInput.SetValue("Strong vault password 1!")
+	_, cmd := model.updateCreateWalletPassword(tea.KeyMsg{Type: tea.KeyEnter})
+	require.NotNil(t, cmd)
+	createResult, ok := cmd().(vaultCreateResultMsg)
+	require.True(t, ok)
+	require.NoError(t, createResult.err)
+	_, _ = model.Update(createResult)
+	require.Equal(t, constants.CreateWalletBackupView, model.currentView)
+	require.NotNil(t, model.backupChallenge)
+	answers := make([]string, len(model.backupChallenge.RequiredWordIndices))
+	for i := range answers {
+		answers[i] = "wrong"
+	}
+	model.backupConfirmationInput.SetValue(strings.Join(answers, " "))
 
-	_, _ = model.updateCreateWalletBackup(tea.KeyMsg{Type: tea.KeyEnter})
+	_, cmd = model.updateCreateWalletBackup(tea.KeyMsg{Type: tea.KeyEnter})
+	require.NotNil(t, cmd)
+	confirmResult, ok := cmd().(backupConfirmResultMsg)
+	require.True(t, ok)
+	_, _ = model.Update(confirmResult)
 
 	assert.Equal(t, constants.CreateWalletBackupView, model.currentView)
 	assert.NotEmpty(t, model.backupError)
@@ -392,14 +315,14 @@ func TestKeystoreImportUsesCanonicalMenu(t *testing.T) {
 func TestWatchOnlyImportUsesCanonicalAddressOnlyFlow(t *testing.T) {
 	cfg := &config.Config{Language: "en", LocaleDir: "../../pkg/localization/locales"}
 	require.NoError(t, localization.InitLocalization(cfg))
-	found := false
-	for _, item := range NewImportMenu() {
+	watchOnlyIndex := -1
+	for index, item := range NewImportMenu() {
 		if item.title == "Watch-only Address" {
-			found = true
+			watchOnlyIndex = index
 		}
 	}
-	assert.True(t, found)
-	model := &CLIModel{selectedMenu: 5, styles: createStyles()}
+	require.NotEqual(t, -1, watchOnlyIndex)
+	model := &CLIModel{selectedMenu: watchOnlyIndex, styles: createStyles()}
 	_, _ = model.updateImportMethodSelection(tea.KeyMsg{Type: tea.KeyEnter})
 	require.NotNil(t, model.canonicalImport)
 	assert.Equal(t, wallet.ImportMethodWatchOnly, model.canonicalImport.method)
@@ -435,43 +358,6 @@ func TestSecretImportInputsAreMasked(t *testing.T) {
 	privateKey := strings.Repeat("a", 64)
 	privateKeyModel.canonicalImport.fields[1].input.SetValue(privateKey)
 	assert.NotContains(t, privateKeyModel.viewCanonicalImport(), privateKey)
-}
-
-func TestMnemonicImportIgnoresStalePrivateKeyInput(t *testing.T) {
-	homeDir := t.TempDir()
-	cfg := &config.Config{
-		AppDir:     homeDir,
-		WalletsDir: filepath.Join(homeDir, "keystore"),
-		Security: config.SecurityConfig{
-			Argon2Time:    1,
-			Argon2Memory:  64 * 1024,
-			Argon2Threads: 4,
-			Argon2KeyLen:  32,
-			SaltLength:    16,
-		},
-	}
-	wallet.InitCryptoService(cfg)
-	repository := &createFlowRepository{}
-	service := wallet.NewWalletService(repository, keystore.NewKeyStore(cfg.WalletsDir, keystore.LightScryptN, keystore.LightScryptP), cfg.WalletsDir)
-	mnemonic := "test test test test test test test test test test test junk"
-	staleKey, err := crypto.GenerateKey()
-	require.NoError(t, err)
-	model := &CLIModel{
-		Service:             service,
-		currentView:         constants.ImportWalletPasswordView,
-		pendingImportMethod: wallet.ImportMethodMnemonic,
-		importWords:         strings.Fields(mnemonic),
-	}
-	model.privateKeyInput.SetValue(hex.EncodeToString(crypto.FromECDSA(staleKey)))
-	model.passwordInput.SetValue("StrongPassword1!")
-
-	_, _ = model.updateImportWalletPassword(tea.KeyMsg{Type: tea.KeyEnter})
-
-	require.NotNil(t, model.walletDetails)
-	preview, err := wallet.PreviewMnemonicImport(wallet.MnemonicImportRequest{Mnemonic: mnemonic})
-	require.NoError(t, err)
-	assert.Equal(t, preview.Address, model.walletDetails.Wallet.Address)
-	assert.Empty(t, model.privateKeyInput.Value())
 }
 
 func TestWalletDetailsFetchesBalancesOnlyAfterExplicitAction(t *testing.T) {
@@ -555,7 +441,7 @@ func TestWalletDeletionIsDisabledInUI(t *testing.T) {
 	_, _ = model.updateListWallets(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
 
 	assert.NotNil(t, model.err)
-	assert.Nil(t, model.deletingWallet)
+	assert.Nil(t, model.accountDeletion)
 }
 
 func TestWalletSelectionUsesIDWhenAddressesMatch(t *testing.T) {

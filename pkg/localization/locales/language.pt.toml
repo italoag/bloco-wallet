@@ -249,6 +249,12 @@ other = "Importação de Mnemônicos em Lote"
 [import_batch_mnemonic_desc]
 other = "Importar arquivos de frases de um diretório"
 
+[import_batch_private_key]
+other = "Importação de Chaves Privadas em Lote"
+
+[import_batch_private_key_desc]
+other = "Importar arquivos de chaves privadas de um diretório"
+
 [import_encrypted_backup]
 other = "Backup Criptografado"
 
@@ -986,6 +992,9 @@ other = "A validação ou a descriptografia do keystore falhou"
 [canonical_err_mnemonic_validation]
 other = "A validação do mnemônico falhou"
 
+[canonical_err_private_key_validation]
+other = "A validação da chave privada falhou"
+
 [canonical_err_import_failed]
 other = "A importação da carteira falhou"
 
@@ -1038,7 +1047,10 @@ other = "Senha de origem do keystore (pode estar vazia)"
 other = "Diretório contendo arquivos Keystore V3"
 
 [canonical_label_directory_mnemonic]
-other = "Diretório contendo arquivos .mnemonic/.seedphrase"
+other = "Diretório contendo arquivos .mnemonic/.seedphrase/.phrase"
+
+[canonical_label_directory_private_key]
+other = "Diretório contendo arquivos de chaves privadas"
 
 [canonical_label_encrypted_path]
 other = "Caminho absoluto da exportação criptografada Bloco"

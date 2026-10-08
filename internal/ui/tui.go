@@ -318,7 +318,7 @@ func (m *CLIModel) Init() tea.Cmd {
 	return tea.Batch(
 		splashCmd(),
 		clockTickCmd(),
-		walletCountCmd(m.Service, m.Vault),
+		walletCountCmd(m.Vault),
 		waitForWalletConnectEvent(m.walletConnectEvents),
 	)
 }
@@ -444,9 +444,6 @@ func (m *CLIModel) Update(msg tea.Msg) (updated tea.Model, command tea.Cmd) {
 				m.currentView = constants.WalletDetailsView
 				return m, nil
 			}
-			if m.currentView == constants.EnhancedImportView {
-				return m.updateEnhancedImport(msg)
-			}
 			if m.currentView == constants.NativeTransferView {
 				cancelPrepared := nativeCancelPreparedCommand(m.nativeTransfer)
 				m.clearNativeTransfer()
@@ -484,17 +481,12 @@ func (m *CLIModel) Update(msg tea.Msg) (updated tea.Model, command tea.Cmd) {
 			if m.currentView == constants.ListWalletsView && m.accountDeletion != nil {
 				return m.updateAccountDeletion(msg)
 			}
-			// Se estiver na tela de lista de wallets e tiver um diálogo de exclusão aberto,
-			// não faça nada aqui e deixe o handler específico da view tratar
-			if m.currentView == constants.ListWalletsView && m.deletingWallet != nil {
-				// Não faz nada, deixa o handler específico tratar
-			} else if m.currentView != constants.DefaultView && m.currentView != constants.SplashView {
+			if m.currentView != constants.DefaultView && m.currentView != constants.SplashView {
 				if m.currentView == constants.CreateWalletNameView || m.currentView == constants.CreateWalletOptionsView || m.currentView == constants.CreateWalletBackupView || m.currentView == constants.CreateWalletView {
 					if err := m.cancelPendingVaultBackup(); err != nil {
 						m.err = errors.Wrap(err, 0)
 						return m, nil
 					}
-					m.mnemonic = ""
 					m.passwordInput.SetValue("")
 					m.createPassphraseInput.SetValue("")
 					m.createPasswordConfirmationInput.SetValue("")
@@ -502,9 +494,6 @@ func (m *CLIModel) Update(msg tea.Msg) (updated tea.Model, command tea.Cmd) {
 					m.createPasswordError = ""
 					m.backupConfirmationInput.SetValue("")
 					m.backupError = ""
-				}
-				if m.currentView == constants.ImportWalletView || m.currentView == constants.ImportPrivateKeyView || m.currentView == constants.ImportKeystoreView || m.currentView == constants.ImportWalletPasswordView {
-					m.clearImportSecrets()
 				}
 				// Para a maioria das telas, voltar para o menu principal
 				if m.currentView == constants.WalletDetailsView {
@@ -584,17 +573,10 @@ func (m *CLIModel) Update(msg tea.Msg) (updated tea.Model, command tea.Cmd) {
 				m.canonicalImport.quitAfterResult = true
 				return m, nil
 			}
-			if m.enhancedImportState != nil {
-				phase := m.enhancedImportState.GetCurrentPhase()
-				if phase == PhaseImporting || phase == PhasePasswordInput {
-					_ = m.enhancedImportState.CancelImport()
-				}
-			}
 			if err := m.cancelPendingVaultBackup(); err != nil {
 				m.err = errors.Wrap(err, 0)
 				return m, nil
 			}
-			m.mnemonic = ""
 			m.passwordInput.SetValue("")
 			m.createPassphraseInput.SetValue("")
 			m.createPasswordConfirmationInput.SetValue("")
@@ -789,7 +771,7 @@ func (m *CLIModel) Update(msg tea.Msg) (updated tea.Model, command tea.Cmd) {
 		// Transitar para o menu principal após a splash screen
 		m.currentView = constants.DefaultView
 		// Iniciar o comando para buscar a quantidade de wallets
-		return m, walletCountCmd(m.Service, m.Vault)
+		return m, walletCountCmd(m.Vault)
 	case walletCountMsg:
 		if msg.err != nil {
 			m.err = msg.err
@@ -825,22 +807,10 @@ func (m *CLIModel) Update(msg tea.Msg) (updated tea.Model, command tea.Cmd) {
 		return m.updateCreateWalletPassword(msg)
 	case constants.ImportMethodSelectionView:
 		return m.updateImportMethodSelection(msg)
-	case constants.ImportWalletView:
-		return m.updateImportWallet(msg)
-	case constants.ImportPrivateKeyView:
-		return m.updateImportPrivateKey(msg)
-	case constants.ImportKeystoreView:
-		return m.updateImportKeystore(msg)
-	case constants.EnhancedImportView:
-		return m.updateEnhancedImport(msg)
 	case constants.CanonicalImportView:
 		return m.updateCanonicalImport(msg)
-	case constants.ImportWalletPasswordView:
-		return m.updateImportWalletPassword(msg)
 	case constants.ListWalletsView:
 		return m.updateListWallets(msg)
-	case constants.WalletPasswordView:
-		return m.updateWalletPassword(msg)
 	case constants.WalletDetailsView:
 		return m.updateWalletDetails(msg)
 	case constants.AccountHistoryView:
@@ -1020,22 +990,10 @@ func (m *CLIModel) getContentView() string {
 		return m.viewCreateWalletPassword()
 	case constants.ImportMethodSelectionView:
 		return m.viewImportMethodSelection()
-	case constants.ImportWalletView:
-		return m.viewImportWallet()
-	case constants.ImportPrivateKeyView:
-		return m.viewImportPrivateKey()
-	case constants.ImportKeystoreView:
-		return m.viewImportKeystore()
-	case constants.EnhancedImportView:
-		return m.viewEnhancedImport()
 	case constants.CanonicalImportView:
 		return m.viewCanonicalImport()
-	case constants.ImportWalletPasswordView:
-		return m.viewImportWalletPassword()
 	case constants.ListWalletsView:
 		return m.viewListWallets()
-	case constants.WalletPasswordView:
-		return m.viewWalletPassword()
 	case constants.WalletDetailsView:
 		return m.viewWalletDetails()
 	case constants.AccountHistoryView:
@@ -1263,16 +1221,8 @@ func (m *CLIModel) updateCreateWalletBackup(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, m.startVaultConfirmBackup()
 			}
-			confirmation := strings.Join(strings.Fields(m.backupConfirmationInput.Value()), " ")
-			if !wallet.SecureCompare(confirmation, m.mnemonic) {
-				m.backupError = localization.Get("mnemonic_mismatch")
-				m.backupConfirmationInput.SetValue("")
-				return m, nil
-			}
-			m.backupError = ""
-			m.backupConfirmationInput.SetValue("")
-			m.passwordInput.Focus()
-			m.currentView = constants.CreateWalletView
+			m.err = errors.Wrap(fmt.Errorf("wallet vault is required"), 0)
+			m.currentView = constants.DefaultView
 			return m, nil
 		case "esc":
 			if err := m.cancelPendingVaultBackup(); err != nil {
@@ -1280,7 +1230,6 @@ func (m *CLIModel) updateCreateWalletBackup(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.backupConfirmationInput.SetValue("")
-			m.mnemonic = ""
 			m.currentView = constants.DefaultView
 			return m, nil
 		default:
@@ -1351,26 +1300,9 @@ func (m *CLIModel) updateCreateWalletPassword(msg tea.Msg) (tea.Model, tea.Cmd) 
 				needsOp := m.credentialBackupEnabled()
 				return m, m.submitWithCredential(needsOp, func() tea.Cmd { return m.startVaultCreate() })
 			}
-			walletDetails, err := m.Service.CreateWalletFromMnemonic(name, m.mnemonic, password)
-			m.passwordInput.SetValue("")
-			if err != nil {
-				m.err = errors.Wrap(err, 0)
-				log.Println(m.err.(*errors.Error).ErrorStack())
-				m.currentView = constants.DefaultView
-				return m, nil
-			}
-			m.walletDetails = walletDetails
-			m.mnemonic = ""
-			m.nameInput.SetValue("")
-			// Ensure networks/config are loaded for balances rendering
-			if err := m.ensureConfigAndNetworksLoaded(); err != nil {
-				// Log error but continue execution - network loading is non-fatal
-				log.Printf("Warning: failed to load networks/config: %v", err)
-			}
-			m.currentView = constants.WalletDetailsView
-
-			// Atualizar a contagem de wallets
-			return m, m.refreshWalletsTable()
+			m.err = errors.Wrap(fmt.Errorf("wallet vault is required"), 0)
+			m.currentView = constants.DefaultView
+			return m, nil
 		case "esc":
 			// Go back to name input
 			m.nameInput.Focus()
@@ -1383,143 +1315,6 @@ func (m *CLIModel) updateCreateWalletPassword(msg tea.Msg) (tea.Model, tea.Cmd) 
 			} else {
 				m.passwordInput, cmd = m.passwordInput.Update(msg)
 			}
-			return m, cmd
-		}
-	}
-	return m, nil
-}
-
-func (m *CLIModel) updateImportWallet(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		switch msg.String() {
-		case "enter":
-			word := strings.TrimSpace(m.textInputs[m.importStage].Value())
-			if word == "" {
-				m.err = errors.Wrap(errors.New(localization.Get("all_words_required")), 0)
-				log.Println(m.err.(*errors.Error).ErrorStack())
-				return m, nil
-			}
-			m.importWords[m.importStage] = word
-			m.textInputs[m.importStage].Blur()
-			m.importStage++
-			if m.importStage < len(m.textInputs) {
-				m.textInputs[m.importStage].Focus()
-			} else {
-				m.passwordInput = textinput.New()
-				m.passwordInput.Placeholder = localization.Get("enter_password")
-				m.passwordInput.CharLimit = constants.PasswordCharLimit
-				m.passwordInput.Width = constants.PasswordWidth
-				m.passwordInput.EchoMode = textinput.EchoPassword
-				m.passwordInput.EchoCharacter = '•'
-				m.passwordInput.Validate = func(s string) error {
-					return validateStoragePasswordInput(s)
-				}
-				m.passwordInput.Focus()
-				m.currentView = constants.ImportWalletPasswordView
-			}
-		case "esc":
-			m.currentView = constants.DefaultView
-		default:
-			var cmd tea.Cmd
-			m.textInputs[m.importStage], cmd = m.textInputs[m.importStage].Update(msg)
-			return m, cmd
-		}
-	}
-	return m, nil
-}
-
-func (m *CLIModel) updateImportWalletPassword(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		switch msg.String() {
-		case "enter":
-			password := m.passwordInput.Value()
-
-			// Validar a complexidade da senha
-			validationErr, isValid := wallet.ValidatePassword(password)
-			if !isValid {
-				m.passwordInput.SetValue("")
-				m.err = errors.Wrap(errors.New(validationErr.GetErrorMessage()), 0)
-				log.Println(m.err.(*errors.Error).ErrorStack())
-				return m, nil
-			}
-
-			var walletDetails *wallet.WalletDetails
-			var err error
-
-			// Check which import method we're using
-			switch m.pendingImportMethod {
-			case wallet.ImportMethodPrivateKey:
-				privateKey := strings.TrimSpace(m.privateKeyInput.Value())
-				walletDetails, err = m.Service.ImportWalletFromPrivateKey("Imported Private Key Wallet", privateKey, password)
-			case wallet.ImportMethodKeystore:
-				walletDetails, err = m.Service.ImportWalletFromKeystore("Imported Keystore Wallet", m.keystorePath, password)
-			case wallet.ImportMethodMnemonic:
-				mnemonic := strings.Join(m.importWords, " ")
-				walletDetails, err = m.Service.ImportWallet("Imported Mnemonic Wallet", mnemonic, password)
-			default:
-				err = fmt.Errorf("import method is not selected")
-			}
-			m.passwordInput.SetValue("")
-
-			if err != nil {
-				// Check if it's a KeystoreImportError
-				if keystoreErr, ok := err.(*wallet.KeystoreImportError); ok {
-					// Get localized error message
-					localizedMsg := localization.FormatKeystoreErrorWithField(
-						keystoreErr.GetLocalizedMessage(),
-						keystoreErr.Field,
-					)
-
-					// Add recovery suggestion based on error type
-					var recoverySuggestion string
-					switch keystoreErr.Type {
-					case wallet.ErrorFileNotFound:
-						recoverySuggestion = localization.Get("keystore_recovery_file_not_found")
-					case wallet.ErrorInvalidJSON:
-						recoverySuggestion = localization.Get("keystore_recovery_invalid_json")
-					case wallet.ErrorInvalidKeystore:
-						recoverySuggestion = localization.Get("keystore_recovery_invalid_structure")
-					case wallet.ErrorIncorrectPassword:
-						recoverySuggestion = localization.Get("keystore_recovery_incorrect_password")
-						// Stay on password screen for password errors
-						m.err = errors.Wrap(fmt.Errorf("%s\n%s", localizedMsg, recoverySuggestion), 0)
-						log.Println(m.err.(*errors.Error).ErrorStack())
-						return m, nil
-					default:
-						recoverySuggestion = localization.Get("keystore_recovery_general")
-					}
-
-					m.err = errors.Wrap(fmt.Errorf("%s\n%s", localizedMsg, recoverySuggestion), 0)
-				} else {
-					// Detect duplicate wallet conflicts and show context-aware localized message
-					if dupErr, ok := err.(*wallet.DuplicateWalletError); ok {
-						// Use the conflict type as both the import method context and conflict type when unknown
-						formatted := localization.FormatDuplicateImportError(dupErr.Type, dupErr.Type, dupErr.Address)
-						m.err = errors.Wrap(errors.New(formatted), 0)
-					} else {
-						m.err = errors.Wrap(err, 0)
-					}
-				}
-
-				log.Println(m.err.(*errors.Error).ErrorStack())
-				m.clearImportSecrets()
-				m.currentView = constants.DefaultView
-				return m, nil
-			}
-
-			m.walletDetails = walletDetails
-			m.clearImportSecrets()
-			m.currentView = constants.WalletDetailsView
-
-			// Atualizar a contagem de wallets
-			return m, m.refreshWalletsTable()
-		case "esc":
-			m.currentView = constants.DefaultView
-		default:
-			var cmd tea.Cmd
-			m.passwordInput, cmd = m.passwordInput.Update(msg)
 			return m, cmd
 		}
 	}
@@ -1551,12 +1346,14 @@ func (m *CLIModel) updateImportMethodSelection(msg tea.Msg) (tea.Model, tea.Cmd)
 				m.initCanonicalImport(wallet.ImportMethodKeystore)
 			case "keystore_batch":
 				m.initCanonicalBatchImport()
+			case "mnemonic_batch":
+				m.initCanonicalImport(canonicalMnemonicBatchMethod)
+			case "private_key_batch":
+				m.initCanonicalImport(canonicalPrivateKeyBatchMethod)
 			case "bloco_encrypted":
 				m.initCanonicalImport(canonicalEncryptedMethod)
 			case "watch_only":
 				m.initCanonicalImport(wallet.ImportMethodWatchOnly)
-			case "mnemonic_batch":
-				m.initCanonicalImport(canonicalMnemonicBatchMethod)
 			case "back":
 				m.clearImportSecrets()
 				m.menuItems = NewMenu()
@@ -1620,264 +1417,6 @@ func (m *CLIModel) updateConfigMenu(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *CLIModel) updateImportPrivateKey(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		switch msg.String() {
-		case "enter":
-			privateKey := strings.TrimSpace(m.privateKeyInput.Value())
-			if privateKey == "" {
-				m.err = errors.Wrap(errors.New(localization.Get("invalid_private_key")), 0)
-				log.Println(m.err.(*errors.Error).ErrorStack())
-				return m, nil
-			}
-
-			// Move to password input screen
-			m.passwordInput = textinput.New()
-			m.passwordInput.Placeholder = localization.Get("enter_password")
-			m.passwordInput.CharLimit = constants.PasswordCharLimit
-			m.passwordInput.Width = constants.PasswordWidth
-			m.passwordInput.EchoMode = textinput.EchoPassword
-			m.passwordInput.EchoCharacter = '•'
-			m.passwordInput.Validate = func(s string) error {
-				return validateStoragePasswordInput(s)
-			}
-			m.passwordInput.Focus()
-			m.currentView = constants.ImportWalletPasswordView
-
-		case "esc":
-			m.currentView = constants.DefaultView
-		default:
-			var cmd tea.Cmd
-			m.privateKeyInput, cmd = m.privateKeyInput.Update(msg)
-
-			// Update suggestions as the user types
-			if msg.Type == tea.KeyRunes || msg.Type == tea.KeyBackspace || msg.Type == tea.KeyDelete {
-				// Get current path
-				currentPath := m.privateKeyInput.Value()
-				if currentPath == "" {
-					currentPath = "."
-				}
-
-				// Get the directory and partial filename
-				dir := filepath.Dir(currentPath)
-				if dir == "." && !strings.HasPrefix(currentPath, "./") && !strings.HasPrefix(currentPath, "/") {
-					dir = currentPath
-				}
-
-				// Read the directory
-				files, err := os.ReadDir(dir)
-				if err == nil {
-					// Find matching files
-					var matches []string
-					partial := filepath.Base(currentPath)
-					for _, file := range files {
-						if strings.HasPrefix(file.Name(), partial) {
-							fullPath := filepath.Join(dir, file.Name())
-							if file.IsDir() {
-								fullPath += "/"
-							}
-							matches = append(matches, fullPath)
-						}
-					}
-
-					// Set all matches as suggestions
-					if len(matches) > 0 {
-						m.privateKeyInput.SetSuggestions(matches)
-					}
-				}
-			}
-
-			return m, cmd
-		}
-	}
-	return m, nil
-}
-
-func (m *CLIModel) updateImportKeystore(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		switch msg.String() {
-		case "enter":
-			keystorePath := strings.TrimSpace(m.privateKeyInput.Value())
-			if keystorePath == "" {
-				// Use specific error type for empty path
-				keystoreErr := wallet.NewKeystoreImportError(
-					wallet.ErrorFileNotFound,
-					"No keystore path provided",
-					nil,
-				)
-				m.err = errors.Wrap(errors.New(localization.FormatKeystoreErrorWithField(
-					keystoreErr.GetLocalizedMessage(),
-					"",
-				)), 0)
-				log.Println(m.err.(*errors.Error).ErrorStack())
-				return m, nil
-			}
-
-			// Check if file exists
-			if _, err := os.Stat(keystorePath); os.IsNotExist(err) {
-				// Use specific error type for file not found
-				keystoreErr := wallet.NewKeystoreImportError(
-					wallet.ErrorFileNotFound,
-					localization.T("keystore_not_found_detail", map[string]interface{}{"Path": keystorePath}),
-					err,
-				)
-				m.err = errors.Wrap(errors.New(localization.FormatKeystoreErrorWithField(
-					keystoreErr.GetLocalizedMessage(),
-					"",
-				)), 0)
-				log.Println(m.err.(*errors.Error).ErrorStack())
-				return m, nil
-			}
-
-			// Check file size to prevent memory exhaustion
-			fileInfo, err := os.Stat(keystorePath)
-			if err != nil {
-				keystoreErr := wallet.NewKeystoreImportError(
-					wallet.ErrorFileNotFound,
-					localization.T("keystore_access_error_detail", map[string]interface{}{"Path": keystorePath}),
-					err,
-				)
-				m.err = errors.Wrap(errors.New(localization.FormatKeystoreErrorWithField(
-					keystoreErr.GetLocalizedMessage(),
-					"",
-				)), 0)
-				log.Println(m.err.(*errors.Error).ErrorStack())
-				return m, nil
-			}
-
-			// Limit file size to 100KB (reasonable for keystores)
-			const maxKeystoreSize = 100 * 1024 // 100KB
-			if fileInfo.Size() > maxKeystoreSize {
-				keystoreErr := wallet.NewKeystoreImportError(
-					wallet.ErrorInvalidKeystore,
-					localization.T("keystore_too_large_detail", map[string]interface{}{"Size": fileInfo.Size(), "Max": maxKeystoreSize}),
-					nil,
-				)
-				m.err = errors.Wrap(errors.New(localization.FormatKeystoreErrorWithField(
-					keystoreErr.GetLocalizedMessage(),
-					"",
-				)), 0)
-				log.Println(m.err.(*errors.Error).ErrorStack())
-				return m, nil
-			}
-
-			// Store the keystore path for later use
-			m.keystorePath = keystorePath
-			m.pendingImportMethod = wallet.ImportMethodKeystore
-
-			// Clear the privateKeyInput to avoid confusion in updateImportWalletPassword
-			m.privateKeyInput.SetValue("")
-
-			// Move to password input screen
-			m.passwordInput = textinput.New()
-			m.passwordInput.Placeholder = localization.Get("enter_password")
-			m.passwordInput.CharLimit = constants.PasswordCharLimit
-			m.passwordInput.Width = constants.PasswordWidth
-			m.passwordInput.EchoMode = textinput.EchoPassword
-			m.passwordInput.EchoCharacter = '•'
-			m.passwordInput.Validate = func(s string) error {
-				return validateStoragePasswordInput(s)
-			}
-			m.passwordInput.Focus()
-			m.currentView = constants.ImportWalletPasswordView
-
-		case "esc":
-			m.currentView = constants.ImportMethodSelectionView
-		case "tab":
-			// Implement path autocomplete
-			currentPath := m.privateKeyInput.Value()
-			if currentPath == "" {
-				currentPath = "."
-			}
-
-			// Get the directory and partial filename
-			dir := filepath.Dir(currentPath)
-			if dir == "." && !strings.HasPrefix(currentPath, "./") && !strings.HasPrefix(currentPath, "/") {
-				dir = currentPath
-			}
-
-			// Read the directory
-			files, err := os.ReadDir(dir)
-			if err != nil {
-				return m, nil
-			}
-
-			// Find matching files
-			var matches []string
-			partial := filepath.Base(currentPath)
-			for _, file := range files {
-				if strings.HasPrefix(file.Name(), partial) {
-					fullPath := filepath.Join(dir, file.Name())
-					if file.IsDir() {
-						fullPath += "/"
-					}
-					matches = append(matches, fullPath)
-				}
-			}
-
-			// Set all matches as suggestions
-			if len(matches) > 0 {
-				m.privateKeyInput.SetSuggestions(matches)
-
-				// If there's exactly one match, use it
-				if len(matches) == 1 {
-					m.privateKeyInput.SetValue(matches[0])
-				}
-			}
-
-			// Let the textinput component handle the tab key
-			var cmd tea.Cmd
-			m.privateKeyInput, cmd = m.privateKeyInput.Update(msg)
-			return m, cmd
-		default:
-			var cmd tea.Cmd
-			m.privateKeyInput, cmd = m.privateKeyInput.Update(msg)
-
-			// Update suggestions as the user types
-			if msg.Type == tea.KeyRunes || msg.Type == tea.KeyBackspace || msg.Type == tea.KeyDelete {
-				// Get current path
-				currentPath := m.privateKeyInput.Value()
-				if currentPath == "" {
-					currentPath = "."
-				}
-
-				// Get the directory and partial filename
-				dir := filepath.Dir(currentPath)
-				if dir == "." && !strings.HasPrefix(currentPath, "./") && !strings.HasPrefix(currentPath, "/") {
-					dir = currentPath
-				}
-
-				// Read the directory
-				files, err := os.ReadDir(dir)
-				if err == nil {
-					// Find matching files
-					var matches []string
-					partial := filepath.Base(currentPath)
-					for _, file := range files {
-						if strings.HasPrefix(file.Name(), partial) {
-							fullPath := filepath.Join(dir, file.Name())
-							if file.IsDir() {
-								fullPath += "/"
-							}
-							matches = append(matches, fullPath)
-						}
-					}
-
-					// Set all matches as suggestions
-					if len(matches) > 0 {
-						m.privateKeyInput.SetSuggestions(matches)
-					}
-				}
-			}
-
-			return m, cmd
-		}
-	}
-	return m, nil
-}
-
 func (m *CLIModel) cancelPendingVaultBackup() error {
 	if m.Vault != nil && m.backupChallenge != nil {
 		var err error
@@ -1918,18 +1457,7 @@ func (m *CLIModel) clearVaultActionInputs() {
 }
 
 func (m *CLIModel) clearImportSecrets() {
-	for i := range m.textInputs {
-		m.textInputs[i].SetValue("")
-	}
-	for i := range m.importWords {
-		m.importWords[i] = ""
-	}
-	m.importWords = nil
-	m.textInputs = nil
-	m.privateKeyInput.SetValue("")
 	m.passwordInput.SetValue("")
-	m.keystorePath = ""
-	m.pendingImportMethod = ""
 }
 
 func (m *CLIModel) selectedAccountFromTable() *wallet.AccountSummary {
@@ -1967,64 +1495,7 @@ func (m *CLIModel) updateListWallets(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if m.accountDeletion != nil {
 		return m.updateAccountDeletion(msg)
 	}
-	// Diálogo de confirmação de exclusão
-	if m.deletingWallet != nil {
-		if keyMsg, ok := msg.(tea.KeyMsg); ok {
-			switch keyMsg.String() {
-			case "left", "h":
-				if m.dialogButtonIndex > 0 {
-					m.dialogButtonIndex = 0
-				}
-				return m, nil
-			case "right", "l":
-				if m.dialogButtonIndex < 1 {
-					m.dialogButtonIndex = 1
-				}
-				return m, nil
-			case "enter":
-				walletToDelete := m.deletingWallet
-				shouldDelete := m.dialogButtonIndex == 0
 
-				// Limpar a referência do diálogo antes de qualquer outra operação
-				m.deletingWallet = nil
-				m.dialogButtonIndex = 0
-
-				if shouldDelete {
-					// Executar a exclusão
-					err := m.Service.DeleteWallet(walletToDelete)
-					if err != nil {
-						m.err = errors.Wrap(err, 0)
-					}
-
-					// Recarregar a lista de wallets
-					wallets, err := m.Service.GetAllWallets()
-					if err == nil {
-						m.wallets = wallets
-						m.walletCount = len(wallets)
-
-						// Reconstruir linhas da tabela
-						rows := make([]table.Row, len(wallets))
-						for i, w := range wallets {
-							rows[i] = table.Row{fmt.Sprintf("%d", w.ID), w.Name, w.Address}
-						}
-						m.walletTable.SetRows(rows)
-					}
-				}
-
-				// Forçar uma atualização da tela
-				return m, m.refreshWalletsTable()
-			case "esc":
-				// Limpar a referência do diálogo e forçar atualização
-				m.deletingWallet = nil
-				m.dialogButtonIndex = 0
-				// Forçar uma atualização da tela
-				return m, m.refreshWalletsTable()
-			}
-		}
-		return m, nil
-	}
-
-	// Continuar com o código existente para quando não houver diálogo
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -2047,12 +1518,6 @@ func (m *CLIModel) updateListWallets(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 			}
-			// Only try to access the table if there are wallets
-			if selected := m.selectedWalletFromTable(); selected != nil {
-				m.selectedWallet = selected
-				m.initWalletPassword()
-				return m, nil
-			}
 		case "esc":
 			m.currentView = constants.DefaultView
 			return m, nil
@@ -2064,33 +1529,6 @@ func (m *CLIModel) updateListWallets(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.walletTable, cmd = m.walletTable.Update(msg)
 		return m, cmd
-	}
-	return m, nil
-}
-
-func (m *CLIModel) updateWalletPassword(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		switch msg.String() {
-		case "enter":
-			password := m.passwordInput.Value()
-			walletDetails, err := m.Service.LoadWallet(m.selectedWallet, password)
-			m.passwordInput.SetValue("")
-			if err != nil {
-				m.err = errors.Wrap(err, 0)
-				log.Println(m.err.(*errors.Error).ErrorStack())
-				m.currentView = constants.DefaultView
-				return m, nil
-			}
-			m.walletDetails = walletDetails
-			m.currentView = constants.WalletDetailsView
-		case "esc":
-			m.currentView = constants.DefaultView
-		default:
-			var cmd tea.Cmd
-			m.passwordInput, cmd = m.passwordInput.Update(msg)
-			return m, cmd
-		}
 	}
 	return m, nil
 }
@@ -2246,20 +1684,7 @@ func (m *CLIModel) updateWalletDetails(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.currentView = constants.ListWalletsView
 			if m.Vault != nil {
 				m.initAccountList()
-				return m, nil
 			}
-
-			// Ensure the wallet list is properly initialized before showing it
-			wallets, err := m.Service.GetAllWallets()
-			if err == nil {
-				m.wallets = wallets
-				m.walletCount = len(wallets)
-
-				// Always rebuild the table, even if there are no wallets
-				// The rebuildWalletsTable method already has a check for empty wallets
-				m.rebuildWalletsTable()
-			}
-
 			return m, nil // Return explícito para consumir o evento de teclado
 		}
 	}
@@ -2350,174 +1775,6 @@ func (m *CLIModel) updateVaultAction(msg tea.Msg, export bool) (tea.Model, tea.C
 		m.exportDestinationInput, command = m.exportDestinationInput.Update(msg)
 	}
 	return m, command
-}
-
-// updateEnhancedImport handles user input in the enhanced import view
-func (m *CLIModel) updateEnhancedImport(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if m.enhancedImportState == nil {
-		// Initialize if not already done
-		m.initEnhancedImport()
-		return m, nil
-	}
-
-	// Handle enhanced import specific messages
-	switch msg := msg.(type) {
-	case ImportBatchCompleteMsg:
-		// Import batch completed
-		if msg.OperationID != m.enhancedImportState.GetOperationID() {
-			return m, nil
-		}
-		if m.enhancedImportState.GetCurrentPhase() == PhaseCancelled {
-			return m, nil
-		}
-		err := m.enhancedImportState.CompleteImport(msg.Results)
-		if err != nil {
-			m.err = errors.Wrap(err, 0)
-			m.currentView = constants.DefaultView
-		}
-		return m, nil
-
-	case ImportProgressUpdateMsg:
-		if msg.OperationID != m.enhancedImportState.GetOperationID() {
-			return m, nil
-		}
-		// Update progress
-		m.enhancedImportState.UpdateProgress(msg.Progress)
-
-		// Collect commands to execute
-		var cmds []tea.Cmd
-
-		// Always continue listening for more progress updates if import is still in progress
-		if m.enhancedImportState != nil && m.enhancedImportState.GetCurrentPhase() == PhaseImporting {
-			cmds = append(cmds, m.listenForProgressUpdates())
-		}
-
-		// Handle any pending commands from progress update
-		if cmd := m.enhancedImportState.GetPendingCommand(); cmd != nil {
-			cmds = append(cmds, cmd)
-		}
-
-		return m, tea.Batch(cmds...)
-
-	case ContinueListeningMsg:
-		if msg.OperationID != m.enhancedImportState.GetOperationID() {
-			return m, nil
-		}
-		// Continue listening for progress updates if import is still in progress
-		if m.enhancedImportState != nil && m.enhancedImportState.GetCurrentPhase() == PhaseImporting {
-			return m, m.listenForProgressUpdates()
-		}
-		return m, nil
-
-	case ContinuePasswordListeningMsg:
-		if msg.OperationID != m.enhancedImportState.GetOperationID() {
-			return m, nil
-		}
-		if m.enhancedImportState != nil {
-			phase := m.enhancedImportState.GetCurrentPhase()
-			if phase == PhaseImporting || phase == PhasePasswordInput {
-				return m, m.listenForPasswordRequests()
-			}
-		}
-		return m, nil
-
-	case PasswordRequestMsg:
-		if msg.OperationID != m.enhancedImportState.GetOperationID() {
-			return m, nil
-		}
-		// Handle password request
-		err := m.enhancedImportState.HandlePasswordRequest(msg.Request)
-		if err != nil {
-			m.err = errors.Wrap(err, 0)
-			m.currentView = constants.DefaultView
-		}
-
-		// Continue listening for more password requests if import is still in progress
-		if m.enhancedImportState != nil &&
-			(m.enhancedImportState.GetCurrentPhase() == PhaseImporting ||
-				m.enhancedImportState.GetCurrentPhase() == PhasePasswordInput) {
-			return m, m.listenForPasswordRequests()
-		}
-		return m, nil
-
-	case ReturnToFileSelectionMsg:
-		// Return to file selection phase
-		err := m.enhancedImportState.TransitionToPhase(PhaseFileSelection)
-		if err != nil {
-			m.err = errors.Wrap(err, 0)
-			m.currentView = constants.DefaultView
-		}
-		return m, nil
-
-	case ReturnToMenuMsg:
-		// Return to main menu
-		m.enhancedImportState = nil
-		m.currentView = constants.DefaultView
-		return m, nil
-
-	case tea.KeyMsg:
-		switch msg.String() {
-		case "esc":
-			// Handle escape key based on current phase
-			phase := m.enhancedImportState.GetCurrentPhase()
-			switch phase {
-			case PhaseFileSelection:
-				// Return to main menu
-				m.enhancedImportState = nil
-				m.currentView = constants.DefaultView
-				return m, nil
-			case PhaseImporting:
-				// Cancel import
-				err := m.enhancedImportState.CancelImport()
-				if err != nil {
-					m.err = errors.Wrap(err, 0)
-				}
-				return m, nil
-			case PhasePasswordInput:
-				// Cancel password input
-				err := m.enhancedImportState.CancelPasswordInput()
-				if err != nil {
-					m.err = errors.Wrap(err, 0)
-				}
-				return m, nil
-			case PhaseComplete, PhaseCancelled:
-				// Return to main menu
-				m.enhancedImportState = nil
-				m.currentView = constants.DefaultView
-				return m, nil
-			}
-		case "enter":
-			// Handle enter key based on current phase
-			phase := m.enhancedImportState.GetCurrentPhase()
-			switch phase {
-			case PhaseFileSelection:
-				// Start import if files are selected
-				if len(m.enhancedImportState.SelectedFiles) > 0 || m.enhancedImportState.SelectedDir != "" {
-					err := m.enhancedImportState.StartImport()
-					if err != nil {
-						m.err = errors.Wrap(err, 0)
-						return m, nil
-					}
-					// Start the import batch processing and progress listening
-					return m, tea.Batch(
-						m.enhancedImportState.ProcessImportBatch(),
-						m.listenForProgressUpdates(),
-						m.listenForPasswordRequests(),
-					)
-				}
-			case PhaseComplete, PhaseCancelled:
-				// Return to main menu
-				m.enhancedImportState = nil
-				m.currentView = constants.DefaultView
-				return m, nil
-			}
-		}
-	}
-
-	// Delegate to enhanced import state
-	var cmd tea.Cmd
-	_, cmd = m.enhancedImportState.Update(msg)
-	return m, cmd
 }
 
 func (m *CLIModel) accountTableWidth() int {
@@ -2625,16 +1882,6 @@ func (m *CLIModel) initCreateWallet() {
 	m.backupChallenge = nil
 	m.pendingAccount = nil
 	m.backupError = ""
-	m.mnemonic = ""
-	if m.Vault == nil {
-		mnemonic, err := wallet.GenerateMnemonic()
-		if err != nil {
-			m.err = errors.Wrap(err, 0)
-			m.currentView = constants.DefaultView
-			return
-		}
-		m.mnemonic = mnemonic
-	}
 
 	// Initialize name input first
 	m.nameInput = textinput.New()
@@ -2712,21 +1959,6 @@ func (m *CLIModel) initImportWallet() {
 	m.initImportMethodSelection()
 }
 
-// initEnhancedImport initializes the enhanced import view
-func (m *CLIModel) initEnhancedImport() tea.Cmd {
-	// Create batch import service
-	batchService := wallet.NewBatchImportService(m.Service)
-
-	// Initialize enhanced import state
-	m.enhancedImportState = NewEnhancedImportState(batchService, m.styles)
-
-	// Set current view
-	m.currentView = constants.EnhancedImportView
-
-	// Initialize the enhanced import state (which will initialize the file picker)
-	return m.enhancedImportState.Init()
-}
-
 func (m *CLIModel) initAccountList() {
 	m.menuItems = NewMenu()
 	m.selectedMenu = 2
@@ -2791,87 +2023,8 @@ func (m *CLIModel) initListWallets() {
 		m.initAccountList()
 		return
 	}
-	wallets, err := m.Service.GetAllWallets()
-	if err != nil {
-		m.err = errors.Wrap(fmt.Errorf("%s: %v", localization.Get("error_loading_wallets"), err), 0)
-		log.Println(m.err.(*errors.Error).ErrorStack())
-		m.currentView = constants.DefaultView
-		return
-	}
-	m.wallets = wallets
-
-	// Inicialize as colunas com larguras adequadas
-	idColWidth := 10
-	nameColWidth := 20
-	typeColWidth := 20
-	createdAtColWidth := 20
-	addressColWidth := m.width - idColWidth - nameColWidth - typeColWidth - createdAtColWidth - 20 // Subtrai 20 para padding e margens
-
-	if addressColWidth < 20 {
-		addressColWidth = 20
-	}
-
-	columns := []table.Column{
-		{Title: localization.Get("id"), Width: idColWidth},
-		{Title: localization.Get("name"), Width: nameColWidth},
-		{Title: localization.Get("wallet_type"), Width: typeColWidth},
-		{Title: localization.Get("created_at"), Width: createdAtColWidth},
-		{Title: localization.Get("ethereum_address"), Width: addressColWidth},
-	}
-
-	var rows []table.Row
-	for _, w := range m.wallets {
-		// Determine wallet type using ImportMethod as primary source
-		walletType := determineWalletType(w)
-
-		// Format created at date
-		createdAt := w.CreatedAt.Format("2006-01-02 15:04")
-
-		rows = append(rows, table.Row{
-			fmt.Sprintf("%d", w.ID),
-			safeShort(w.Name),
-			safeShort(walletType),
-			createdAt,
-			safeShort(w.Address),
-		})
-	}
-
-	m.walletTable = table.New(
-		table.WithColumns(columns),
-		table.WithRows(rows),
-		table.WithFocused(true),
-	)
-
-	// Definir largura explicitamente para evitar quebra de linha
-	m.walletTable.SetWidth(m.width - 12)
-
-	// Ajustar os estilos da tabela
-	s := table.DefaultStyles()
-	s.Header = s.Header.
-		BorderStyle(lipgloss.NormalBorder()).
-		BorderForeground(lipgloss.Color("240")).
-		BorderBottom(true).
-		Bold(true)
-	s.Selected = s.Selected.
-		Foreground(lipgloss.Color("229")).
-		Background(lipgloss.Color("57")).
-		Bold(false)
-	s.Cell = s.Cell.Align(lipgloss.Left)
-	m.walletTable.SetStyles(s)
-
-	// Definir altura da tabela para usar totalmente o espaço disponível
-	contentAreaHeight := m.height - lipgloss.Height(m.styles.Header.Render("")) - lipgloss.Height(m.styles.Footer.Render("")) - 2
-	if contentAreaHeight < 0 {
-		contentAreaHeight = 0
-	}
-	if len(m.wallets) > 0 {
-		m.walletTable.SetHeight(contentAreaHeight)
-	}
-
-	// Atualizar dimensões da tabela
-	m.updateTableDimensions()
-
-	m.currentView = constants.ListWalletsView
+	m.err = errors.Wrap(fmt.Errorf("wallet vault is required"), 0)
+	m.currentView = constants.DefaultView
 }
 
 func (m *CLIModel) initBackupMaterialInputs() {
@@ -2951,21 +2104,6 @@ func (m *CLIModel) initVaultAction(export bool) {
 	}
 }
 
-func (m *CLIModel) initWalletPassword() {
-	m.passwordInput = textinput.New()
-	m.passwordInput.Placeholder = localization.Get("enter_wallet_password")
-	m.passwordInput.CharLimit = constants.PasswordCharLimit
-	m.passwordInput.Width = constants.PasswordWidth
-	m.passwordInput.EchoMode = textinput.EchoPassword
-	m.passwordInput.EchoCharacter = '•'
-	m.passwordInput.Validate = func(s string) error {
-		return validateStoragePasswordInput(s)
-	}
-	m.passwordInput.Focus()
-	m.currentView = constants.WalletPasswordView
-}
-
-// initLanguageSelection initializes the language selection view
 func (m *CLIModel) initLanguageSelection() {
 	// Use the existing configuration if available
 	if m.currentConfig == nil {
@@ -3116,8 +2254,7 @@ func (m *CLIModel) refreshWalletsTable() tea.Cmd {
 			accounts, err := m.Vault.ListAccounts(context.Background())
 			return walletsRefreshedMsg{accounts: accounts, err: err}
 		}
-		wallets, err := m.Service.GetAllWallets()
-		return walletsRefreshedMsg{wallets: wallets, err: err}
+		return walletsRefreshedMsg{err: fmt.Errorf("wallet vault is required")}
 	}
 }
 
@@ -3195,50 +2332,4 @@ func (m *CLIModel) rebuildWalletsTable() {
 
 	// Atualizar dimensões da tabela
 	m.updateTableDimensions()
-}
-
-// listenForProgressUpdates creates a command that listens for progress updates
-func (m *CLIModel) listenForProgressUpdates() tea.Cmd {
-	if m.enhancedImportState == nil {
-		return nil
-	}
-	progressChan := m.enhancedImportState.GetProgressChan()
-	operationID := m.enhancedImportState.GetOperationID()
-
-	return func() tea.Msg {
-		select {
-		case progress, ok := <-progressChan:
-			if !ok {
-				// Channel closed, no more progress updates
-				return nil
-			}
-			return ImportProgressUpdateMsg{OperationID: operationID, Progress: progress}
-		case <-time.After(1 * time.Second): // Increased timeout to 1 second
-			// Timeout - continue listening by returning a special message
-			return ContinueListeningMsg{OperationID: operationID}
-		}
-	}
-}
-
-// listenForPasswordRequests creates a command that listens for password requests
-func (m *CLIModel) listenForPasswordRequests() tea.Cmd {
-	if m.enhancedImportState == nil {
-		return nil
-	}
-	passwordRequestChan := m.enhancedImportState.GetPasswordRequestChan()
-	operationID := m.enhancedImportState.GetOperationID()
-
-	return func() tea.Msg {
-		select {
-		case request, ok := <-passwordRequestChan:
-			if !ok {
-				// Channel closed, no more password requests
-				return nil
-			}
-			return PasswordRequestMsg{OperationID: operationID, Request: request}
-		case <-time.After(100 * time.Millisecond):
-			// Timeout - reschedule without blocking the update loop
-			return ContinuePasswordListeningMsg{OperationID: operationID}
-		}
-	}
 }

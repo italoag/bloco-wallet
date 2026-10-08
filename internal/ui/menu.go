@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"blocowallet/internal/constants"
 	"blocowallet/internal/evm"
 	"blocowallet/pkg/config"
 	"blocowallet/pkg/localization"
@@ -51,9 +50,10 @@ func NewImportMenu() []menuItem {
 		{title: localization.Get("import_private_key"), description: localization.Get("import_private_key_desc"), action: "private_key"},
 		{title: localization.Get("import_keystore"), description: localization.Get("import_keystore_desc"), action: "keystore"},
 		{title: localization.Get("import_batch_keystore"), description: localization.Get("import_batch_keystore_desc"), action: "keystore_batch"},
+		{title: localization.Get("import_batch_mnemonic"), description: localization.Get("import_batch_mnemonic_desc"), action: "mnemonic_batch"},
+		{title: localization.Get("import_batch_private_key"), description: localization.Get("import_batch_private_key_desc"), action: "private_key_batch"},
 		{title: localization.Get("import_encrypted_backup"), description: localization.Get("import_encrypted_backup_desc"), action: "bloco_encrypted"},
 		{title: localization.Get("import_watch_only"), description: localization.Get("import_watch_only_desc"), action: "watch_only"},
-		{title: localization.Get("import_batch_mnemonic"), description: localization.Get("import_batch_mnemonic_desc"), action: "mnemonic_batch"},
 		{title: localization.Get("back_to_menu"), description: localization.Get("back_to_menu_desc"), action: "back"},
 	}
 }
@@ -287,11 +287,7 @@ func (m *CLIModel) refreshFormPlaceholders() {
 	m.backupLanguageInput.Placeholder = localization.Get("backup_reenter_language")
 	m.backupPassphraseInput.Placeholder = localization.Get("backup_reenter_passphrase")
 	if m.passwordInput.Placeholder != "" {
-		if m.currentView == constants.WalletPasswordView {
-			m.passwordInput.Placeholder = localization.Get("enter_wallet_password")
-		} else {
-			m.passwordInput.Placeholder = localization.Get("enter_password")
-		}
+		m.passwordInput.Placeholder = localization.Get("enter_password")
 	}
 	m.refreshCreateOptionList()
 }

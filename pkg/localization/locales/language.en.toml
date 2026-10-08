@@ -249,6 +249,12 @@ other = "Batch Mnemonic Import"
 [import_batch_mnemonic_desc]
 other = "Import seed phrases from a directory"
 
+[import_batch_private_key]
+other = "Batch Private Key Import"
+
+[import_batch_private_key_desc]
+other = "Import private keys from a directory"
+
 [import_encrypted_backup]
 other = "Encrypted Backup"
 
@@ -985,6 +991,9 @@ other = "Keystore validation or decryption failed"
 [canonical_err_mnemonic_validation]
 other = "Mnemonic validation failed"
 
+[canonical_err_private_key_validation]
+other = "Private key validation failed"
+
 [canonical_err_import_failed]
 other = "Wallet import failed"
 
@@ -1037,7 +1046,10 @@ other = "Keystore source password (may be empty)"
 other = "Directory containing Keystore V3 files"
 
 [canonical_label_directory_mnemonic]
-other = "Directory containing .mnemonic/.seedphrase files"
+other = "Directory containing .mnemonic/.seedphrase/.phrase files"
+
+[canonical_label_directory_private_key]
+other = "Directory containing private key files"
 
 [canonical_label_encrypted_path]
 other = "Absolute Bloco encrypted export path"

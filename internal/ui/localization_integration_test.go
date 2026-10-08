@@ -40,7 +40,7 @@ func menuActions(items []menuItem) []string {
 func TestMenuStableActionsAcrossLocales(t *testing.T) {
 	expectedMain := []string{"create_wallet", "import_wallet", "list_wallets", "safe", "configuration", "exit"}
 	expectedConfig := []string{"networks", "language", "keepass", "back"}
-	expectedImport := []string{"mnemonic", "private_key", "keystore", "keystore_batch", "bloco_encrypted", "watch_only", "mnemonic_batch", "back"}
+	expectedImport := []string{"mnemonic", "private_key", "keystore", "keystore_batch", "mnemonic_batch", "private_key_batch", "bloco_encrypted", "watch_only", "back"}
 	expectedNetwork := []string{"add_network", "network_list", "back"}
 	titles := map[string][2]string{
 		"en": {"Create New", "Configuration"},

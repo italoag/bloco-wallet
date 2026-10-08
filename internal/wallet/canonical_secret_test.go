@@ -162,10 +162,10 @@ func TestCanonicalSecretCompatibilityAndErrorPaths(t *testing.T) {
 	if _, err := mnemonicWordsFromStoredSecret(legacyKeyAccount, keyBytes); err == nil {
 		t.Fatal("private key returned mnemonic words")
 	}
-	if _, _, err := deriveCanonicalSecretIdentity(canonicalSecretV1{Kind: "unknown"}); err == nil {
+	if _, _, _, err := deriveCanonicalSecretIdentity(canonicalSecretV1{Kind: "unknown"}); err == nil {
 		t.Fatal("unknown canonical identity kind was accepted")
 	}
-	if _, _, err := deriveCanonicalSecretIdentity(canonicalSecretV1{Kind: SecretTypePrivateKey, PrivateKey: make([]byte, 32)}); err == nil {
+	if _, _, _, err := deriveCanonicalSecretIdentity(canonicalSecretV1{Kind: SecretTypePrivateKey, PrivateKey: make([]byte, 32)}); err == nil {
 		t.Fatal("invalid canonical private key was accepted")
 	}
 }

@@ -293,7 +293,6 @@ func TestFirstKeystoreImportUsesConfiguredDirectory(t *testing.T) {
 
 	cfg := CreateMockConfig(t)
 	cfg.WalletsDir = configuredDir
-	InitCryptoService(cfg)
 
 	sourcePath, _ := createTestKeystoreFile(t, "SourcePass1!")
 	defer func() {
@@ -303,7 +302,7 @@ func TestFirstKeystoreImportUsesConfiguredDirectory(t *testing.T) {
 	mockRepo := new(MockWalletRepository)
 	mockRepo.On("AddWallet", mock.AnythingOfType("*wallet.Wallet")).Return(nil)
 	ks := keystore.NewKeyStore(configuredDir, TestScryptN, TestScryptP)
-	service := NewWalletService(mockRepo, ks)
+	service := NewWalletService(mockRepo, ks, cfg)
 
 	details, err := service.ImportWalletFromKeystoreV3("Configured", sourcePath, "SourcePass1!")
 	assert.NoError(t, err)
@@ -320,7 +319,6 @@ func TestCancelledKeystoreImportDoesNotPersist(t *testing.T) {
 	assert.NoError(t, os.MkdirAll(configuredDir, 0o700))
 	cfg := CreateMockConfig(t)
 	cfg.WalletsDir = configuredDir
-	InitCryptoService(cfg)
 
 	sourcePath, _ := createTestKeystoreFile(t, "SourcePass1!")
 	defer func() {
@@ -332,6 +330,7 @@ func TestCancelledKeystoreImportDoesNotPersist(t *testing.T) {
 	service := NewWalletService(
 		new(MockWalletRepository),
 		keystore.NewKeyStore(configuredDir, TestScryptN, TestScryptP),
+		cfg,
 	)
 
 	details, err := service.ImportWalletFromKeystoreV3WithContext(ctx, "Cancelled", sourcePath, "SourcePass1!", nil)
@@ -344,9 +343,8 @@ func TestCancelledKeystoreImportDoesNotPersist(t *testing.T) {
 
 func TestKeystoreImportRejectsNonRegularAndOversizedFiles(t *testing.T) {
 	cfg := CreateMockConfig(t)
-	InitCryptoService(cfg)
 	assert.NoError(t, os.MkdirAll(cfg.WalletsDir, 0700))
-	service := NewWalletService(new(MockWalletRepository), keystore.NewKeyStore(cfg.WalletsDir, TestScryptN, TestScryptP), cfg.WalletsDir)
+	service := NewWalletService(new(MockWalletRepository), keystore.NewKeyStore(cfg.WalletsDir, TestScryptN, TestScryptP), cfg, cfg.WalletsDir)
 
 	directoryPath := filepath.Join(t.TempDir(), "directory.json")
 	assert.NoError(t, os.MkdirAll(directoryPath, 0700))
@@ -403,9 +401,8 @@ func TestKeystoreImportRejectsFormatsThatCannotReload(t *testing.T) {
 			modifiedPath := filepath.Join(t.TempDir(), "modified.json")
 			assert.NoError(t, os.WriteFile(modifiedPath, modifiedJSON, 0600))
 			cfg := CreateMockConfig(t)
-			InitCryptoService(cfg)
 			assert.NoError(t, os.MkdirAll(cfg.WalletsDir, 0700))
-			service := NewWalletService(new(MockWalletRepository), keystore.NewKeyStore(cfg.WalletsDir, TestScryptN, TestScryptP), cfg.WalletsDir)
+			service := NewWalletService(new(MockWalletRepository), keystore.NewKeyStore(cfg.WalletsDir, TestScryptN, TestScryptP), cfg, cfg.WalletsDir)
 
 			details, importErr := service.ImportWalletFromKeystoreV3("Unsupported", modifiedPath, "SourcePass1!")
 
@@ -428,7 +425,6 @@ func TestKeystorePasswordsRoundTripExactly(t *testing.T) {
 	for _, password := range passwords {
 		t.Run(fmt.Sprintf("length_%d", len(password)), func(t *testing.T) {
 			cfg := CreateMockConfig(t)
-			InitCryptoService(cfg)
 			assert.NoError(t, os.MkdirAll(cfg.WalletsDir, 0700))
 			sourceDir := t.TempDir()
 			sourceStore := keystore.NewKeyStore(sourceDir, TestScryptN, TestScryptP)
@@ -438,19 +434,19 @@ func TestKeystorePasswordsRoundTripExactly(t *testing.T) {
 			assert.NoError(t, err)
 			mockRepo := new(MockWalletRepository)
 			mockRepo.On("AddWallet", mock.AnythingOfType("*wallet.Wallet")).Return(nil)
-			service := NewWalletService(mockRepo, keystore.NewKeyStore(cfg.WalletsDir, TestScryptN, TestScryptP), cfg.WalletsDir)
+			service := NewWalletService(mockRepo, keystore.NewKeyStore(cfg.WalletsDir, TestScryptN, TestScryptP), cfg, cfg.WalletsDir)
 
 			details, err := service.ImportWalletFromKeystoreV3("Exact Password", account.URL.Path, password)
 			assert.NoError(t, err)
 			if !assert.NotNil(t, details) {
 				return
 			}
-			restarted := NewWalletService(mockRepo, keystore.NewKeyStore(cfg.WalletsDir, TestScryptN, TestScryptP), cfg.WalletsDir)
-			loaded, err := restarted.LoadWallet(details.Wallet, password)
+			// Read the keystore back fresh from disk, as after a restart.
+			loaded, err := loadKeystoreWallet(details.Wallet, password)
 			assert.NoError(t, err)
 			assert.NotNil(t, loaded)
 			if strings.TrimSpace(password) != password {
-				_, err = restarted.LoadWallet(details.Wallet, strings.TrimSpace(password))
+				_, err = loadKeystoreWallet(details.Wallet, strings.TrimSpace(password))
 				assert.Error(t, err)
 			}
 		})
@@ -459,7 +455,6 @@ func TestKeystorePasswordsRoundTripExactly(t *testing.T) {
 
 func TestCancelWaitsForInFlightCommit(t *testing.T) {
 	cfg := CreateMockConfig(t)
-	InitCryptoService(cfg)
 	assert.NoError(t, os.MkdirAll(cfg.WalletsDir, 0o700))
 	sourcePath, _ := createTestKeystoreFile(t, "SourcePass1!")
 	defer func() {
@@ -467,7 +462,7 @@ func TestCancelWaitsForInFlightCommit(t *testing.T) {
 	}()
 
 	repo := &blockingAddRepository{started: make(chan struct{}), release: make(chan struct{})}
-	service := NewWalletService(repo, keystore.NewKeyStore(cfg.WalletsDir, TestScryptN, TestScryptP), cfg.WalletsDir)
+	service := NewWalletService(repo, keystore.NewKeyStore(cfg.WalletsDir, TestScryptN, TestScryptP), cfg, cfg.WalletsDir)
 	control := NewImportControl(context.Background())
 	importDone := make(chan error, 1)
 	go func() {
@@ -503,7 +498,6 @@ func TestCancelWaitsForInFlightCommit(t *testing.T) {
 
 func TestDeleteWalletIsDisabled(t *testing.T) {
 	cfg := CreateMockConfig(t)
-	InitCryptoService(cfg)
 	managedDir := cfg.WalletsDir
 	assert.NoError(t, os.MkdirAll(managedDir, 0o700))
 	trustedPath := filepath.Join(managedDir, "trusted.json")
@@ -511,7 +505,7 @@ func TestDeleteWalletIsDisabled(t *testing.T) {
 	outsidePath := filepath.Join(t.TempDir(), "outside.json")
 	assert.NoError(t, os.WriteFile(outsidePath, []byte("outside"), 0600))
 	mockRepo := new(MockWalletRepository)
-	service := NewWalletService(mockRepo, keystore.NewKeyStore(managedDir, TestScryptN, TestScryptP), managedDir)
+	service := NewWalletService(mockRepo, keystore.NewKeyStore(managedDir, TestScryptN, TestScryptP), cfg, managedDir)
 
 	err := service.DeleteWallet(&Wallet{ID: 7, KeyStorePath: outsidePath})
 
@@ -523,7 +517,6 @@ func TestDeleteWalletIsDisabled(t *testing.T) {
 
 func TestDeleteWalletDisabledForSharedPath(t *testing.T) {
 	cfg := CreateMockConfig(t)
-	InitCryptoService(cfg)
 	assert.NoError(t, os.MkdirAll(cfg.WalletsDir, 0o700))
 	sharedPath := filepath.Join(cfg.WalletsDir, "shared.json")
 	assert.NoError(t, os.WriteFile(sharedPath, []byte("shared"), 0600))
@@ -533,7 +526,7 @@ func TestDeleteWalletDisabledForSharedPath(t *testing.T) {
 		{ID: 1, KeyStorePath: sharedPath},
 		{ID: 2, KeyStorePath: sharedPath},
 	}, nil)
-	service := NewWalletService(mockRepo, keystore.NewKeyStore(cfg.WalletsDir, TestScryptN, TestScryptP), cfg.WalletsDir)
+	service := NewWalletService(mockRepo, keystore.NewKeyStore(cfg.WalletsDir, TestScryptN, TestScryptP), cfg, cfg.WalletsDir)
 
 	err := service.DeleteWallet(&Wallet{ID: 1})
 
@@ -545,7 +538,6 @@ func TestDeleteWalletDisabledForSharedPath(t *testing.T) {
 func TestImportWalletFromKeystoreV3_Success(t *testing.T) {
 	// Initialize crypto service for mnemonic encryption with mock config
 	mockConfig := CreateMockConfig(t)
-	InitCryptoService(mockConfig)
 
 	// Create a test keystore file
 	password := "testpassword"
@@ -575,7 +567,7 @@ func TestImportWalletFromKeystoreV3_Success(t *testing.T) {
 	ks := keystore.NewKeyStore(tempDir, n, p)
 
 	// Create the wallet service
-	walletService := NewWalletService(mockRepo, ks)
+	walletService := NewWalletService(mockRepo, ks, mockConfig)
 
 	// Import the wallet
 	walletDetails, err := walletService.ImportWalletFromKeystoreV3("Test Wallet", keystorePath, password)
@@ -616,7 +608,7 @@ func TestImportWalletFromKeystoreV3_FileNotFound(t *testing.T) {
 	ks := keystore.NewKeyStore(tempDir, n, p)
 
 	// Create the wallet service
-	walletService := NewWalletService(mockRepo, ks)
+	walletService := NewWalletService(mockRepo, ks, testMainConfig)
 
 	// Try to import a non-existent wallet
 	walletDetails, err := walletService.ImportWalletFromKeystoreV3("Test Wallet", "/non/existent/path.json", "password")
@@ -666,7 +658,7 @@ func TestImportWalletFromKeystoreV3_InvalidJSON(t *testing.T) {
 	ks := keystore.NewKeyStore(tempDir, n, p)
 
 	// Create the wallet service
-	walletService := NewWalletService(mockRepo, ks)
+	walletService := NewWalletService(mockRepo, ks, testMainConfig)
 
 	// Try to import the corrupted wallet
 	walletDetails, err := walletService.ImportWalletFromKeystoreV3("Test Wallet", corruptedKeystorePath, "password")
@@ -716,7 +708,7 @@ func TestImportWalletFromKeystoreV3_InvalidVersion(t *testing.T) {
 	ks := keystore.NewKeyStore(tempDir, n, p)
 
 	// Create the wallet service
-	walletService := NewWalletService(mockRepo, ks)
+	walletService := NewWalletService(mockRepo, ks, testMainConfig)
 
 	// Try to import the invalid wallet
 	walletDetails, err := walletService.ImportWalletFromKeystoreV3("Test Wallet", invalidKeystorePath, "password")
@@ -772,7 +764,7 @@ func TestImportWalletFromKeystoreV3_MissingFields(t *testing.T) {
 	ks := keystore.NewKeyStore(tempDir, n, p)
 
 	// Create the wallet service
-	walletService := NewWalletService(mockRepo, ks)
+	walletService := NewWalletService(mockRepo, ks, testMainConfig)
 
 	// Try to import the wallet with missing fields
 	walletDetails, err := walletService.ImportWalletFromKeystoreV3("Test Wallet", missingFieldsKeystorePath, "password")
@@ -822,7 +814,7 @@ func TestImportWalletFromKeystoreV3_InvalidAddress(t *testing.T) {
 	ks := keystore.NewKeyStore(tempDir, n, p)
 
 	// Create the wallet service
-	walletService := NewWalletService(mockRepo, ks)
+	walletService := NewWalletService(mockRepo, ks, testMainConfig)
 
 	// Try to import the wallet with invalid address
 	walletDetails, err := walletService.ImportWalletFromKeystoreV3("Test Wallet", invalidAddressKeystorePath, "password")
@@ -873,7 +865,7 @@ func TestImportWalletFromKeystoreV3_IncorrectPassword(t *testing.T) {
 	ks := keystore.NewKeyStore(tempDir, n, p)
 
 	// Create the wallet service
-	walletService := NewWalletService(mockRepo, ks)
+	walletService := NewWalletService(mockRepo, ks, testMainConfig)
 
 	// Try to import the wallet with incorrect password
 	walletDetails, err := walletService.ImportWalletFromKeystoreV3("Test Wallet", keystorePath, "wrongpassword")
@@ -923,7 +915,7 @@ func TestImportWalletFromKeystoreV3_AddressMismatch(t *testing.T) {
 	ks := keystore.NewKeyStore(tempDir, n, p)
 
 	// Create the wallet service
-	walletService := NewWalletService(mockRepo, ks)
+	walletService := NewWalletService(mockRepo, ks, testMainConfig)
 
 	// Try to import the wallet with address mismatch
 	walletDetails, err := walletService.ImportWalletFromKeystoreV3("Test Wallet", addressMismatchKeystorePath, password)
@@ -949,7 +941,6 @@ func TestImportWalletFromKeystoreV3_AddressMismatch(t *testing.T) {
 func TestImportWalletFromKeystoreV3_RepositoryError(t *testing.T) {
 	// Initialize crypto service for mnemonic encryption with mock config
 	mockConfig := CreateMockConfig(t)
-	InitCryptoService(mockConfig)
 
 	// Create a test keystore file
 	password := "testpassword"
@@ -979,7 +970,7 @@ func TestImportWalletFromKeystoreV3_RepositoryError(t *testing.T) {
 	ks := keystore.NewKeyStore(tempDir, n, p)
 
 	// Create the wallet service
-	walletService := NewWalletService(mockRepo, ks)
+	walletService := NewWalletService(mockRepo, ks, mockConfig)
 
 	// Try to import the wallet
 	walletDetails, err := walletService.ImportWalletFromKeystoreV3("Test Wallet", keystorePath, password)
@@ -1005,7 +996,6 @@ func TestImportWalletFromKeystoreV3_RepositoryError(t *testing.T) {
 func TestImportWalletFromKeystore_BackwardCompatibility(t *testing.T) {
 	// Initialize crypto service for mnemonic encryption with mock config
 	mockConfig := CreateMockConfig(t)
-	InitCryptoService(mockConfig)
 
 	// Create a test keystore file
 	password := "testpassword"
@@ -1035,7 +1025,7 @@ func TestImportWalletFromKeystore_BackwardCompatibility(t *testing.T) {
 	ks := keystore.NewKeyStore(tempDir, n, p)
 
 	// Create the wallet service
-	walletService := NewWalletService(mockRepo, ks)
+	walletService := NewWalletService(mockRepo, ks, mockConfig)
 
 	// Import the wallet using the old function name
 	walletDetails, err := walletService.ImportWalletFromKeystore("Test Wallet", keystorePath, password)
@@ -1059,7 +1049,6 @@ func TestImportWalletFromKeystore_BackwardCompatibility(t *testing.T) {
 func TestAddressVerificationInImport(t *testing.T) {
 	// Initialize crypto service for mnemonic encryption with mock config
 	mockConfig := CreateMockConfig(t)
-	InitCryptoService(mockConfig)
 
 	// Create a test keystore file
 	password := "testpassword"
@@ -1089,7 +1078,7 @@ func TestAddressVerificationInImport(t *testing.T) {
 	ks := keystore.NewKeyStore(tempDir, n, p)
 
 	// Create the wallet service
-	walletService := NewWalletService(mockRepo, ks)
+	walletService := NewWalletService(mockRepo, ks, mockConfig)
 
 	// Import the wallet
 	walletDetails, err := walletService.ImportWalletFromKeystoreV3("Test Wallet", keystorePath, password)
@@ -1114,7 +1103,6 @@ func TestAddressVerificationInImport(t *testing.T) {
 func TestDeterministicMnemonicInImport(t *testing.T) {
 	// Initialize crypto service for mnemonic encryption with mock config
 	mockConfig := CreateMockConfig(t)
-	InitCryptoService(mockConfig)
 
 	// Create a test keystore file
 	password := "testpassword"
@@ -1144,7 +1132,7 @@ func TestDeterministicMnemonicInImport(t *testing.T) {
 	ks := keystore.NewKeyStore(tempDir, n, p)
 
 	// Create the wallet service
-	walletService := NewWalletService(mockRepo, ks)
+	walletService := NewWalletService(mockRepo, ks, mockConfig)
 
 	// Import the wallet twice to verify deterministic mnemonic generation
 	walletDetails1, err := walletService.ImportWalletFromKeystoreV3("Test Wallet 1", keystorePath, password)
@@ -1165,4 +1153,22 @@ func TestDeterministicMnemonicInImport(t *testing.T) {
 
 	// Verify that the repository was called
 	mockRepo.AssertExpectations(t)
+}
+
+// loadKeystoreWallet verifies the persisted keystore file decrypts with the
+// given password and returns the wallet details. It replaces the removed
+// legacy WalletService.LoadWallet for tests that only need password checks.
+func loadKeystoreWallet(wallet *Wallet, password string) (*WalletDetails, error) {
+	keyJSON, err := os.ReadFile(wallet.KeyStorePath)
+	if err != nil {
+		return nil, fmt.Errorf("error reading the wallet file: %v", err)
+	}
+	if _, err := decryptKeySafely(keyJSON, password); err != nil {
+		return nil, fmt.Errorf("incorrect password")
+	}
+	return &WalletDetails{
+		Wallet:       wallet,
+		ImportMethod: ImportMethod(wallet.ImportMethod),
+		HasMnemonic:  wallet.Mnemonic != nil,
+	}, nil
 }

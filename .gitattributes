@@ -1,0 +1,6 @@
+# Keep embedded data files byte-identical across platforms. Windows CI
+# checks out with core.autocrlf=true, which would corrupt line-ending
+# sensitive assets loaded via go:embed.
+internal/wallet/wordlists/*.txt text eol=lf
+pkg/localization/locales/*.toml text eol=lf
+internal/ui/fonts/* -text

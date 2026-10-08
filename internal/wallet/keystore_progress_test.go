@@ -39,7 +39,6 @@ func TestImportWalletFromKeystoreV3WithProgress(t *testing.T) {
 			SaltLength:    16,
 		},
 	}
-	wallet.InitCryptoService(cfg)
 
 	// Create a test repository and service
 	repo, err := storage.NewWalletRepository(cfg)
@@ -51,7 +50,7 @@ func TestImportWalletFromKeystoreV3WithProgress(t *testing.T) {
 	}()
 
 	ks := keystore.NewKeyStore(keystoreDir, keystore.LightScryptN, keystore.LightScryptP)
-	service := wallet.NewWalletService(repo, ks)
+	service := wallet.NewWalletService(repo, ks, cfg)
 
 	// Use a test keystore file
 	keystorePath := filepath.Join("testdata", "keystores", "real_keystore_v3_standard.json")

@@ -77,11 +77,12 @@ func PreviewMnemonicImport(request MnemonicImportRequest) (ImportPreview, error)
 	if err != nil {
 		return ImportPreview{}, err
 	}
-	privateKey, address, err := deriveCanonicalSecretIdentity(secret)
+	privateKey, address, effectivePath, err := deriveCanonicalSecretIdentity(secret)
 	if err != nil {
 		return ImportPreview{}, err
 	}
 	clear(privateKey)
+	secret.DerivationPath = effectivePath.String()
 	return previewForCanonicalSecret(secret, address, "bip39"), nil
 }
 
@@ -91,7 +92,7 @@ func PreviewPrivateKeyImport(request PrivateKeyImportRequest) (ImportPreview, er
 		return ImportPreview{}, err
 	}
 	defer clear(secret.PrivateKey)
-	privateKey, address, err := deriveCanonicalSecretIdentity(secret)
+	privateKey, address, _, err := deriveCanonicalSecretIdentity(secret)
 	if err != nil {
 		return ImportPreview{}, err
 	}
@@ -245,16 +246,11 @@ func (vault *WalletVault) importCanonicalSecret(ctx context.Context, name string
 	if len(vault.sourceIdentityKey) != 32 {
 		return AccountSummary{}, ErrSourceIdentityKeyUnavailable
 	}
-	canonical, err := encodeCanonicalSecret(secret)
+	canonical, address, _, err := canonicalSecretWithIdentity(&secret)
 	if err != nil {
 		return AccountSummary{}, err
 	}
 	defer clear(canonical)
-	privateKey, address, err := deriveCanonicalSecretIdentity(secret)
-	if err != nil {
-		return AccountSummary{}, err
-	}
-	clear(privateKey)
 	sourceIdentity := vault.deriveSourceIdentity(canonical)
 	if existing, err := vault.repository.FindAccountBySourceIdentity(ctx, sourceIdentity); err != nil && !errors.Is(err, ErrAccountNotFound) {
 		return AccountSummary{}, err

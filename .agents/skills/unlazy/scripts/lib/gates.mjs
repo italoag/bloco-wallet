@@ -3,23 +3,214 @@
 
 import {
   closeSync, constants as fsConstants, existsSync, fstatSync, fsyncSync, lstatSync, mkdirSync,
-  openSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync,
+  openSync, readFileSync, readdirSync, readSync, realpathSync, renameSync, statSync, unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { createHash, randomBytes } from "node:crypto";
-import { basename, dirname, isAbsolute, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 export const UNLAZY_DIR = ".unlazy";
 export const LOCK_DIR = join(UNLAZY_DIR, "locks");
+export const MAX_CHECK_OUTPUT_BYTES = 1024 * 1024;
+export const MAX_AUTOMATIC_EVIDENCE_CHARS = 900;
 
 export const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 export const sha256 = (value) => createHash("sha256").update(String(value)).digest("hex");
 
 const WINDOWS_TRANSIENT_FS_ERRORS = new Set(["EACCES", "EBUSY", "EPERM"]);
 const SYNC_SLEEP_CELL = new Int32Array(new SharedArrayBuffer(4));
+const DEFAULT_STABLE_FILE_MAX_BYTES = 8 * 1024 * 1024;
+const LEASE_MAX_BYTES = 64 * 1024;
 
 function isTransientWindowsFsError(error) {
   return process.platform === "win32" && WINDOWS_TRANSIENT_FS_ERRORS.has(error && error.code);
+}
+
+function pathIsInside(parent, child) {
+  const rel = relative(resolve(parent), resolve(child));
+  return rel === "" || (!rel.startsWith(".." + sep) && rel !== ".." && !isAbsolute(rel));
+}
+
+export function sameFileIdentity(left, right) {
+  return left.dev === right.dev && left.ino === right.ino;
+}
+
+function sameSnapshot(left, right) {
+  return sameFileIdentity(left, right) && left.size === right.size &&
+    (left.mtimeNs === undefined ? left.mtimeMs : left.mtimeNs) ===
+      (right.mtimeNs === undefined ? right.mtimeMs : right.mtimeNs) &&
+    (left.ctimeNs === undefined ? left.ctimeMs : left.ctimeNs) ===
+      (right.ctimeNs === undefined ? right.ctimeMs : right.ctimeNs);
+}
+
+function assertRegularSingleLink(info, target, label, maxBytes) {
+  if (!info.isFile() || info.isSymbolicLink() || (info.nlink !== 1 && info.nlink !== 1n)) {
+    throw new Error(label + " must be one unchanged regular single-link file: " + target);
+  }
+  if (info.size > maxBytes) {
+    throw new Error(label + " exceeds " + maxBytes + " bytes: " + target);
+  }
+}
+
+// Path-based stat and descriptor-based stat used different Windows/libuv
+// implementations in affected Node releases, so their `dev` fields are not
+// comparable. Keep lstat as the named-entry link/type guard, but on Windows
+// acquire identity through a second, non-creating descriptor opened from the
+// current name. Callers can then compare fstat to fstat without weakening the
+// strict volume-plus-file identity rule.
+export function statCurrentNamedFile(path, options = {}) {
+  const target = resolve(path);
+  const kind = String(options.label || "file");
+  const limit = options.maxBytes === undefined ? Infinity : Number(options.maxBytes);
+  if (!(limit === Infinity || (Number.isInteger(limit) && limit >= 1))) {
+    throw new Error(kind + " maxBytes must be a positive integer");
+  }
+  const accessFlags = options.openFlags === undefined
+    ? fsConstants.O_RDONLY | (fsConstants.O_NONBLOCK || 0)
+    : Number(options.openFlags);
+  const mutatingFlags = (fsConstants.O_CREAT || 0) | (fsConstants.O_TRUNC || 0);
+  if (!Number.isInteger(accessFlags) || (accessFlags & mutatingFlags) !== 0) {
+    throw new Error(kind + " identity descriptor must use non-creating, non-truncating flags");
+  }
+
+  const before = lstatSync(target, { bigint: true });
+  assertRegularSingleLink(before, target, kind, limit);
+  if (process.platform !== "win32") return before;
+
+  let fd = null;
+  try {
+    fd = openSync(target, accessFlags);
+    const current = fstatSync(fd, { bigint: true });
+    assertRegularSingleLink(current, target, kind, limit);
+    const after = lstatSync(target, { bigint: true });
+    assertRegularSingleLink(after, target, kind, limit);
+    const afterCurrent = fstatSync(fd, { bigint: true });
+    assertRegularSingleLink(afterCurrent, target, kind, limit);
+    // These are two results from the same path-stat implementation, so their
+    // strict identity and snapshot fields remain comparable even on affected
+    // libuv builds. This brackets the secondary open without comparing
+    // path-stat `dev` to descriptor-stat `dev`.
+    const namedEntryUnchanged = options.stableSnapshot === false
+      ? sameFileIdentity(before, after)
+      : sameSnapshot(before, after);
+    if (!namedEntryUnchanged) {
+      throw new Error(kind + " changed while its named identity was checked: " + target);
+    }
+    // The lstat pair alone cannot detect A -> B -> A around a descriptor open.
+    // Exact BigInt inode equality supplies the comparable named-to-handle field
+    // exposed by the affected runtime; the caller still makes the decisive
+    // strict dev+ino fstat-to-fstat check. This remains a snapshot rather than
+    // atomic Windows path isolation; SECURITY.md documents that boundary.
+    if (before.ino !== current.ino || after.ino !== current.ino) {
+      throw new Error(kind + " descriptor does not identify its guarded name: " + target);
+    }
+    if (options.stableSnapshot !== false && !sameSnapshot(current, afterCurrent)) {
+      throw new Error(kind + " changed while its descriptor identity was checked: " + target);
+    }
+    return afterCurrent;
+  } finally {
+    // A close failure is an infrastructure failure, not a reason to accept an
+    // identity result whose secondary descriptor did not close cleanly.
+    if (fd !== null) closeSync(fd);
+  }
+}
+
+// Read repository and coordination inputs without following a pre-existing
+// symlink, blocking on a FIFO, accepting a hard link, or crossing an optional
+// canonical root. The descriptor and named entry must identify the same stable
+// file before and after the bounded read.
+export function readStableRegularFile(path, { root, maxBytes, label } = {}) {
+  const target = resolve(path);
+  const kind = String(label || "file");
+  const limit = maxBytes === undefined ? DEFAULT_STABLE_FILE_MAX_BYTES : Number(maxBytes);
+  if (!Number.isInteger(limit) || limit < 1) throw new Error(kind + " maxBytes must be a positive integer");
+
+  let fd = null;
+  const noFollow = process.platform === "win32" ? 0 : (fsConstants.O_NOFOLLOW || 0);
+  try {
+    fd = openSync(target, fsConstants.O_RDONLY | (fsConstants.O_NONBLOCK || 0) | noFollow);
+  } catch (error) {
+    if (error && error.code === "ELOOP") {
+      throw new Error(kind + " must be one unchanged regular single-link file: " + target);
+    }
+    if (error && error.code === "ENOENT") {
+      try {
+        const named = lstatSync(target);
+        assertRegularSingleLink(named, target, kind, limit);
+        throw new Error(kind + " appeared after its open reported it missing: " + target);
+      } catch (probeError) {
+        if (probeError && probeError.code === "ENOENT") throw error;
+        throw probeError;
+      }
+    }
+    // ENOENT is intentionally exposed only here. Callers that permit a missing
+    // file can distinguish absence at descriptor acquisition from a later race.
+    throw error;
+  }
+
+  try {
+    const opened = fstatSync(fd, { bigint: true });
+    const named = statCurrentNamedFile(target, { maxBytes: limit, label: kind });
+    assertRegularSingleLink(opened, target, kind, limit);
+    if (!sameFileIdentity(opened, named)) {
+      throw new Error(kind + " changed before it was read: " + target);
+    }
+    const canonicalRoot = root === undefined ? null : realpathSync(resolve(root));
+    const canonicalBefore = realpathSync(target);
+    if (canonicalRoot && !pathIsInside(canonicalRoot, canonicalBefore)) {
+      throw new Error(kind + " resolves outside the allowed root: " + target);
+    }
+
+    const chunks = [];
+    let total = 0;
+    for (;;) {
+      const chunk = Buffer.allocUnsafe(Math.min(64 * 1024, limit + 1 - total));
+      const count = readSync(fd, chunk, 0, chunk.length, null);
+      if (count === 0) break;
+      chunks.push(chunk.subarray(0, count));
+      total += count;
+      if (total > limit) throw new Error(kind + " exceeds " + limit + " bytes: " + target);
+    }
+
+    const afterOpened = fstatSync(fd, { bigint: true });
+    const afterNamed = statCurrentNamedFile(target, { maxBytes: limit, label: kind });
+    assertRegularSingleLink(afterOpened, target, kind, limit);
+    if (!sameSnapshot(opened, afterOpened) || !sameSnapshot(afterOpened, afterNamed)) {
+      throw new Error(kind + " changed while it was read: " + target);
+    }
+    const canonicalAfter = realpathSync(target);
+    if (canonicalAfter !== canonicalBefore || (canonicalRoot && !pathIsInside(canonicalRoot, canonicalAfter))) {
+      throw new Error(kind + " changed canonical location while it was read: " + target);
+    }
+    return Buffer.concat(chunks, total).toString("utf8");
+  } catch (error) {
+    if (error && error.code === "ENOENT") {
+      throw new Error(kind + " changed while it was read: " + target);
+    }
+    throw error;
+  } finally {
+    if (fd !== null) try { closeSync(fd); } catch { /* ignore */ }
+  }
+}
+
+function realDirectoryInside(root, directory) {
+  try {
+    const named = lstatSync(directory);
+    if (named.isSymbolicLink() || !named.isDirectory()) return false;
+    return pathIsInside(realpathSync(resolve(root)), realpathSync(directory));
+  } catch {
+    return false;
+  }
+}
+
+function namedEntry(file) {
+  try {
+    lstatSync(file);
+    return true;
+  } catch (error) {
+    if (error && error.code !== "ENOENT") return true;
+    return false;
+  }
 }
 
 // Windows scanners and indexers can briefly retain a handle to a file after it
@@ -251,11 +442,54 @@ export function qualify(fileOrLabel, id) {
   return basename(String(fileOrLabel)).replace(/\.md$/i, "") + ":" + id;
 }
 
+export function gateDefinitionDigest(gate) {
+  if (!gate || typeof gate.check !== "string" || gate.check === "" ||
+      typeof gate.expect !== "string" || gate.expect === "") return null;
+  return sha256(JSON.stringify([
+    "unlazy.gate-definition",
+    1,
+    gate.check,
+    gate.expect,
+    gate.cwd === null || gate.cwd === undefined ? null : String(gate.cwd),
+  ]));
+}
+
+export function automaticEvidencePrefix(definitionDigest) {
+  if (!/^[a-f0-9]{64}$/.test(String(definitionDigest || ""))) {
+    throw new Error("automatic evidence needs a full lowercase SHA-256 definition digest");
+  }
+  return "automatic-evidence=v1; definition-sha256=" + definitionDigest + ";";
+}
+
+export function classifyGateEvidence(gate) {
+  const evidence = gate && gate.evidence === null ? "" : String((gate && gate.evidence) || "");
+  if (evidence === "" || /^pending$/i.test(evidence)) return "pending";
+  const definitionDigest = gateDefinitionDigest(gate);
+  if (definitionDigest !== null) {
+    const prefix = automaticEvidencePrefix(definitionDigest);
+    const decidingFields = evidence.slice(prefix.length);
+    const success = decidingFields.match(
+      /^ exit=0; EXPECT=matched; output-sha256=[a-f0-9]{64}; output-bytes=(0|[1-9][0-9]{0,6}); shell=./,
+    );
+    if (evidence.length <= MAX_AUTOMATIC_EVIDENCE_CHARS && evidence.startsWith(prefix) &&
+        success && Number(success[1]) <= MAX_CHECK_OUTPUT_BYTES) {
+      return "automatic-current";
+    }
+  }
+  if (evidence.startsWith("automatic-evidence=") || evidence.startsWith("exit=0; shell=")) {
+    return "automatic-stale";
+  }
+  return "human";
+}
+
 export function gateState(gate, abandoned) {
   if (abandoned.has(gate.id)) return "abandoned";
-  const pending = gate.evidence === null || gate.evidence === "" || /^pending$/i.test(gate.evidence);
   if (!gate.checked) return "unmet";
-  if (pending) return "unmet-no-evidence";
+  const evidence = classifyGateEvidence(gate);
+  const runnable = gateDefinitionDigest(gate) !== null;
+  if (runnable) return evidence === "automatic-current" ? "met" : "stale-unmet";
+  if (evidence === "pending") return "unmet-no-evidence";
+  if (evidence === "automatic-current" || evidence === "automatic-stale") return "stale-unmet";
   return "met";
 }
 
@@ -326,8 +560,10 @@ export function listScopes(root) {
   const directory = join(root, UNLAZY_DIR);
   if (!existsSync(directory)) return [];
   try {
+    if (!realDirectoryInside(root, directory)) return [];
     return readdirSync(directory, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory() && !entry.isSymbolicLink() && entry.name !== "locks" && !validateScopeId(entry.name))
+      .filter((entry) => entry.isDirectory() && !entry.isSymbolicLink() && entry.name !== "locks" &&
+        !validateScopeId(entry.name) && realDirectoryInside(root, join(directory, entry.name)))
       .map((entry) => entry.name)
       .sort();
   } catch {
@@ -335,34 +571,51 @@ export function listScopes(root) {
   }
 }
 
-function markdownFiles(directory) {
-  if (!existsSync(directory)) return [];
+function markdownDiscovery(root, directory) {
+  if (!namedEntry(directory)) return { files: [], errors: [] };
   try {
-    if (!statSync(directory).isDirectory()) return [];
-    return readdirSync(directory, { withFileTypes: true })
-      .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
+    if (!realDirectoryInside(root, directory)) {
+      return { files: [], errors: ["gate directory must be a real directory inside the repository: " + directory] };
+    }
+    const files = readdirSync(directory, { withFileTypes: true })
+      // Include every named Markdown entry. Consumers perform the stable-file
+      // check, so a FIFO, link, or directory cannot disappear as "no gates".
+      .filter((entry) => entry.name.endsWith(".md"))
       .map((entry) => join(directory, entry.name))
       .sort();
-  } catch {
-    return [];
+    return { files, errors: [] };
+  } catch (error) {
+    return { files: [], errors: ["cannot inspect gate directory " + directory + ": " + error.message] };
   }
 }
 
-export function scopeFiles(root, scope) {
+function scopeDiscovery(root, scope) {
   const base = scopeRoot(root, scope);
+  if (!realDirectoryInside(root, base)) {
+    return { files: [], errors: ["scope directory must be a real directory inside the repository: " + base] };
+  }
   const files = [];
   const top = join(base, "GATES.md");
-  try { if (statSync(top).isFile()) files.push(top); } catch { /* absent */ }
-  files.push(...markdownFiles(join(base, "gates")));
-  return files;
+  if (namedEntry(top)) files.push(top);
+  const nested = markdownDiscovery(root, join(base, "gates"));
+  files.push(...nested.files);
+  return { files, errors: nested.errors };
 }
 
-export function legacyFiles(root) {
+function legacyDiscovery(root) {
   const files = [];
   const top = join(root, "GATES.md");
-  try { if (statSync(top).isFile()) files.push(top); } catch { /* absent */ }
-  files.push(...markdownFiles(join(root, "gates")));
-  return files;
+  if (namedEntry(top)) files.push(top);
+  const nested = markdownDiscovery(root, join(root, "gates"));
+  files.push(...nested.files);
+  return { files, errors: nested.errors };
+}
+
+export function scopeFiles(root, scope) { return scopeDiscovery(root, scope).files; }
+export function legacyFiles(root) { return legacyDiscovery(root).files; }
+
+function targetFromDiscovery(mode, scope, discovery) {
+  return { mode, scope, files: discovery.files, discoveryErrors: discovery.errors };
 }
 
 export function resolveTarget(options = {}) {
@@ -377,24 +630,36 @@ export function resolveTarget(options = {}) {
     const invalid = validateScopeId(wanted);
     if (invalid) return { mode: "none", scope: wanted, files: [], error: invalid };
     if (!scopes.includes(wanted)) {
+      const scopePath = scopeRoot(root, wanted);
+      const statePath = join(root, UNLAZY_DIR);
+      // A named scope that is physically absent is safe to treat as stale
+      // configuration. A named entry that exists but was excluded from
+      // listScopes (link, file, FIFO, outside-root directory, or unreadable
+      // state container) must remain visible as an invalid input instead of
+      // becoming the same harmless "no such scope" result.
+      if (namedEntry(scopePath) || (namedEntry(statePath) && !realDirectoryInside(root, statePath))) {
+        return targetFromDiscovery("scope", wanted, scopeDiscovery(root, wanted));
+      }
       return {
         mode: "none", scope: wanted, files: [],
         error: "no such scope \"" + wanted + "\" under " + UNLAZY_DIR + "/ (have: " +
           (scopes.join(", ") || "none") + ")",
       };
     }
-    return { mode: "scope", scope: wanted, files: scopeFiles(root, wanted) };
+    return targetFromDiscovery("scope", wanted, scopeDiscovery(root, wanted));
   }
 
-  if (scopes.length === 1) return { mode: "scope", scope: scopes[0], files: scopeFiles(root, scopes[0]) };
+  if (scopes.length === 1) return targetFromDiscovery("scope", scopes[0], scopeDiscovery(root, scopes[0]));
   if (scopes.length > 1) {
     if (sessionId) {
       const owned = scopes.filter((scope) => {
         try {
-          return readFileSync(join(scopeRoot(root, scope), "session"), "utf8").trim() === String(sessionId).trim();
+          return readStableRegularFile(join(scopeRoot(root, scope), "session"), {
+            root, maxBytes: 4096, label: "session binding",
+          }).trim() === String(sessionId).trim();
         } catch { return false; }
       });
-      if (owned.length === 1) return { mode: "scope", scope: owned[0], files: scopeFiles(root, owned[0]) };
+      if (owned.length === 1) return targetFromDiscovery("scope", owned[0], scopeDiscovery(root, owned[0]));
     }
     return {
       mode: "none", scope: null, files: [], ambiguous: scopes,
@@ -403,8 +668,8 @@ export function resolveTarget(options = {}) {
     };
   }
 
-  const legacy = legacyFiles(root);
-  if (legacy.length) return { mode: "legacy", scope: null, files: legacy };
+  const legacy = legacyDiscovery(root);
+  if (legacy.files.length || legacy.errors.length) return targetFromDiscovery("legacy", null, legacy);
   return { mode: "none", scope: null, files: [] };
 }
 
@@ -464,17 +729,45 @@ export function writeAtomic(file, text, options = {}) {
 }
 
 function lockDirectory(root) {
-  const directory = join(resolve(root), LOCK_DIR);
-  assertSafeStatePath(root, directory);
+  // Use the physical root so lexical aliases of one repository share one lock
+  // namespace. The root itself must exist for any unlazy operation.
+  const canonicalRoot = realpathSync(resolve(root));
+  const directory = join(canonicalRoot, LOCK_DIR);
+  assertSafeStatePath(canonicalRoot, directory);
   mkdirSync(directory, { recursive: true, mode: 0o700 });
   const info = lstatSync(directory);
   if (info.isSymbolicLink() || !info.isDirectory()) throw new Error(directory + " must be a real directory");
   return directory;
 }
 
+function canonicalLockTarget(target) {
+  // Lock targets are often not files yet (dispatch state, hook state, or the
+  // lease registry). Canonicalize the nearest existing ancestor and rebuild
+  // the missing suffix so real-root and symlink-root spellings hash alike.
+  // Never follow the final named component: atomic replacement or a rejected
+  // final symlink must not change which lock protects that path.
+  const absolute = resolve(target);
+  let current = dirname(absolute);
+  const suffix = [basename(absolute)];
+  for (;;) {
+    try {
+      const canonical = realpathSync(current);
+      return suffix.length ? resolve(canonical, ...suffix) : canonical;
+    } catch (error) {
+      if (!error || error.code !== "ENOENT") throw error;
+      const parent = dirname(current);
+      if (parent === current) throw error;
+      suffix.unshift(basename(current));
+      current = parent;
+    }
+  }
+}
+
 export async function withFileLock(root, target, fn, options = {}) {
   const timeoutMs = options.timeoutMs === undefined ? 30000 : options.timeoutMs;
-  const lock = join(lockDirectory(root), sha256(resolve(target)).slice(0, 24) + ".filelock");
+  const directory = lockDirectory(root);
+  const lockTarget = canonicalLockTarget(target);
+  const lock = join(directory, sha256(lockTarget).slice(0, 24) + ".filelock");
   const deadline = Date.now() + timeoutMs;
   const token = randomBytes(16).toString("hex");
   let fd = null;
@@ -504,7 +797,7 @@ export async function withFileLock(root, target, fn, options = {}) {
   }
   let identified = false;
   try {
-    writeFileSync(fd, JSON.stringify({ token, pid: process.pid, target: resolve(target), at: Date.now() }));
+    writeFileSync(fd, JSON.stringify({ token, pid: process.pid, target: lockTarget, at: Date.now() }));
     identified = true;
   } catch { /* leave for manual cleanup rather than risk deleting a successor */ }
   try { return await fn(); }
@@ -543,17 +836,21 @@ export function appendStatus(root, scope, line) {
     } catch (error) {
       if (error.code !== "ENOENT") throw error;
     }
-    // Open first but write only after proving that the named entry is the same
-    // regular file as the descriptor. A symlink swap can therefore never turn
-    // the append into a write through an outside-root target.
+    // Open first but write only after validating a named-entry snapshot against
+    // the descriptor. This rejects persistent links and ordinary replacements;
+    // SECURITY.md documents the concurrent Windows path-control boundary.
     const noFollow = process.platform === "win32" ? 0 : (fsConstants.O_NOFOLLOW || 0);
     fd = openSync(path, fsConstants.O_WRONLY | fsConstants.O_APPEND | fsConstants.O_CREAT |
       (fsConstants.O_NONBLOCK || 0) | noFollow, 0o600);
-    const opened = fstatSync(fd);
-    const named = lstatSync(path);
-    if (!opened.isFile() || !named.isFile() || named.isSymbolicLink() ||
-        opened.nlink !== 1 || named.nlink !== 1 ||
-        opened.dev !== named.dev || opened.ino !== named.ino) {
+    const opened = fstatSync(fd, { bigint: true });
+    const named = statCurrentNamedFile(path, {
+      label: "status log",
+      openFlags: fsConstants.O_WRONLY | fsConstants.O_APPEND | (fsConstants.O_NONBLOCK || 0),
+      // Independent O_APPEND writers are valid; identity, link, and type are
+      // the append boundary, while concurrent size/mtime changes are expected.
+      stableSnapshot: false,
+    });
+    if (!opened.isFile() || opened.nlink !== 1n || !sameFileIdentity(opened, named)) {
       throw new Error("refusing non-file or replaced status log " + path);
     }
     writeFileSync(fd, String(line).replace(/[\r\n]+/g, " ") + "\n", "utf8");
@@ -566,16 +863,34 @@ export function appendStatus(root, scope, line) {
 
 function readLeasesUnlocked(root) {
   const directory = join(resolve(root), LOCK_DIR);
-  if (!existsSync(directory)) return [];
+  try { lstatSync(directory); }
+  catch (error) {
+    if (error && error.code === "ENOENT") return [];
+    return [{ scope: "(invalid)", leaf: "locks", globs: ["**"], file: directory, invalid: true }];
+  }
+  if (!realDirectoryInside(root, directory)) {
+    return [{ scope: "(invalid)", leaf: "locks", globs: ["**"], file: directory, invalid: true }];
+  }
   const leases = [];
   for (const name of readdirSync(directory).sort()) {
     if (!name.endsWith(".lease")) continue;
     const file = join(directory, name);
     try {
-      const value = JSON.parse(readFileSync(file, "utf8"));
-      if (value && typeof value.scope === "string" && typeof value.leaf === "string" && Array.isArray(value.globs)) {
-        leases.push({ ...value, file });
+      const value = JSON.parse(readStableRegularFile(file, {
+        root, maxBytes: LEASE_MAX_BYTES, label: "lease record",
+      }));
+      if (!value || typeof value.scope !== "string" || validateScopeId(value.scope) ||
+          typeof value.leaf !== "string" || validateScopeId(value.leaf, "leaf") ||
+          !Array.isArray(value.globs) || !value.globs.length ||
+          name !== sha256(value.scope + "::" + value.leaf).slice(0, 24) + ".lease") {
+        throw new Error("invalid lease record shape or identity");
       }
+      const normalized = value.globs.map((glob) => normalizeOwnsGlob(glob));
+      if (normalized.some((item) => item.error) ||
+          normalized.some((item, index) => item.value !== value.globs[index])) {
+        throw new Error("invalid lease record OWNS paths");
+      }
+      leases.push({ ...value, globs: normalized.map((item) => item.value), file });
     } catch {
       leases.push({ scope: "(invalid)", leaf: name, globs: ["**"], file, invalid: true });
     }
@@ -602,9 +917,18 @@ export async function claimLeases(root, spec) {
     }
     if (!normalized.length) return { ok: false, conflicts: [], error: "no OWNS paths to claim" };
 
+    const heldLeases = readLeasesUnlocked(root);
+    const sameOwner = heldLeases.find((held) => held.scope === spec.scope && held.leaf === spec.leaf);
+    if (sameOwner) {
+      return {
+        ok: false,
+        conflicts: [{ identity: true, with: spec.scope + "/" + spec.leaf, heldGlobs: sameOwner.globs }],
+      };
+    }
+
     const conflicts = [];
     for (const glob of normalized) {
-      for (const held of readLeasesUnlocked(root)) {
+      for (const held of heldLeases) {
         const theirGlob = held.globs.find((other) => globsOverlap(glob, other));
         if (theirGlob) conflicts.push({ glob, with: held.scope + "/" + held.leaf, theirGlob });
       }

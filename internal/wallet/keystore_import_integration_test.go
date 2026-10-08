@@ -69,13 +69,11 @@ func setupTestEnvironment(t *testing.T, testName string) *testEnvironment {
 		},
 	}
 
-	wallet.InitCryptoService(cfg)
-
 	repo, err := storage.NewWalletRepository(cfg)
 	require.NoError(t, err)
 
 	ks := keystore.NewKeyStore(keystoreDir, keystore.LightScryptN, keystore.LightScryptP)
-	walletService := wallet.NewWalletService(repo, ks)
+	walletService := wallet.NewWalletService(repo, ks, cfg)
 
 	return &testEnvironment{
 		tempDir:       tempDir,
@@ -272,7 +270,6 @@ func TestKeystoreImportWithFilePermissions(t *testing.T) {
 	}
 
 	// Initialize crypto service with the test config
-	wallet.InitCryptoService(cfg)
 
 	// Create a real repository (not a mock) for integration testing
 	repo, err := storage.NewWalletRepository(cfg)
@@ -287,7 +284,7 @@ func TestKeystoreImportWithFilePermissions(t *testing.T) {
 	ks := keystore.NewKeyStore(keystoreDir, keystore.LightScryptN, keystore.LightScryptP)
 
 	// Create the wallet service with the real repository
-	walletService := wallet.NewWalletService(repo, ks)
+	walletService := wallet.NewWalletService(repo, ks, cfg)
 
 	// Create a test keystore file
 	password := "testpassword"
@@ -353,7 +350,6 @@ func TestKeystoreImportWithDifferentEncryptionParameters(t *testing.T) {
 	}
 
 	// Initialize crypto service with the test config
-	wallet.InitCryptoService(cfg)
 
 	// Create a real repository (not a mock) for integration testing
 	repo, err := storage.NewWalletRepository(cfg)
@@ -368,7 +364,7 @@ func TestKeystoreImportWithDifferentEncryptionParameters(t *testing.T) {
 	ks := keystore.NewKeyStore(keystoreDir, keystore.LightScryptN, keystore.LightScryptP)
 
 	// Create the wallet service with the real repository
-	walletService := wallet.NewWalletService(repo, ks)
+	walletService := wallet.NewWalletService(repo, ks, cfg)
 
 	// Test cases for different real keystore files
 	testCases := []struct {
@@ -440,7 +436,7 @@ func TestKeystoreImportWithDifferentEncryptionParameters(t *testing.T) {
 			assert.True(t, found, "Wallet should be found in the database")
 
 			// Load the wallet to verify the mnemonic can be decrypted
-			loadedWalletDetails, err := walletService.LoadWallet(walletDetails.Wallet, tc.password)
+			loadedWalletDetails, err := loadWalletDetails(walletDetails.Wallet, tc.password)
 			require.NoError(t, err)
 			require.NotNil(t, loadedWalletDetails)
 			require.NotNil(t, walletDetails.Mnemonic)
@@ -491,7 +487,6 @@ func TestKeystoreImportWithComplexPasswords(t *testing.T) {
 	}
 
 	// Initialize crypto service with the test config
-	wallet.InitCryptoService(cfg)
 
 	// Create a real repository (not a mock) for integration testing
 	repo, err := storage.NewWalletRepository(cfg)
@@ -506,7 +501,7 @@ func TestKeystoreImportWithComplexPasswords(t *testing.T) {
 	ks := keystore.NewKeyStore(keystoreDir, keystore.LightScryptN, keystore.LightScryptP)
 
 	// Create the wallet service with the real repository
-	walletService := wallet.NewWalletService(repo, ks)
+	walletService := wallet.NewWalletService(repo, ks, cfg)
 
 	// Test cases for different password types
 	testCases := []struct {
@@ -562,7 +557,7 @@ func TestKeystoreImportWithComplexPasswords(t *testing.T) {
 			assert.Equal(t, tc.address, walletDetails.Wallet.Address)
 
 			// Load the wallet to verify the mnemonic can be decrypted
-			loadedWalletDetails, err := walletService.LoadWallet(walletDetails.Wallet, tc.password)
+			loadedWalletDetails, err := loadWalletDetails(walletDetails.Wallet, tc.password)
 			require.NoError(t, err)
 			require.NotNil(t, loadedWalletDetails)
 			require.NotNil(t, walletDetails.Mnemonic)
@@ -570,7 +565,7 @@ func TestKeystoreImportWithComplexPasswords(t *testing.T) {
 			assert.Equal(t, *walletDetails.Mnemonic, *loadedWalletDetails.Mnemonic)
 
 			// Try with incorrect password
-			_, err = walletService.LoadWallet(walletDetails.Wallet, tc.password+"wrong")
+			_, err = loadWalletDetails(walletDetails.Wallet, tc.password+"wrong")
 			assert.Error(t, err, "Loading with incorrect password should fail")
 		})
 	}
@@ -612,7 +607,6 @@ func TestDuplicateKeystoreImportRejectedWithoutDeletion(t *testing.T) {
 	}
 
 	// Initialize crypto service with the test config
-	wallet.InitCryptoService(cfg)
 
 	// Create a real repository (not a mock) for integration testing
 	repo, err := storage.NewWalletRepository(cfg)
@@ -627,7 +621,7 @@ func TestDuplicateKeystoreImportRejectedWithoutDeletion(t *testing.T) {
 	ks := keystore.NewKeyStore(keystoreDir, keystore.LightScryptN, keystore.LightScryptP)
 
 	// Create the wallet service with the real repository
-	walletService := wallet.NewWalletService(repo, ks)
+	walletService := wallet.NewWalletService(repo, ks, cfg)
 
 	// Create a test keystore file in the source directory
 	password := "testpassword"
@@ -686,7 +680,6 @@ func TestCompleteImportFlow(t *testing.T) {
 	}
 
 	// Initialize crypto service with the test config
-	wallet.InitCryptoService(cfg)
 
 	// Create a real repository (not a mock) for integration testing
 	repo, err := storage.NewWalletRepository(cfg)
@@ -701,7 +694,7 @@ func TestCompleteImportFlow(t *testing.T) {
 	ks := keystore.NewKeyStore(keystoreDir, keystore.LightScryptN, keystore.LightScryptP)
 
 	// Create the wallet service with the real repository
-	walletService := wallet.NewWalletService(repo, ks)
+	walletService := wallet.NewWalletService(repo, ks, cfg)
 
 	// Create a test keystore file
 	password := "testpassword"
@@ -747,7 +740,7 @@ func TestCompleteImportFlow(t *testing.T) {
 	}()
 
 	// Create a new wallet service with the new repository
-	newWalletService := wallet.NewWalletService(newRepo, ks)
+	newWalletService := wallet.NewWalletService(newRepo, ks, cfg)
 
 	// Step 4: Retrieve all wallets from the database
 	wallets, err := newWalletService.GetAllWallets()
@@ -763,7 +756,7 @@ func TestCompleteImportFlow(t *testing.T) {
 	assert.Nil(t, wallets[0].Mnemonic, "Persisted keystore imports should not have mnemonics")
 
 	// Step 6: Load the wallet to verify the mnemonic can be decrypted
-	loadedWalletDetails, err := newWalletService.LoadWallet(&wallets[0], password)
+	loadedWalletDetails, err := loadWalletDetails(&wallets[0], password)
 	require.NoError(t, err)
 	require.NotNil(t, loadedWalletDetails)
 	// Verify that loaded keystore imports don't have mnemonics
@@ -773,7 +766,7 @@ func TestCompleteImportFlow(t *testing.T) {
 	assert.Equal(t, address.Hex(), loadedWalletDetails.Wallet.Address)
 
 	// Step 8: Try to decrypt the mnemonic with an incorrect password
-	_, err = newWalletService.LoadWallet(&wallets[0], "wrongpassword")
+	_, err = loadWalletDetails(&wallets[0], "wrongpassword")
 	assert.Error(t, err, "Loading wallet with incorrect password should fail")
 }
 
@@ -813,7 +806,6 @@ func TestKeystoreImportErrorHandling(t *testing.T) {
 	}
 
 	// Initialize crypto service with the test config
-	wallet.InitCryptoService(cfg)
 
 	// Create a real repository (not a mock) for integration testing
 	repo, err := storage.NewWalletRepository(cfg)
@@ -828,7 +820,7 @@ func TestKeystoreImportErrorHandling(t *testing.T) {
 	ks := keystore.NewKeyStore(keystoreDir, keystore.LightScryptN, keystore.LightScryptP)
 
 	// Create the wallet service with the real repository
-	walletService := wallet.NewWalletService(repo, ks)
+	walletService := wallet.NewWalletService(repo, ks, cfg)
 
 	// Create a valid keystore file for testing
 	password := "testpassword"
@@ -993,7 +985,6 @@ func TestKeystoreImportIntegrationWithMultipleWallets(t *testing.T) {
 	}
 
 	// Initialize crypto service with the test config
-	wallet.InitCryptoService(cfg)
 
 	// Create a real repository (not a mock) for integration testing
 	repo, err := storage.NewWalletRepository(cfg)
@@ -1008,7 +999,7 @@ func TestKeystoreImportIntegrationWithMultipleWallets(t *testing.T) {
 	ks := keystore.NewKeyStore(keystoreDir, keystore.LightScryptN, keystore.LightScryptP)
 
 	// Create the wallet service with the real repository
-	walletService := wallet.NewWalletService(repo, ks)
+	walletService := wallet.NewWalletService(repo, ks, cfg)
 
 	// Create multiple test keystore files
 	numWallets := 3
@@ -1044,7 +1035,7 @@ func TestKeystoreImportIntegrationWithMultipleWallets(t *testing.T) {
 	}()
 
 	// Create a new wallet service with the new repository
-	newWalletService := wallet.NewWalletService(newRepo, ks)
+	newWalletService := wallet.NewWalletService(newRepo, ks, cfg)
 
 	// Retrieve all wallets from the database
 	wallets, err := newWalletService.GetAllWallets()
@@ -1065,4 +1056,22 @@ func TestKeystoreImportIntegrationWithMultipleWallets(t *testing.T) {
 		}
 		assert.True(t, found, "Wallet %d should be found in the database", i+1)
 	}
+}
+
+// loadWalletDetails verifies the persisted keystore file decrypts with the
+// given password and returns the wallet details. It replaces the removed
+// legacy WalletService.LoadWallet for tests that only need password checks.
+func loadWalletDetails(w *wallet.Wallet, password string) (*wallet.WalletDetails, error) {
+	keyJSON, err := os.ReadFile(w.KeyStorePath)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := keystore.DecryptKey(keyJSON, password); err != nil {
+		return nil, fmt.Errorf("incorrect password")
+	}
+	return &wallet.WalletDetails{
+		Wallet:       w,
+		ImportMethod: wallet.ImportMethod(w.ImportMethod),
+		HasMnemonic:  w.Mnemonic != nil,
+	}, nil
 }

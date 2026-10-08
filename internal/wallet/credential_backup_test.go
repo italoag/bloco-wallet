@@ -751,7 +751,7 @@ func TestCredentialBackupMnemonicExportFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	expectedKey, expectedAddress, err := deriveEVMAccount(mnemonic, passphrase, BIP39English, parsedPath)
+	expectedKey, expectedAddress, _, err := deriveEVMAccount(mnemonic, passphrase, BIP39English, parsedPath)
 	if err != nil {
 		t.Fatal(err)
 	}

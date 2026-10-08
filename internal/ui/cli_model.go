@@ -2,12 +2,10 @@ package ui
 
 import (
 	"blocowallet/internal/blockchain"
-	"blocowallet/internal/constants"
 	"blocowallet/internal/evm"
 	"blocowallet/internal/keepass"
 	"blocowallet/internal/wallet"
 	"blocowallet/pkg/config"
-	"blocowallet/pkg/localization"
 	"context"
 	"time"
 
@@ -21,20 +19,15 @@ import (
 )
 
 type CLIModel struct {
-	Service                         *wallet.WalletService
 	Vault                           *wallet.WalletVault
 	currentView                     string
 	version                         string
 	menuItems                       []menuItem
 	selectedMenu                    int
-	importWords                     []string
-	importStage                     int
-	textInputs                      []textinput.Model
 	wallets                         []wallet.Wallet
 	accounts                        []wallet.AccountSummary
 	accountTableIDs                 []string
 	walletCount                     int
-	selectedWallet                  *wallet.Wallet
 	selectedAccount                 *wallet.AccountSummary
 	balanceProvider                 *blockchain.MultiProvider
 	balanceConfig                   *config.Config
@@ -71,7 +64,6 @@ type CLIModel struct {
 	nativeTransfer                  *nativeTransferState
 	nativeTransferGeneration        uint64
 	transactionNotice               string
-	deletingWallet                  *wallet.Wallet
 	err                             error
 	nameInput                       textinput.Model
 	createWordCountInput            textinput.Model
@@ -95,7 +87,6 @@ type CLIModel struct {
 	backupChallenge                 *wallet.BackupChallenge
 	pendingAccount                  *wallet.AccountSummary
 	resumeBackupAccountID           string
-	privateKeyInput                 textinput.Model
 	currentPasswordInput            textinput.Model
 	newPasswordInput                textinput.Model
 	confirmPasswordInput            textinput.Model
@@ -111,9 +102,6 @@ type CLIModel struct {
 	accountDeletionID               uint64
 	recovery                        *recoveryState
 	recoveryOperationID             uint64
-	pendingImportMethod             wallet.ImportMethod
-	keystorePath                    string
-	mnemonic                        string
 	walletTable                     table.Model
 	width                           int
 	height                          int
@@ -124,18 +112,14 @@ type CLIModel struct {
 	walletDetailsKeys               WalletDetailsKeyMap
 	styles                          Styles
 	// fontsList         []string         // Lista de nomes de fontes carregadas do arquivo externo - currently unused
-	selectedFont      *tdf.TheDrawFont // Fonte selecionada aleatoriamente
-	fontInfo          *tdf.FontInfo    // Informação da fonte selecionada
-	dialogButtonIndex int              // 0 = Confirmar, 1 = Cancelar
-	currentConfig     *config.Config   // Configuração atual da aplicação
+	selectedFont  *tdf.TheDrawFont // Fonte selecionada aleatoriamente
+	fontInfo      *tdf.FontInfo    // Informação da fonte selecionada
+	currentConfig *config.Config   // Configuração atual da aplicação
 
 	// Network components
 	networkListComponent NetworkListComponent // Componente de lista de redes
 	addNetworkComponent  AddNetworkComponent  // Componente de adição de rede
 	editingNetworkKey    string               // Chave da rede sendo editada
-
-	// Enhanced import state
-	enhancedImportState *EnhancedImportState
 
 	// localeLanguage tracks the localization language the rendered model was
 	// built with; Update refreshes visible labels when it drifts.
@@ -160,22 +144,7 @@ type CLIModel struct {
 	saveConfigFn         func(*config.Config) error
 }
 
-// GetEnhancedImportState returns the enhanced import state
-func (m *CLIModel) GetEnhancedImportState() *EnhancedImportState {
-	return m.enhancedImportState
-}
-
 // SetCurrentView sets the current view
 func (m *CLIModel) SetCurrentView(view string) {
 	m.currentView = view
-}
-
-// GetContentView returns the content view for the current view
-func (m *CLIModel) GetContentView() string {
-	switch m.currentView {
-	case constants.EnhancedImportView:
-		return m.viewEnhancedImport()
-	default:
-		return localization.Get("unknown_view")
-	}
 }

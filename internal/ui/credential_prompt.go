@@ -338,7 +338,6 @@ func (m *CLIModel) credentialMethodLabel(eligible bool) string {
 	return localization.Get("keepass_method_manual")
 }
 
-
 func runWithAccountCredential(ctx context.Context, op *wallet.CredentialBackupOperation, accountID string, manual []byte, useKeePass bool, fn func([]byte) error) error {
 	if useKeePass {
 		if op == nil {

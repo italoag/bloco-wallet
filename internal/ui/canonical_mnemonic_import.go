@@ -178,7 +178,7 @@ func readCanonicalMnemonicBatch(directory string) (items []wallet.MnemonicBatchI
 			continue
 		}
 		extension := strings.ToLower(filepath.Ext(entry.Name()))
-		if extension != ".mnemonic" && extension != ".seedphrase" {
+		if extension != ".mnemonic" && extension != ".seedphrase" && extension != ".phrase" {
 			continue
 		}
 		names = append(names, entry.Name())
