@@ -1,0 +1,65 @@
+internal/wallet/bip32.go
+  s_8b87e7332fed30::t_6ffac13d558be7 8,38-46,58-63,65,70-73,75-88,90-96,110,114,116-117,121,124,129,132-133
+internal/wallet/wallet_import.go
+  s_8b87e7332fed30::t_891336adae5808 78,83
+  s_8b87e7332fed30::t_c810dab93e0efd 93
+  s_8b87e7332fed30::t_02f3bf45b2dd2c 229
+internal/wallet/wallet_import_test.go
+  s_8b87e7332fed30::t_6a85710b671952 287
+internal/wallet/wallet_vault.go
+  s_8b87e7332fed30::t_4e75a9da01692b 497
+  s_8b87e7332fed30::t_0e4fe91a8e8bf5 275-276,280-281,285-287,297
+internal/wallet/canonical_secret_test.go
+  s_8b87e7332fed30::t_6070d0db9e24fe 165,168
+internal/wallet/encrypted_account_import_test.go
+  s_8b87e7332fed30::t_cb24a73efc3823 105
+internal/wallet/bip39_test.go
+  s_8b87e7332fed30::t_9763493715b026 182,186-187
+  s_8b87e7332fed30::t_c4385a145e35e3 188
+internal/wallet/wallet_service.go
+  s_8b87e7332fed30::t_3ccf552e1f85db 629
+  s_8b87e7332fed30::t_29d6c146bf33c8 44
+internal/wallet/encrypted_account_import.go
+  s_8b87e7332fed30::t_73af5d702d775b 29
+internal/wallet/bip39.go
+  s_8b87e7332fed30::t_c4c763cdbf6c19 291,294,299,302,304-307,309-310,316,319
+  s_8b87e7332fed30::t_e9084702497445 301
+internal/wallet/canonical_secret.go
+  s_8b87e7332fed30::t_efd60feb1122fb 191-192
+  s_8b87e7332fed30::t_6bee30b2a7f52f 206-207
+  s_8b87e7332fed30::t_5b88603a6547ea 111,114-136,138
+  s_8b87e7332fed30::t_1122e11bbbb25c 92,97,105,108,110
+  s_8b87e7332fed30::t_6e63d058c04057 112-113
+PLAN.md
+  s_8b87e7332fed30::t_7267dd8dc8024d 5-6
+  s_8b87e7332fed30::t_13faf79f7db489 52
+  s_8b87e7332fed30::t_270e3f88d85e48 84-94
+  s_01f45f4c5c3168::t_c279c08050fce0 117
+internal/wallet/bip32_test.go
+  s_8b87e7332fed30::t_29629fe8da8223 115
+  s_8b87e7332fed30::t_9805c242022009 84-85,88-91
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7f847844522fba5497fe53ff89b9d774223c5146",
+  "prompts": {},
+  "sessions": {
+    "s_01f45f4c5c3168": {
+      "agent_id": {
+        "tool": "devin",
+        "id": "s_01f45f4c5c3168",
+        "model": "unknown"
+      },
+      "human_author": "Italo A. G. <182202+italoag@users.noreply.github.com>"
+    },
+    "s_8b87e7332fed30": {
+      "agent_id": {
+        "tool": "windsurf",
+        "id": "bubble-passive",
+        "model": "unknown"
+      },
+      "human_author": "Italo A. G. <182202+italoag@users.noreply.github.com>"
+    }
+  }
+}
