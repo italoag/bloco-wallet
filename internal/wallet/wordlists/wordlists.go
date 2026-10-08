@@ -26,7 +26,14 @@ func Load(fileBase string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("wordlists: read %s: %w", fileBase, err)
 	}
-	content := strings.TrimRight(string(data), "\n")
+	return parseWordList(data, fileBase)
+}
+
+func parseWordList(data []byte, fileBase string) ([]string, error) {
+	// Normalize CRLF so embedded lists stay valid even when the working tree
+	// was checked out with autocrlf (Windows CI builds).
+	content := strings.ReplaceAll(string(data), "\r\n", "\n")
+	content = strings.TrimRight(content, "\n")
 	if content == "" {
 		return nil, fmt.Errorf("wordlists: %s is empty", fileBase)
 	}
