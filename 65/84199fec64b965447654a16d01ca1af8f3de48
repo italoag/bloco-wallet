@@ -1,0 +1,98 @@
+internal/ui/fetcher.go
+  s_8b87e7332fed30::t_dbe70c93258601 19,21,24,28
+internal/wallet/keystore_import_integration_test.go
+  s_8b87e7332fed30::t_fb1ba058214c99 76,287,367,439,504,560,568,624,697,743,759,769,823,1002,1038,1060-1076
+  s_8b87e7332fed30::t_c9af6e89de8c55 1077
+internal/wallet/tui_debug_test.go
+  s_8b87e7332fed30::t_fb1ba058214c99 36
+internal/ui/wallet_details_view_test.go
+  s_8b87e7332fed30::t_4da8cb56b7f6d4 71-72,100-110
+  s_8b87e7332fed30::t_d2efe6cf4e6686 140
+  s_8b87e7332fed30::t_e94c9a52e6ffdc 289,293-302
+internal/ui/views.go
+  s_8b87e7332fed30::t_2c3809359fe8e1 97
+internal/ui/tui.go
+  s_8b87e7332fed30::t_71b3f6b8fb1820 320,581
+  s_8b87e7332fed30::t_8a6bb19d37ff96 1030-1031
+  s_8b87e7332fed30::t_93bdc55c44639f 2003-2004
+  s_8b87e7332fed30::t_1a1a47c0f6b892 1107-1109,1112-1124,1126-1128,1134-1140
+  s_8b87e7332fed30::t_c1e36aeaff0d04 2260
+  s_8b87e7332fed30::t_6763d69351d7b5 1630
+  s_8b87e7332fed30::t_29fa15b28e0ed9 422
+PLAN.md
+  s_96c23a923a701b::t_2f3b45c700be34 1-210
+go.mod
+  s_96c23a923a701b::t_27d03e07eaead7 11
+internal/wallet/bip32.go
+  s_96c23a923a701b::t_e0f11bd135f819 4-7,9,12-35,37-50,52,55-73,75-77,79-94,97-101,103-104,106-117
+internal/wallet/bip32_test.go
+  s_96c23a923a701b::t_d2993e219bdba4 4-8,12-15,17-19,22-25,28-69,72-79,81,83-86,88,90,92-93,95-96,98,102-104,106-107,109-111,115-118,121-126,128-149,152-165,167-170,172-174
+internal/wallet/bip39.go
+  s_96c23a923a701b::t_b7901495d601ca 11,38-50,53-66,246,250,260,262,280,283,286,297,302,307
+internal/wallet/crypto.go
+  s_96c23a923a701b::t_3cba6b987ec28f 13,21
+internal/wallet/final_integration_test.go
+  s_96c23a923a701b::t_3a061c8dc9f767 39
+internal/wallet/keystore_progress_test.go
+  s_96c23a923a701b::t_e83c6beb3ec925 53
+internal/wallet/keystore_universal_kdf_test.go
+  s_96c23a923a701b::t_ec63cb59d02077 38,404
+internal/wallet/mock_config_test.go
+  s_96c23a923a701b::t_b140120f6f038c 12-15,21,24
+internal/wallet/tui_exact_simulation_test.go
+  s_96c23a923a701b::t_9014691fd82a41 38,157
+internal/wallet/tui_flow_debug_test.go
+  s_96c23a923a701b::t_25a2071fe00307 40,146
+internal/wallet/wallet_service.go
+  s_96c23a923a701b::t_6d70b707118f99 19-20,39-42
+internal/wallet/wallet_service_test.go
+  s_96c23a923a701b::t_9a493478a0c4a7 305,333,347,405,437,444-445,449,465,508,529,570,611,661,711,767,817,868,918,973,1028,1081,1135,1157-1174
+internal/wallet/wordlists/chinese_simplified.txt
+  s_96c23a923a701b::t_09f04ef3a6b02b 1-2048
+internal/wallet/wordlists/chinese_traditional.txt
+  s_96c23a923a701b::t_b5ba495b2f977c 1-2048
+internal/wallet/wordlists/czech.txt
+  s_96c23a923a701b::t_b23a9574880bbf 1-2048
+internal/wallet/wordlists/english.txt
+  s_96c23a923a701b::t_3fa6aee83adc3c 1-2048
+internal/wallet/wordlists/french.txt
+  s_96c23a923a701b::t_2ebf4301e8f6d3 1-2048
+internal/wallet/wordlists/italian.txt
+  s_96c23a923a701b::t_156be393275bde 1-2048
+internal/wallet/wordlists/japanese.txt
+  s_96c23a923a701b::t_c0dcd6b186d496 1-2048
+internal/wallet/wordlists/korean.txt
+  s_96c23a923a701b::t_c277aee548e30e 1-2048
+internal/wallet/wordlists/portuguese.txt
+  s_96c23a923a701b::t_c0873a6360feee 1-2048
+internal/wallet/wordlists/spanish.txt
+  s_96c23a923a701b::t_f6a54e9cb74728 1-2048
+internal/wallet/wordlists/wordlists.go
+  s_96c23a923a701b::t_257f0c1e670546 1-43
+internal/wallet/wordlists/wordlists_test.go
+  s_96c23a923a701b::t_f6ab37659a0218 1-52
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6584199fec64b965447654a16d01ca1af8f3de48",
+  "prompts": {},
+  "sessions": {
+    "s_8b87e7332fed30": {
+      "agent_id": {
+        "tool": "windsurf",
+        "id": "bubble-passive",
+        "model": "unknown"
+      },
+      "human_author": "Italo A. G. <182202+italoag@users.noreply.github.com>"
+    },
+    "s_96c23a923a701b": {
+      "agent_id": {
+        "tool": "devin",
+        "id": "s_96c23a923a701b",
+        "model": "unknown"
+      },
+      "human_author": "Italo A. G. <182202+italoag@users.noreply.github.com>"
+    }
+  }
+}
