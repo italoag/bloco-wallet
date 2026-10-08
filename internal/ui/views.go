@@ -673,12 +673,3 @@ func (m *CLIModel) viewNetworkMenu() string {
 	// já que o menu já é exibido na área padrão de menu
 	return localization.Labels["welcome_message"]
 }
-
-// viewEnhancedImport renderiza a visualização de importação aprimorada
-func (m *CLIModel) viewEnhancedImport() string {
-	if m.enhancedImportState == nil {
-		return "Enhanced import not initialized"
-	}
-
-	return m.enhancedImportState.View()
-}

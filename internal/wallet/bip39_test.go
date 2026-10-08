@@ -179,9 +179,12 @@ func TestParseAndDeriveEVMPath(t *testing.T) {
 		t.Fatalf("path round-trip mismatch: %s", path.String())
 	}
 	mnemonic := "test test test test test test test test test test test junk"
-	privateKey, address, err := deriveEVMAccount(mnemonic, "", BIP39English, path)
+	privateKey, address, effectivePath, err := deriveEVMAccount(mnemonic, "", BIP39English, path)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if effectivePath.String() != path.String() {
+		t.Fatalf("effective path mismatch: got %s, want %s", effectivePath.String(), path.String())
 	}
 	defer clear(privateKey)
 	if address != "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266" {

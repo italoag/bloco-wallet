@@ -13,7 +13,6 @@ const (
 	CreateWalletOptionsView   = "create_wallet_options"
 	CreateWalletView          = "create_wallet_password"
 	ImportMethodSelectionView = "import_method_selection"
-	EnhancedImportView        = "enhanced_import"
 	CanonicalImportView       = "canonical_import"
 	ListWalletsView           = "list_wallets"
 	WalletDetailsView         = "wallet_details"

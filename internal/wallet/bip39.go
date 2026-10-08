@@ -288,30 +288,35 @@ func derivationMetadataForPath(path DerivationPath, language BIP39Language) Deri
 	return metadata
 }
 
-func deriveEVMAccount(mnemonic, passphrase string, language BIP39Language, path DerivationPath) ([]byte, string, error) {
+func deriveEVMAccount(mnemonic, passphrase string, language BIP39Language, path DerivationPath) ([]byte, string, DerivationPath, error) {
 	seed, err := bip39Seed(mnemonic, passphrase, language)
 	if err != nil {
-		return nil, "", err
+		return nil, "", DerivationPath{}, err
 	}
 	defer clear(seed)
 	key, err := newMasterKey(seed)
 	if err != nil {
-		return nil, "", err
+		return nil, "", DerivationPath{}, err
 	}
+	defer func() { key.clear() }()
+	effectiveComponents := make([]uint32, 0, len(path.components))
 	for _, component := range path.components {
-		key, err = key.newChildKey(component)
-		if err != nil {
-			return nil, "", err
+		child, effectiveIndex, childErr := key.newChildKey(component)
+		key.clear()
+		if childErr != nil {
+			return nil, "", DerivationPath{}, childErr
 		}
+		key = child
+		effectiveComponents = append(effectiveComponents, effectiveIndex)
 	}
 	privateKey := append([]byte(nil), key.key...)
 	ecdsaKey, err := crypto.ToECDSA(privateKey)
 	if err != nil {
 		clear(privateKey)
-		return nil, "", err
+		return nil, "", DerivationPath{}, err
 	}
 	address := crypto.PubkeyToAddress(ecdsaKey.PublicKey).Hex()
-	return privateKey, address, nil
+	return privateKey, address, DerivationPath{components: effectiveComponents}, nil
 }
 
 func buildBIP39WordIndexes() map[BIP39Language]map[string]int {

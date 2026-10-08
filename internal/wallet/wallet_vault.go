@@ -272,28 +272,29 @@ func (vault *WalletVault) Create(ctx context.Context, request CreateAccountReque
 	if err != nil {
 		return AccountSummary{}, BackupChallenge{}, err
 	}
-	defer clear(canonicalSecret)
-	secret, err = decodeCanonicalSecret(canonicalSecret)
+	decoded, err := decodeCanonicalSecret(canonicalSecret)
+	clear(canonicalSecret)
 	if err != nil {
 		return AccountSummary{}, BackupChallenge{}, err
 	}
+	secret = decoded
+	canonicalSecret, address, effectivePath, err := canonicalSecretWithIdentity(&secret)
+	if err != nil {
+		return AccountSummary{}, BackupChallenge{}, err
+	}
+	defer clear(canonicalSecret)
 	words := strings.Fields(secret.Mnemonic)
 	accountID, err := newUUID(vault.options.Random)
 	if err != nil {
 		return AccountSummary{}, BackupChallenge{}, err
 	}
-	privateKey, address, err := deriveCanonicalSecretIdentity(secret)
-	if err != nil {
-		return AccountSummary{}, BackupChallenge{}, err
-	}
-	clear(privateKey)
 	metadata := EnvelopeMetadata{
 		AccountID:          accountID,
 		SecretType:         SecretTypeMnemonic,
 		Address:            address,
 		EnvelopeGeneration: 1,
 		PassphrasePresent:  secret.BIP39Passphrase != "",
-		Derivation:         derivationMetadataForPath(path, language),
+		Derivation:         derivationMetadataForPath(effectivePath, language),
 	}
 	envelope, err := vault.codec.Seal(request.Password, metadata, canonicalSecret)
 	if err != nil {
@@ -493,7 +494,7 @@ func (vault *WalletVault) confirmBackup(ctx context.Context, challengeID string,
 			return AccountSummary{}, ErrBackupConfirmationFailed
 		}
 		path, _ := ParseDerivationPath(confirmation.DerivationPath)
-		privateKey, address, err := deriveEVMAccount(strings.Join(challenge.words, " "), confirmation.BIP39Passphrase, confirmation.BIP39Language, path)
+		privateKey, address, _, err := deriveEVMAccount(strings.Join(challenge.words, " "), confirmation.BIP39Passphrase, confirmation.BIP39Language, path)
 		if err != nil {
 			vault.mu.Unlock()
 			return AccountSummary{}, ErrBackupConfirmationFailed

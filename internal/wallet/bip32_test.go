@@ -81,9 +81,14 @@ func TestBIP32OfficialVectors(t *testing.T) {
 				t.Fatalf("%s: master key: %v", vector.name, err)
 			}
 			for _, index := range chain.path {
-				if key, err = key.newChildKey(index); err != nil {
+				child, effectiveIndex, err := key.newChildKey(index)
+				if err != nil {
 					t.Fatalf("%s: derive index %d: %v", vector.name, index, err)
 				}
+				if effectiveIndex != index {
+					t.Fatalf("%s: effective index %d, want %d", vector.name, effectiveIndex, index)
+				}
+				key = child
 			}
 			expected, err := decodeXPrv(chain.xprv)
 			if err != nil {
@@ -107,7 +112,7 @@ func TestBIP32RejectsInvalidSeeds(t *testing.T) {
 		t.Fatal("oversized seed was accepted")
 	}
 	var zeroKey *hdKey
-	if _, err := zeroKey.newChildKey(0); err == nil {
+	if _, _, err := zeroKey.newChildKey(0); err == nil {
 		t.Fatal("nil parent key was accepted")
 	}
 }

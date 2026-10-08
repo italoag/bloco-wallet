@@ -284,7 +284,7 @@ func TestCreatedAndImportedIdentitiesConflictOrRelate(t *testing.T) {
 		t.Fatalf("created mnemonic was reimported: %v", err)
 	}
 	path, _ := ParseDerivationPath("m/44'/60'/0'/0/0")
-	privateKey, _, err := deriveEVMAccount(mnemonic, "", BIP39English, path)
+	privateKey, _, _, err := deriveEVMAccount(mnemonic, "", BIP39English, path)
 	if err != nil {
 		t.Fatal(err)
 	}

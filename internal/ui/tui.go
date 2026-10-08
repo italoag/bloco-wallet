@@ -382,9 +382,6 @@ func (m *CLIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.currentView = constants.WalletDetailsView
 				return m, nil
 			}
-			if m.currentView == constants.EnhancedImportView {
-				return m.updateEnhancedImport(msg)
-			}
 			if m.currentView == constants.NativeTransferView {
 				cancelPrepared := nativeCancelPreparedCommand(m.nativeTransfer)
 				m.clearNativeTransfer()
@@ -459,12 +456,6 @@ func (m *CLIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.canonicalImport.cancelling = true
 				return m, nil
-			}
-			if m.enhancedImportState != nil {
-				phase := m.enhancedImportState.GetCurrentPhase()
-				if phase == PhaseImporting || phase == PhasePasswordInput {
-					_ = m.enhancedImportState.CancelImport()
-				}
 			}
 			if err := m.cancelPendingVaultBackup(); err != nil {
 				m.err = errors.Wrap(err, 0)
@@ -614,8 +605,6 @@ func (m *CLIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateCreateWalletPassword(msg)
 	case constants.ImportMethodSelectionView:
 		return m.updateImportMethodSelection(msg)
-	case constants.EnhancedImportView:
-		return m.updateEnhancedImport(msg)
 	case constants.CanonicalImportView:
 		return m.updateCanonicalImport(msg)
 	case constants.ListWalletsView:
@@ -783,8 +772,6 @@ func (m *CLIModel) getContentView() string {
 		return m.viewCreateWalletPassword()
 	case constants.ImportMethodSelectionView:
 		return m.viewImportMethodSelection()
-	case constants.EnhancedImportView:
-		return m.viewEnhancedImport()
 	case constants.CanonicalImportView:
 		return m.viewCanonicalImport()
 	case constants.ListWalletsView:
@@ -1624,173 +1611,6 @@ func (m *CLIModel) updateVaultAction(msg tea.Msg, export bool) (tea.Model, tea.C
 	return m, command
 }
 
-// updateEnhancedImport handles user input in the enhanced import view
-func (m *CLIModel) updateEnhancedImport(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if m.enhancedImportState == nil {
-		m.currentView = constants.DefaultView
-		return m, nil
-	}
-
-	// Handle enhanced import specific messages
-	switch msg := msg.(type) {
-	case ImportBatchCompleteMsg:
-		// Import batch completed
-		if msg.OperationID != m.enhancedImportState.GetOperationID() {
-			return m, nil
-		}
-		if m.enhancedImportState.GetCurrentPhase() == PhaseCancelled {
-			return m, nil
-		}
-		err := m.enhancedImportState.CompleteImport(msg.Results)
-		if err != nil {
-			m.err = errors.Wrap(err, 0)
-			m.currentView = constants.DefaultView
-		}
-		return m, nil
-
-	case ImportProgressUpdateMsg:
-		if msg.OperationID != m.enhancedImportState.GetOperationID() {
-			return m, nil
-		}
-		// Update progress
-		m.enhancedImportState.UpdateProgress(msg.Progress)
-
-		// Collect commands to execute
-		var cmds []tea.Cmd
-
-		// Always continue listening for more progress updates if import is still in progress
-		if m.enhancedImportState != nil && m.enhancedImportState.GetCurrentPhase() == PhaseImporting {
-			cmds = append(cmds, m.listenForProgressUpdates())
-		}
-
-		// Handle any pending commands from progress update
-		if cmd := m.enhancedImportState.GetPendingCommand(); cmd != nil {
-			cmds = append(cmds, cmd)
-		}
-
-		return m, tea.Batch(cmds...)
-
-	case ContinueListeningMsg:
-		if msg.OperationID != m.enhancedImportState.GetOperationID() {
-			return m, nil
-		}
-		// Continue listening for progress updates if import is still in progress
-		if m.enhancedImportState != nil && m.enhancedImportState.GetCurrentPhase() == PhaseImporting {
-			return m, m.listenForProgressUpdates()
-		}
-		return m, nil
-
-	case ContinuePasswordListeningMsg:
-		if msg.OperationID != m.enhancedImportState.GetOperationID() {
-			return m, nil
-		}
-		if m.enhancedImportState != nil {
-			phase := m.enhancedImportState.GetCurrentPhase()
-			if phase == PhaseImporting || phase == PhasePasswordInput {
-				return m, m.listenForPasswordRequests()
-			}
-		}
-		return m, nil
-
-	case PasswordRequestMsg:
-		if msg.OperationID != m.enhancedImportState.GetOperationID() {
-			return m, nil
-		}
-		// Handle password request
-		err := m.enhancedImportState.HandlePasswordRequest(msg.Request)
-		if err != nil {
-			m.err = errors.Wrap(err, 0)
-			m.currentView = constants.DefaultView
-		}
-
-		// Continue listening for more password requests if import is still in progress
-		if m.enhancedImportState != nil &&
-			(m.enhancedImportState.GetCurrentPhase() == PhaseImporting ||
-				m.enhancedImportState.GetCurrentPhase() == PhasePasswordInput) {
-			return m, m.listenForPasswordRequests()
-		}
-		return m, nil
-
-	case ReturnToFileSelectionMsg:
-		// Return to file selection phase
-		err := m.enhancedImportState.TransitionToPhase(PhaseFileSelection)
-		if err != nil {
-			m.err = errors.Wrap(err, 0)
-			m.currentView = constants.DefaultView
-		}
-		return m, nil
-
-	case ReturnToMenuMsg:
-		// Return to main menu
-		m.enhancedImportState = nil
-		m.currentView = constants.DefaultView
-		return m, nil
-
-	case tea.KeyMsg:
-		switch msg.String() {
-		case "esc":
-			// Handle escape key based on current phase
-			phase := m.enhancedImportState.GetCurrentPhase()
-			switch phase {
-			case PhaseFileSelection:
-				// Return to main menu
-				m.enhancedImportState = nil
-				m.currentView = constants.DefaultView
-				return m, nil
-			case PhaseImporting:
-				// Cancel import
-				err := m.enhancedImportState.CancelImport()
-				if err != nil {
-					m.err = errors.Wrap(err, 0)
-				}
-				return m, nil
-			case PhasePasswordInput:
-				// Cancel password input
-				err := m.enhancedImportState.CancelPasswordInput()
-				if err != nil {
-					m.err = errors.Wrap(err, 0)
-				}
-				return m, nil
-			case PhaseComplete, PhaseCancelled:
-				// Return to main menu
-				m.enhancedImportState = nil
-				m.currentView = constants.DefaultView
-				return m, nil
-			}
-		case "enter":
-			// Handle enter key based on current phase
-			phase := m.enhancedImportState.GetCurrentPhase()
-			switch phase {
-			case PhaseFileSelection:
-				// Start import if files are selected
-				if len(m.enhancedImportState.SelectedFiles) > 0 || m.enhancedImportState.SelectedDir != "" {
-					err := m.enhancedImportState.StartImport()
-					if err != nil {
-						m.err = errors.Wrap(err, 0)
-						return m, nil
-					}
-					// Start the import batch processing and progress listening
-					return m, tea.Batch(
-						m.enhancedImportState.ProcessImportBatch(),
-						m.listenForProgressUpdates(),
-						m.listenForPasswordRequests(),
-					)
-				}
-			case PhaseComplete, PhaseCancelled:
-				// Return to main menu
-				m.enhancedImportState = nil
-				m.currentView = constants.DefaultView
-				return m, nil
-			}
-		}
-	}
-
-	// Delegate to enhanced import state
-	var cmd tea.Cmd
-	_, cmd = m.enhancedImportState.Update(msg)
-	return m, cmd
-}
-
 func accountTableLayout(width int, accounts []wallet.AccountSummary) ([]table.Column, []table.Row) {
 	available := max(20, width-8)
 	columns := []table.Column{
@@ -2335,50 +2155,4 @@ func (m *CLIModel) rebuildWalletsTable() {
 
 	// Atualizar dimensões da tabela
 	m.updateTableDimensions()
-}
-
-// listenForProgressUpdates creates a command that listens for progress updates
-func (m *CLIModel) listenForProgressUpdates() tea.Cmd {
-	if m.enhancedImportState == nil {
-		return nil
-	}
-	progressChan := m.enhancedImportState.GetProgressChan()
-	operationID := m.enhancedImportState.GetOperationID()
-
-	return func() tea.Msg {
-		select {
-		case progress, ok := <-progressChan:
-			if !ok {
-				// Channel closed, no more progress updates
-				return nil
-			}
-			return ImportProgressUpdateMsg{OperationID: operationID, Progress: progress}
-		case <-time.After(1 * time.Second): // Increased timeout to 1 second
-			// Timeout - continue listening by returning a special message
-			return ContinueListeningMsg{OperationID: operationID}
-		}
-	}
-}
-
-// listenForPasswordRequests creates a command that listens for password requests
-func (m *CLIModel) listenForPasswordRequests() tea.Cmd {
-	if m.enhancedImportState == nil {
-		return nil
-	}
-	passwordRequestChan := m.enhancedImportState.GetPasswordRequestChan()
-	operationID := m.enhancedImportState.GetOperationID()
-
-	return func() tea.Msg {
-		select {
-		case request, ok := <-passwordRequestChan:
-			if !ok {
-				// Channel closed, no more password requests
-				return nil
-			}
-			return PasswordRequestMsg{OperationID: operationID, Request: request}
-		case <-time.After(100 * time.Millisecond):
-			// Timeout - reschedule without blocking the update loop
-			return ContinuePasswordListeningMsg{OperationID: operationID}
-		}
-	}
 }

@@ -5,6 +5,7 @@ import (
 	"crypto/sha512"
 	"encoding/binary"
 	"fmt"
+	"math"
 
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 )
@@ -34,6 +35,15 @@ type hdKey struct {
 	chainCode []byte // 32 bytes
 }
 
+// clear zeroes the private key and chain code held by the extended key.
+func (key *hdKey) clear() {
+	if key == nil {
+		return
+	}
+	clear(key.key)
+	clear(key.chainCode)
+}
+
 // newMasterKey generates the master extended key from a BIP32 seed
 // (128 to 512 bits, as produced by BIP39).
 func newMasterKey(seed []byte) (*hdKey, error) {
@@ -45,19 +55,45 @@ func newMasterKey(seed []byte) (*hdKey, error) {
 		return nil, err
 	}
 	il, chainCode := intermediate[:32], intermediate[32:]
-	keyBytes, err := parseBIP32PrivateKey(il)
-	if err != nil {
-		return nil, fmt.Errorf("bip32: master key: %w", err)
+	keyBytes, keyErr := parseBIP32PrivateKey(il)
+	chainCodeCopy := append([]byte(nil), chainCode...)
+	clear(intermediate)
+	if keyErr != nil {
+		clear(chainCodeCopy)
+		return nil, fmt.Errorf("bip32: master key: %w", keyErr)
 	}
-	return &hdKey{key: keyBytes, chainCode: chainCode}, nil
+	return &hdKey{key: keyBytes, chainCode: chainCodeCopy}, nil
 }
 
 // newChildKey derives the child key at index using BIP32 CKDpriv. Indices
 // greater than or equal to firstHardenedChild derive hardened children.
-func (key *hdKey) newChildKey(index uint32) (*hdKey, error) {
+// Per BIP32, when IL >= n or the derived key is zero the child is invalid and
+// derivation proceeds with the next index value; the returned uint32 is the
+// index actually used, so callers can keep stored path metadata accurate.
+func (key *hdKey) newChildKey(index uint32) (*hdKey, uint32, error) {
 	if key == nil || len(key.key) != 32 || len(key.chainCode) != 32 {
-		return nil, fmt.Errorf("bip32: invalid parent key")
+		return nil, 0, fmt.Errorf("bip32: invalid parent key")
 	}
+	for {
+		child, valid, err := key.deriveChild(index)
+		if err != nil {
+			return nil, 0, err
+		}
+		if valid {
+			return child, index, nil
+		}
+		if index == math.MaxUint32 {
+			return nil, 0, fmt.Errorf("bip32: no valid child index")
+		}
+		index++
+	}
+}
+
+// deriveChild performs a single CKDpriv step for index. It returns valid=false
+// (with a nil error) when the candidate child is invalid per BIP32 (IL >= n or
+// the derived key is zero); the caller is responsible for retrying with the
+// next index.
+func (key *hdKey) deriveChild(index uint32) (*hdKey, bool, error) {
 	data := make([]byte, 0, 37)
 	if index >= firstHardenedChild {
 		// Hardened: 0x00 || ser256(kpar) || ser32(i)
@@ -71,27 +107,30 @@ func (key *hdKey) newChildKey(index uint32) (*hdKey, error) {
 	var indexBytes [4]byte
 	binary.BigEndian.PutUint32(indexBytes[:], index)
 	data = append(data, indexBytes[:]...)
+	defer clear(data)
 
 	intermediate, err := bip32HMAC(key.chainCode, data)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	il, chainCode := intermediate[:32], intermediate[32:]
+	defer clear(intermediate)
+	il := intermediate[:32]
 	// ki = (IL + kpar) mod n
 	var ilScalar, parentScalar secp256k1.ModNScalar
 	if ilScalar.SetByteSlice(il) {
-		return nil, fmt.Errorf("bip32: derived IL is out of range")
+		return nil, false, nil
 	}
 	if parentScalar.SetByteSlice(key.key) {
-		return nil, fmt.Errorf("bip32: parent key is out of range")
+		return nil, false, fmt.Errorf("bip32: parent key is out of range")
 	}
 	var childScalar secp256k1.ModNScalar
 	childScalar.Add2(&ilScalar, &parentScalar)
 	if childScalar.IsZero() {
-		return nil, fmt.Errorf("bip32: derived key is zero")
+		return nil, false, nil
 	}
 	childBytes := childScalar.Bytes()
-	return &hdKey{key: childBytes[:], chainCode: chainCode}, nil
+	chainCode := append([]byte(nil), intermediate[32:]...)
+	return &hdKey{key: childBytes[:], chainCode: chainCode}, true, nil
 }
 
 // bip32HMAC computes I = HMAC-SHA512(key, data).

@@ -2,7 +2,6 @@ package ui
 
 import (
 	"blocowallet/internal/blockchain"
-	"blocowallet/internal/constants"
 	"blocowallet/internal/evm"
 	"blocowallet/internal/wallet"
 	"blocowallet/pkg/config"
@@ -118,27 +117,9 @@ type CLIModel struct {
 	networkListComponent NetworkListComponent // Componente de lista de redes
 	addNetworkComponent  AddNetworkComponent  // Componente de adição de rede
 	editingNetworkKey    string               // Chave da rede sendo editada
-
-	// Enhanced import state
-	enhancedImportState *EnhancedImportState
-}
-
-// GetEnhancedImportState returns the enhanced import state
-func (m *CLIModel) GetEnhancedImportState() *EnhancedImportState {
-	return m.enhancedImportState
 }
 
 // SetCurrentView sets the current view
 func (m *CLIModel) SetCurrentView(view string) {
 	m.currentView = view
-}
-
-// GetContentView returns the content view for the current view
-func (m *CLIModel) GetContentView() string {
-	switch m.currentView {
-	case constants.EnhancedImportView:
-		return m.viewEnhancedImport()
-	default:
-		return "Unknown view"
-	}
 }

@@ -2,6 +2,8 @@
 
 > Arquivo de plano de trabalho. Define agenda, riscos, critérios de aceitação e timeline para que o componente UI (TUI + serviço de carteiras) volte a compilar, testar e funcionar normalmente no estado atual do repositório (branch `main`, commit `b1fa358`).
 
+> **Resultado (registrado após implementação):** a Proposta A foi avaliada e **rejeitada** — ver seção 4.1. A implementação seguiu a Alternativa B estendida: os handlers/renderers legacy órfãos foram removidos e a migração `WalletVault` foi concluída (`fix/ui-legacy-wallet-service-cleanup`, PR #58). O documento abaixo é mantido como registro do diagnóstico original; onde diverge do que foi implementado, a seção 4.1 prevalece.
+
 ---
 
 ## 1. Objetivo
@@ -47,7 +49,7 @@ E também **3 campos do `CLIModel`** usados em `tui.go` mas inexistentes:
 |---|---|
 | `textInputs []textinput` | 1197–1207, 1224, 1710–1711 |
 | `importStage int` | 1197–1207, 1224 |
-| `importWords map[int]string` | 1203, 1258, 1713–1714 |
+| `importWords []string` *(o plano original dizia `map[int]string` — incorreto; `strings.Join(m.importWords, " ")` no HEAD prova o slice)* | 1203, 1258, 1713–1714 |
 
 **Confirmação de pré-existente:** `git stash` dos três arquivos + `go vet ./internal/ui/` reproduz o mesmo erro (`tui.go:1176`/`1154`), ou seja, o bloqueio de build **não é causado por minhas correções de higiene** (que removeram código morto: constantes, maps e dispatch — essas restaram compile-clean, `gofmt` limpo, 0 referências mortas).
 
@@ -79,6 +81,17 @@ Reescrever os handlers de importação no `tui.go` para usar apenas a nova API V
 
 > Recomendação: Proposta A, pois resolve o build, mantém todos os fluxos humanos e não depende de decisão arquitetural nova.
 
+### 4.1 Decisão registrada — Alternativa B executada (Proposta A inviável)
+
+Durante a implementação, a Proposta A mostrou-se **inviável e insegura**:
+
+1. **Infraestrutura removida**: os métodos legacy dependem de `EncryptMnemonic`, `DecryptMnemonic`, `CryptoService`, `InitCryptoService` e `defaultCryptoService`, todos removidos de `crypto.go` na migração para o envelope Argon2id do `WalletVault`. Restaurá-los exigiria reescrever o stack de criptografia anterior.
+2. **Vulnerabilidade real**: `ImportWalletFromPrivateKey` usava `GetTestKeystoreParams()` — parâmetros scrypt de teste aplicados a keystores de produção.
+3. **`m.Service` nunca é populado em produção**: `NewCLIModel(vault)` recebe apenas `*WalletVault`; os métodos restaurados seriam dead code e cada call site um nil-pointer panic em potencial.
+4. **O fluxo vivo já usa `m.Vault`**: canonical import, create com backup challenge, list e details operam via `WalletVault`.
+
+**Executado:** remoção dos handlers/renderers órfãos (`updateImportWallet*`, `updateImportPrivateKey`, `updateImportKeystore`, `updateWalletPassword`, `initWalletPassword`, `initEnhancedImport`, o subsistema enhanced-import completo — state, file picker, listeners e testes dedicados), do campo `CLIModel.Service` e dos campos legacy de import; `walletCountCmd`/`refreshWalletsTable` convertidos para vault-only; `EnhancedImportView` e `GetContentView` removidos. Nenhum método legacy foi restaurado.
+
 ---
 
 ## 5. Checklist de implementação
@@ -101,7 +114,7 @@ Reescrever os handlers de importação no `tui.go` para usar apenas a nova API V
 ### 5.3 Restauração no `internal/ui/tui.go`
 - [ ] `textInputs []textinput` no `CLIModel` (zeropara uso seguro via `make([]textinput, 0, n)`).
 - [ ] `importStage int` (inicializar em 0 no construtor/inicialização do model).
-- [ ] `importWords map[int]string` (inicializar como `map[int]string{}`).
+- [ ] `importWords []string` (inicializar como slice; o tipo `map[int]string` citado na proposta original estava incorreto).
 - [ ] `clearImportSecrets()` — verificar que percorre `m.textInputs` e `m.importWords` com `range m.textInputs`, `range m.importWords` (já existe; validar).
 - [ ] Handlers legacy (updateImportWallet etc.) — verificar se são chamados por algum dispatch; se não forem, pode deixar como "dead" ou remover depois (opcional, para limpeza).
 - [ ] `go vet` / `gofmt` nesses arquivos.

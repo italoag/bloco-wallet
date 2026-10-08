@@ -26,7 +26,7 @@ func (vault *WalletVault) PreviewEncryptedAccountImport(ctx context.Context, dat
 		return ImportPreview{}, err
 	}
 	defer clear(secret.PrivateKey)
-	privateKey, address, err := deriveCanonicalSecretIdentity(secret)
+	privateKey, address, _, err := deriveCanonicalSecretIdentity(secret)
 	if err != nil {
 		return ImportPreview{}, err
 	}

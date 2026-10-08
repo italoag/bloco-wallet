@@ -41,7 +41,7 @@ func NewWalletService(repo WalletRepository, ks *keystore.KeyStore, cfg *config.
 	if cfg != nil {
 		dir = cfg.WalletsDir
 	}
-	if len(keyStoreDir) > 0 {
+	if len(keyStoreDir) > 0 && keyStoreDir[0] != "" {
 		dir = keyStoreDir[0]
 	}
 	if dir != "" {
@@ -626,7 +626,7 @@ func derivePrivateKeyLegacy(mnemonic string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	privateKey, _, err := deriveEVMAccount(mnemonic, "", language, path)
+	privateKey, _, _, err := deriveEVMAccount(mnemonic, "", language, path)
 	if err != nil {
 		return "", err
 	}
