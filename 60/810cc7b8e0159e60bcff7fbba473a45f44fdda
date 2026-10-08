@@ -1,0 +1,25 @@
+internal/wallet/wordlists/wordlists_test.go
+  s_8b87e7332fed30::t_a9237c203fe27c 3-7
+  s_8b87e7332fed30::t_2a43a4e1f1b3c4 57-72
+.gitattributes
+  s_8b87e7332fed30::t_5329addfa93a25 1-6
+internal/wallet/wordlists/wordlists.go
+  s_8b87e7332fed30::t_07810870bb2568 29-32
+  s_8b87e7332fed30::t_fd5c4836f5d34f 33-36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "60810cc7b8e0159e60bcff7fbba473a45f44fdda",
+  "prompts": {},
+  "sessions": {
+    "s_8b87e7332fed30": {
+      "agent_id": {
+        "tool": "windsurf",
+        "id": "bubble-passive",
+        "model": "unknown"
+      },
+      "human_author": "Italo A. G. <182202+italoag@users.noreply.github.com>"
+    }
+  }
+}
