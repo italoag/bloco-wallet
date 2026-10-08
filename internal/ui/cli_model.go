@@ -28,7 +28,6 @@ type CLIModel struct {
 	accounts                        []wallet.AccountSummary
 	accountTableIDs                 []string
 	walletCount                     int
-	selectedWallet                  *wallet.Wallet
 	selectedAccount                 *wallet.AccountSummary
 	balanceProvider                 *blockchain.MultiProvider
 	balanceConfig                   *config.Config

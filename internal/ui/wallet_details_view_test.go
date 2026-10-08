@@ -28,46 +28,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type createFlowRepository struct {
-	wallets []wallet.Wallet
-}
-
-func (r *createFlowRepository) AddWallet(w *wallet.Wallet) error {
-	w.ID = len(r.wallets) + 1
-	r.wallets = append(r.wallets, *w)
-	return nil
-}
-
-func (r *createFlowRepository) GetAllWallets() ([]wallet.Wallet, error) {
-	return append([]wallet.Wallet(nil), r.wallets...), nil
-}
-
-func (r *createFlowRepository) DeleteWallet(int) error {
-	return nil
-}
-
-func (r *createFlowRepository) FindBySourceHash(sourceHash string) (*wallet.Wallet, error) {
-	for i := range r.wallets {
-		if r.wallets[i].SourceHash == sourceHash {
-			w := r.wallets[i]
-			return &w, nil
-		}
-	}
-	return nil, nil
-}
-
-func (r *createFlowRepository) FindByAddress(string) ([]wallet.Wallet, error) {
-	return nil, nil
-}
-
-func (r *createFlowRepository) FindByAddressAndMethod(string, string) ([]wallet.Wallet, error) {
-	return nil, nil
-}
-
-func (r *createFlowRepository) Close() error {
-	return nil
-}
-
 func newTestVaultModel(t *testing.T) (*CLIModel, *wallet.WalletVault, *storage.GORMRepository) {
 	t.Helper()
 	root := t.TempDir()
