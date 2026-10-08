@@ -94,7 +94,7 @@ func (m *CLIModel) viewCreateWalletBackup() string {
 		return "Localization labels not initialized."
 	}
 
-	backupWordValues := strings.Fields(m.mnemonic)
+	var backupWordValues []string
 	confirmationLabel := localization.Labels["confirm_mnemonic"]
 	confirmationInput := m.backupConfirmationInput.View()
 	materialNotice := ""
@@ -257,12 +257,8 @@ func (m *CLIModel) renderStatusBar() string {
 		constants.CreateWalletNameView:      localization.Labels["create_new_wallet"],
 		constants.CreateWalletBackupView:    localization.Labels["create_new_wallet"],
 		constants.CreateWalletView:          localization.Labels["create_new_wallet"],
-		constants.ImportWalletView:          localization.Labels["import_wallet"],
-		constants.ImportWalletPasswordView:  localization.Labels["import_wallet"],
 		constants.ImportMethodSelectionView: localization.Labels["import_method_title"],
-		constants.ImportPrivateKeyView:      localization.Labels["import_private_key"],
 		constants.ListWalletsView:           localization.Labels["list_wallets"],
-		constants.WalletPasswordView:        localization.Labels["enter_wallet_password"],
 		constants.WalletDetailsView:         localization.Labels["wallet_details_title"],
 		constants.AccountHistoryView:        "Local History",
 		constants.PersonalSignView:          "Sign Message",
@@ -411,86 +407,6 @@ func (m *CLIModel) renderMainView() string {
 	return finalView
 }
 
-// viewImportWallet renderiza a visualização de importação de wallet
-func (m *CLIModel) viewImportWallet() string {
-	if localization.Labels == nil {
-		return "Localization labels not initialized."
-	}
-
-	var view strings.Builder
-
-	// Renderizando o título com destaque
-	title := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("#7D56F4")).
-		MarginBottom(1).
-		Render(localization.Labels["import_wallet_title"])
-
-	view.WriteString(title + "\n")
-
-	// Pequena descrição do método de importação por mnemônica
-	desc := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#AAAAAA")).
-		Render(localization.Labels["import_mnemonic_desc"])
-	view.WriteString(desc + "\n\n")
-
-	// Estilo para o campo ativo
-	activeStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#00FF00")).
-		Bold(true)
-
-	// Estilo para campos inativos
-	inactiveStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#AAAAAA"))
-
-	// Renderizar cada campo de entrada
-	for i, ti := range m.textInputs {
-		wordLabel := fmt.Sprintf("%s %d:", localization.Labels["word"], i+1)
-		paddedLabel := fmt.Sprintf("%-10s", wordLabel) // Padding para alinhamento
-
-		if i == m.importStage {
-			// Campo ativo com destaque
-			view.WriteString(activeStyle.Render(paddedLabel) + " " + ti.View() + "\n\n")
-		} else {
-			// Campos inativos
-			view.WriteString(inactiveStyle.Render(paddedLabel) + " " + ti.View() + "\n")
-		}
-	}
-
-	// Instruções para o usuário
-	instructions := lipgloss.NewStyle().
-		MarginTop(1).
-		Italic(true).
-		Render(localization.Labels["press_enter"])
-
-	view.WriteString("\n" + instructions)
-
-	// Adicionar uma borda ao redor de tudo
-	content := view.String()
-	return lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("#7D56F4")).
-		Padding(1, 2).
-		Render(content)
-}
-
-// viewImportWalletPassword renderiza a visualização de senha após importação
-func (m *CLIModel) viewImportWalletPassword() string {
-	if localization.Labels == nil {
-		return "Localization labels not initialized."
-	}
-
-	var view strings.Builder
-	view.WriteString(
-		lipgloss.NewStyle().Bold(true).Render(localization.Labels["enter_password"]+"\n\n") +
-			m.passwordInput.View() + "\n\n" +
-			m.renderPasswordValidation(m.passwordInput.Value()) + "\n\n" +
-			localization.Labels["press_enter"],
-	)
-	return view.String()
-}
-
-// viewImportMethodSelection renderiza a visualização de seleção de methods de importação
 func (m *CLIModel) viewImportMethodSelection() string {
 	if localization.Labels == nil {
 		return "Localization labels not initialized."
@@ -512,47 +428,6 @@ func (m *CLIModel) viewConfigMenu() string {
 	return localization.Labels["welcome_message"]
 }
 
-// viewImportPrivateKey renderiza a visualização de importação de chave privada
-func (m *CLIModel) viewImportPrivateKey() string {
-	// Use MenuTitle style for the header instead of non-existent Title style
-	title := m.styles.MenuTitle.Render(localization.Labels["private_key_title"])
-	desc := m.styles.MenuDesc.Render(localization.Labels["import_private_key_desc"]) // brief help about method
-	input := m.privateKeyInput.View()
-	// Use MenuDesc instead of non-existent Instructions style
-	instructions := m.styles.MenuDesc.Render(localization.Labels["press_enter"])
-
-	return lipgloss.JoinVertical(
-		lipgloss.Left,
-		title,
-		"",
-		desc,
-		"",
-		input,
-		"",
-		instructions,
-	)
-}
-
-// viewImportKeystore renderiza a visualização de importação de arquivo keystore
-func (m *CLIModel) viewImportKeystore() string {
-	// Use MenuTitle style for the header
-	title := m.styles.MenuTitle.Render(localization.Labels["keystore_title"])
-	input := m.privateKeyInput.View()
-
-	// Instructions for the user
-	instructions := m.styles.MenuDesc.Render(localization.Labels["press_enter"] + " | Tab to show/cycle through suggestions")
-
-	return lipgloss.JoinVertical(
-		lipgloss.Left,
-		title,
-		"",
-		input,
-		"",
-		instructions,
-	)
-}
-
-// viewListWallets renderiza a visualização de listagem de wallets
 func (m *CLIModel) viewListWallets() string {
 	if localization.Labels == nil {
 		return "Localization labels not initialized."
@@ -713,22 +588,6 @@ func (m *CLIModel) viewVaultAction(export bool) string {
 		view.WriteString(m.styles.ErrorStyle.Render(m.vaultActionError) + "\n\n")
 	}
 	view.WriteString("Press Enter to advance. Press Esc to cancel.")
-	return view.String()
-}
-
-// viewWalletPassword renderiza a visualização de entrada de senha para wallet selecionada
-func (m *CLIModel) viewWalletPassword() string {
-	if localization.Labels == nil {
-		return "Localization labels not initialized."
-	}
-
-	var view strings.Builder
-	view.WriteString(
-		lipgloss.NewStyle().Bold(true).Render(localization.Labels["enter_wallet_password"]+"\n\n") +
-			m.passwordInput.View() + "\n\n" +
-			m.renderPasswordValidation(m.passwordInput.Value()) + "\n\n" +
-			localization.Labels["press_enter"],
-	)
 	return view.String()
 }
 

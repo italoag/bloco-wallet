@@ -21,7 +21,6 @@ import (
 func TestFinalIntegrationComplexPassword(t *testing.T) {
 	// Initialize crypto service for mnemonic encryption with mock config
 	mockConfig := CreateMockConfig(t)
-	InitCryptoService(mockConfig)
 
 	// Create temporary directory for test
 	tempDir, err := ioutil.TempDir("", "final_integration_test")
@@ -37,7 +36,7 @@ func TestFinalIntegrationComplexPassword(t *testing.T) {
 	ks := keystore.NewKeyStore(tempDir, keystore.StandardScryptN, keystore.StandardScryptP)
 
 	// Create wallet service
-	ws := NewWalletService(mockRepo, ks)
+	ws := NewWalletService(mockRepo, ks, mockConfig)
 
 	// Test data - the exact same data that would be used in the TUI
 	keystorePath := "testdata/keystores/real_keystore_v3_complex_password.json"

@@ -18,7 +18,6 @@ func TestTUIDebugWithLogging(t *testing.T) {
 
 	// Initialize crypto service
 	cfg := CreateMockConfig(t)
-	InitCryptoService(cfg)
 	fmt.Printf("✅ CryptoService initialized\n")
 
 	// Setup
@@ -34,7 +33,7 @@ func TestTUIDebugWithLogging(t *testing.T) {
 	repo.On("AddWallet", mock.AnythingOfType("*wallet.Wallet")).Return(nil)
 	repo.On("GetAllWallets").Return([]Wallet{}, nil)
 
-	service := NewWalletService(repo, ks)
+	service := NewWalletService(repo, ks, cfg)
 
 	// Test with different keystore files to see which ones work
 	testFiles := []struct {
@@ -131,56 +130,4 @@ func TestCreateValidKeystoreFiles(t *testing.T) {
 	require.Equal(t, account1.Address, key1.Address)
 
 	fmt.Printf("✅ Simple password keystore verified\n")
-}
-
-// TestDebugSpecificError testa cenários específicos que podem causar o erro
-func TestDebugSpecificError(t *testing.T) {
-	fmt.Printf("=== Debug Specific Error Scenarios ===\n")
-
-	// Test 1: CryptoService not initialized
-	fmt.Printf("\n--- Test 1: Without CryptoService ---\n")
-	// Don't initialize CryptoService
-
-	tempDir := t.TempDir()
-	keystoreDir := filepath.Join(tempDir, "keystore")
-	err := os.MkdirAll(keystoreDir, 0755)
-	require.NoError(t, err)
-
-	n, p := GetTestKeystoreParams()
-	ks := keystore.NewKeyStore(keystoreDir, n, p)
-
-	repo := &MockWalletRepository{}
-	repo.On("AddWallet", mock.AnythingOfType("*wallet.Wallet")).Return(nil)
-
-	service := NewWalletService(repo, ks)
-
-	keystorePath := "testdata/keystores/real_keystore_v3_complex_password.json"
-	password := "ComplexPassword123!@#"
-
-	_, err = service.ImportWalletFromKeystore("Test Without Crypto", keystorePath, password)
-	if err != nil {
-		fmt.Printf("❌ Expected error without CryptoService: %v\n", err)
-		var keystoreErr *KeystoreImportError
-		if errors.As(err, &keystoreErr) {
-			fmt.Printf("   Error Type: %v\n", keystoreErr.Type)
-			if keystoreErr.Cause != nil {
-				fmt.Printf("   Cause: %v\n", keystoreErr.Cause)
-			}
-		}
-	} else {
-		fmt.Printf("❌ Unexpected success without CryptoService\n")
-	}
-
-	// Test 2: With CryptoService initialized
-	fmt.Printf("\n--- Test 2: With CryptoService ---\n")
-	cfg := CreateMockConfig(t)
-	InitCryptoService(cfg)
-	fmt.Printf("✅ CryptoService initialized\n")
-
-	_, err = service.ImportWalletFromKeystore("Test With Crypto", keystorePath, password)
-	if err != nil {
-		fmt.Printf("❌ Unexpected error with CryptoService: %v\n", err)
-	} else {
-		fmt.Printf("✅ Success with CryptoService\n")
-	}
 }

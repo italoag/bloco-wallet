@@ -9,22 +9,19 @@ import (
 	"blocowallet/pkg/config"
 )
 
+// testMainConfig provides package-wide test configuration for helpers that
+// need a config without threading it through every call.
+var testMainConfig *config.Config
+
 func TestMain(m *testing.M) {
 	root, err := os.MkdirTemp("", "blocowallet-wallet-tests")
 	if err != nil {
 		os.Exit(1)
 	}
-	InitCryptoService(&config.Config{
+	testMainConfig = &config.Config{
 		AppDir:     root,
 		WalletsDir: filepath.Join(root, "keystore"),
-		Security: config.SecurityConfig{
-			Argon2Time:    1,
-			Argon2Memory:  64 * 1024,
-			Argon2Threads: 4,
-			Argon2KeyLen:  32,
-			SaltLength:    16,
-		},
-	})
+	}
 	code := m.Run()
 	_ = os.RemoveAll(root)
 	os.Exit(code)

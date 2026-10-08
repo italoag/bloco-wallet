@@ -19,7 +19,6 @@ import (
 func TestImportWalletFromKeystoreV3WithUniversalKDF(t *testing.T) {
 	// Initialize crypto service for mnemonic encryption with mock config
 	mockConfig := CreateMockConfig(t)
-	InitCryptoService(mockConfig)
 
 	// Create temporary directory for test
 	tempDir, err := ioutil.TempDir("", "keystore_test")
@@ -36,7 +35,7 @@ func TestImportWalletFromKeystoreV3WithUniversalKDF(t *testing.T) {
 	ks := keystore.NewKeyStore(tempDir, n, p)
 
 	// Create wallet service
-	ws := NewWalletService(mockRepo, ks)
+	ws := NewWalletService(mockRepo, ks, mockConfig)
 
 	tests := []struct {
 		name             string
@@ -402,7 +401,7 @@ func TestKeystoreImportErrorMessages(t *testing.T) {
 	ks := keystore.NewKeyStore(tempDir, n, p)
 
 	// Create wallet service
-	ws := NewWalletService(mockRepo, ks)
+	ws := NewWalletService(mockRepo, ks, testMainConfig)
 
 	// Test with invalid keystore file
 	invalidKeystorePath := filepath.Join(tempDir, "invalid.json")

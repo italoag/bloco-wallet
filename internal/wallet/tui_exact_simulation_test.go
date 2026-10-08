@@ -18,7 +18,6 @@ func TestTUIExactSimulation(t *testing.T) {
 
 	// Step 1: Initialize crypto service like main.go does
 	cfg := CreateMockConfig(t)
-	InitCryptoService(cfg)
 	fmt.Printf("✅ CryptoService initialized\n")
 
 	// Step 2: Setup keystore like TUI does
@@ -36,7 +35,7 @@ func TestTUIExactSimulation(t *testing.T) {
 	repo.On("GetAllWallets").Return([]Wallet{}, nil)
 
 	// Step 4: Create service like TUI does
-	service := NewWalletService(repo, ks)
+	service := NewWalletService(repo, ks, cfg)
 	fmt.Printf("✅ WalletService created\n")
 
 	// Step 5: Simulate TUI flow exactly
@@ -144,7 +143,6 @@ func TestTUIWithRealApplication(t *testing.T) {
 	// Load real config (or create mock that matches real config structure)
 	cfg := CreateMockConfig(t)
 	cfg.AppDir = appDir
-	InitCryptoService(cfg)
 	fmt.Printf("✅ CryptoService initialized with real config\n")
 
 	// Create a keystore like the real application
@@ -156,7 +154,7 @@ func TestTUIWithRealApplication(t *testing.T) {
 	repo.On("GetAllWallets").Return([]Wallet{}, nil)
 
 	// Create service
-	service := NewWalletService(repo, ks)
+	service := NewWalletService(repo, ks, cfg)
 
 	// Test import
 	keystorePath := "testdata/keystores/real_keystore_v3_complex_password.json"

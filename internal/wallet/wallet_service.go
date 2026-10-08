@@ -16,7 +16,8 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/google/uuid"
+
+	"blocowallet/pkg/config"
 )
 
 type WalletDetails struct {
@@ -35,13 +36,11 @@ type WalletService struct {
 
 var ErrWalletDeletionDisabled = errors.New("wallet deletion is disabled until transactional deletion is available")
 
-func NewWalletService(repo WalletRepository, ks *keystore.KeyStore, keyStoreDir ...string) *WalletService {
-	// Verify that CryptoService is initialized
-	if defaultCryptoService == nil {
-		panic("CryptoService must be initialized before creating WalletService. Call wallet.InitCryptoService(cfg) first.")
+func NewWalletService(repo WalletRepository, ks *keystore.KeyStore, cfg *config.Config, keyStoreDir ...string) *WalletService {
+	dir := ""
+	if cfg != nil {
+		dir = cfg.WalletsDir
 	}
-
-	dir := defaultCryptoService.config.WalletsDir
 	if len(keyStoreDir) > 0 {
 		dir = keyStoreDir[0]
 	}
@@ -54,249 +53,6 @@ func NewWalletService(repo WalletRepository, ks *keystore.KeyStore, keyStoreDir 
 		KeyStore:    ks,
 		KeyStoreDir: dir,
 	}
-}
-
-func (ws *WalletService) CreateWallet(name, password string) (*WalletDetails, error) {
-	mnemonic, err := GenerateMnemonic()
-	if err != nil {
-		return nil, err
-	}
-	return ws.CreateWalletFromMnemonic(name, mnemonic, password)
-}
-
-func (ws *WalletService) CreateWalletFromMnemonic(name, mnemonic, password string) (*WalletDetails, error) {
-	if _, err := DetectBIP39Language(mnemonic); err != nil {
-		return nil, NewInvalidImportDataError(string(ImportMethodMnemonic), "Invalid mnemonic phrase")
-	}
-	sourceHash := (&SourceHashGenerator{}).GenerateFromMnemonic(mnemonic)
-	if existingWallet, err := ws.Repo.FindBySourceHash(sourceHash); err != nil {
-		return nil, err
-	} else if existingWallet != nil {
-		return nil, NewDuplicateWalletError(string(ImportMethodMnemonic), existingWallet.Address, "A wallet with this mnemonic phrase already exists")
-	}
-
-	privateKeyHex, err := derivePrivateKeyLegacy(mnemonic)
-	if err != nil {
-		return nil, err
-	}
-
-	privKey, err := hexToECDSALegacy(privateKeyHex)
-	if err != nil {
-		return nil, err
-	}
-
-	account, err := ws.KeyStore.ImportECDSA(privKey, password)
-	if err != nil {
-		return nil, err
-	}
-	keepKeyStore := false
-	defer func() {
-		if !keepKeyStore {
-			_ = os.Remove(account.URL.Path)
-		}
-	}()
-
-	// Encrypt the mnemonic before storing
-	encryptedMnemonic, err := EncryptMnemonic(mnemonic, password)
-	if err != nil {
-		return nil, fmt.Errorf("failed to encrypt mnemonic: %w", err)
-	}
-
-	wallet := &Wallet{
-		Name:         name,
-		Address:      account.Address.Hex(),
-		KeyStorePath: account.URL.Path,
-		Mnemonic:     &encryptedMnemonic, // Store the encrypted mnemonic
-		ImportMethod: string(ImportMethodMnemonic),
-		SourceHash:   sourceHash,
-	}
-
-	if err = ws.Repo.AddWallet(wallet); err != nil {
-		return nil, err
-	}
-	keepKeyStore = true
-
-	walletDetails := &WalletDetails{
-		Wallet:       wallet,
-		Mnemonic:     &mnemonic,
-		ImportMethod: ImportMethodMnemonic,
-		HasMnemonic:  true,
-	}
-
-	return walletDetails, nil
-}
-
-func (ws *WalletService) ImportWallet(name, mnemonic, password string) (*WalletDetails, error) {
-	// 5.2 Validate mnemonic before any processing
-	if _, err := DetectBIP39Language(mnemonic); err != nil {
-		return nil, NewInvalidImportDataError(string(ImportMethodMnemonic), "Invalid mnemonic phrase")
-	}
-
-	// 5.1 Generate source hash and check duplicates by mnemonic-based source
-	hashGen := &SourceHashGenerator{}
-	sourceHash := hashGen.GenerateFromMnemonic(mnemonic)
-	if existingWallet, err := ws.Repo.FindBySourceHash(sourceHash); err == nil && existingWallet != nil {
-		return nil, NewDuplicateWalletError(string(ImportMethodMnemonic), existingWallet.Address, "A wallet with this mnemonic phrase already exists")
-	} else if err != nil {
-		return nil, err
-	}
-
-	privateKeyHex, err := derivePrivateKeyLegacy(mnemonic)
-	if err != nil {
-		return nil, err
-	}
-
-	privKey, err := hexToECDSALegacy(privateKeyHex)
-	if err != nil {
-		return nil, err
-	}
-
-	account, err := ws.KeyStore.ImportECDSA(privKey, password)
-	if err != nil {
-		return nil, err
-	}
-	keepKeyStore := false
-	defer func() {
-		if !keepKeyStore {
-			_ = os.Remove(account.URL.Path)
-		}
-	}()
-
-	// Encrypt the mnemonic before storing
-	encryptedMnemonic, err := EncryptMnemonic(mnemonic, password)
-	if err != nil {
-		return nil, fmt.Errorf("failed to encrypt mnemonic: %w", err)
-	}
-
-	wallet := &Wallet{
-		Name:         name,
-		Address:      account.Address.Hex(),
-		KeyStorePath: account.URL.Path,
-		Mnemonic:     &encryptedMnemonic, // Store the encrypted mnemonic
-		ImportMethod: string(ImportMethodMnemonic),
-		SourceHash:   sourceHash,
-	}
-
-	if err = ws.Repo.AddWallet(wallet); err != nil {
-		return nil, err
-	}
-	keepKeyStore = true
-
-	walletDetails := &WalletDetails{
-		Wallet:       wallet,
-		Mnemonic:     &mnemonic,
-		ImportMethod: ImportMethodMnemonic,
-		HasMnemonic:  true,
-	}
-
-	return walletDetails, nil
-}
-
-func (ws *WalletService) ImportWalletFromPrivateKey(name, privateKeyHex, password string) (*WalletDetails, error) {
-	// Normalize: remove 0x prefix if present
-	if len(privateKeyHex) > 2 && (privateKeyHex[:2] == "0x" || privateKeyHex[:2] == "0X") {
-		privateKeyHex = privateKeyHex[2:]
-	}
-
-	// 6.3 Validate private key format before processing
-	if len(privateKeyHex) != 64 {
-		return nil, NewInvalidImportDataError(string(ImportMethodPrivateKey), "Invalid private key format")
-	}
-	// ensure hex characters decode
-	if _, err := hex.DecodeString(privateKeyHex); err != nil {
-		return nil, NewInvalidImportDataError(string(ImportMethodPrivateKey), "Invalid private key format")
-	}
-
-	// 6.2 Duplicate detection by source hash (private key)
-	hashGen := &SourceHashGenerator{}
-	sourceHash := hashGen.GenerateFromPrivateKey(privateKeyHex)
-	if existingWallet, err := ws.Repo.FindBySourceHash(sourceHash); err == nil && existingWallet != nil {
-		return nil, NewDuplicateWalletError(string(ImportMethodPrivateKey), existingWallet.Address, "A wallet with this private key already exists")
-	} else if err != nil {
-		return nil, err
-	}
-
-	// Convert hex to ECDSA private key
-	privKey, err := hexToECDSALegacy(privateKeyHex)
-	if err != nil {
-		return nil, NewInvalidImportDataError(string(ImportMethodPrivateKey), "Invalid private key format")
-	}
-
-	// Import the private key to keystore
-	keyID, err := uuid.NewRandom()
-	if err != nil {
-		return nil, fmt.Errorf("generate keystore identity: %w", err)
-	}
-	n, p := GetTestKeystoreParams()
-	address := crypto.PubkeyToAddress(privKey.PublicKey)
-	encryptedKey, err := keystore.EncryptKey(&keystore.Key{Id: keyID, Address: address, PrivateKey: privKey}, password, n, p)
-	if err != nil {
-		return nil, fmt.Errorf("encrypt private key import: %w", err)
-	}
-	if err := os.MkdirAll(ws.KeyStoreDir, 0o700); err != nil {
-		return nil, fmt.Errorf("prepare keystore directory: %w", err)
-	}
-	destination, err := os.CreateTemp(ws.KeyStoreDir, address.Hex()+"-*.json")
-	if err != nil {
-		return nil, fmt.Errorf("create private key keystore: %w", err)
-	}
-	newPath := destination.Name()
-	if err := destination.Chmod(0o600); err != nil {
-		_ = destination.Close()
-		_ = os.Remove(newPath)
-		return nil, fmt.Errorf("protect private key keystore: %w", err)
-	}
-	if _, err := destination.Write(encryptedKey); err != nil {
-		_ = destination.Close()
-		_ = os.Remove(newPath)
-		return nil, fmt.Errorf("write private key keystore: %w", err)
-	}
-	if err := destination.Sync(); err != nil {
-		_ = destination.Close()
-		_ = os.Remove(newPath)
-		return nil, fmt.Errorf("sync private key keystore: %w", err)
-	}
-	if err := destination.Close(); err != nil {
-		_ = os.Remove(newPath)
-		return nil, fmt.Errorf("close private key keystore: %w", err)
-	}
-
-	// Rename the keystore file to match Ethereum address
-	keepKeyStore := false
-	defer func() {
-		if !keepKeyStore {
-			_ = os.Remove(newPath)
-		}
-	}()
-
-	// 6.1 Mnemonic must be unavailable for private key imports
-	var nilMnemonic *string = nil
-
-	// Create the wallet entry without mnemonic
-	wallet := &Wallet{
-		Name:         name,
-		Address:      address.Hex(),
-		KeyStorePath: newPath,
-		Mnemonic:     nilMnemonic, // No mnemonic stored for private key imports
-		ImportMethod: string(ImportMethodPrivateKey),
-		SourceHash:   sourceHash,
-	}
-
-	// Add wallet to repository
-	if err = ws.Repo.AddWallet(wallet); err != nil {
-		return nil, err
-	}
-	keepKeyStore = true
-
-	// Return wallet details without mnemonic
-	walletDetails := &WalletDetails{
-		Wallet:       wallet,
-		Mnemonic:     nil,
-		ImportMethod: ImportMethodPrivateKey,
-		HasMnemonic:  false,
-	}
-
-	return walletDetails, nil
 }
 
 // ImportWalletFromKeystoreV3 imports a wallet from a keystore v3 file with Universal KDF support
@@ -776,35 +532,6 @@ func (ws *WalletService) sendProgressUpdate(progressChan chan<- ImportProgress, 
 // It calls the new ImportWalletFromKeystoreV3 function
 func (ws *WalletService) ImportWalletFromKeystore(name, keystorePath, password string) (*WalletDetails, error) {
 	return ws.ImportWalletFromKeystoreV3(name, keystorePath, password)
-}
-
-func (ws *WalletService) LoadWallet(wallet *Wallet, password string) (*WalletDetails, error) {
-	keyJSON, err := os.ReadFile(wallet.KeyStorePath)
-	if err != nil {
-		return nil, fmt.Errorf("error reading the wallet file: %v", err)
-	}
-	_, err = decryptKeySafely(keyJSON, password)
-	if err != nil {
-		return nil, fmt.Errorf("incorrect password")
-	}
-
-	// Decrypt the mnemonic
-	var mnemonicPtr *string
-	if wallet.Mnemonic != nil {
-		decryptedMnemonic, err := DecryptMnemonic(*wallet.Mnemonic, password)
-		if err != nil {
-			return nil, fmt.Errorf("failed to decrypt mnemonic: %v", err)
-		}
-		mnemonicPtr = &decryptedMnemonic
-	}
-
-	walletDetails := &WalletDetails{
-		Wallet:       wallet,
-		Mnemonic:     mnemonicPtr,
-		ImportMethod: ImportMethod(wallet.ImportMethod),
-		HasMnemonic:  wallet.Mnemonic != nil,
-	}
-	return walletDetails, nil
 }
 
 func (ws *WalletService) GetAllWallets() ([]Wallet, error) {

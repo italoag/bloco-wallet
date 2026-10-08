@@ -19,15 +19,11 @@ import (
 )
 
 type CLIModel struct {
-	Service                         *wallet.WalletService
 	Vault                           *wallet.WalletVault
 	currentView                     string
 	version                         string
 	menuItems                       []menuItem
 	selectedMenu                    int
-	importWords                     []string
-	importStage                     int
-	textInputs                      []textinput.Model
 	wallets                         []wallet.Wallet
 	accounts                        []wallet.AccountSummary
 	walletCount                     int
@@ -92,7 +88,6 @@ type CLIModel struct {
 	backupChallenge                 *wallet.BackupChallenge
 	pendingAccount                  *wallet.AccountSummary
 	resumeBackupAccountID           string
-	privateKeyInput                 textinput.Model
 	currentPasswordInput            textinput.Model
 	newPasswordInput                textinput.Model
 	confirmPasswordInput            textinput.Model
@@ -104,9 +99,6 @@ type CLIModel struct {
 	lastOperationNotice             string
 	canonicalImport                 *canonicalImportState
 	canonicalOperationID            uint64
-	pendingImportMethod             wallet.ImportMethod
-	keystorePath                    string
-	mnemonic                        string
 	walletTable                     table.Model
 	width                           int
 	height                          int

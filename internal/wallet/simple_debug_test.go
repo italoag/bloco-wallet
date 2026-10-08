@@ -12,10 +12,6 @@ import (
 
 // TestSimpleKeystoreImport testa a importação simples do keystore
 func TestSimpleKeystoreImport(t *testing.T) {
-	// Initialize crypto service with mock config
-	mockConfig := CreateMockConfig(t)
-	InitCryptoService(mockConfig)
-
 	keystorePath := "testdata/keystores/real_keystore_v3_complex_password.json"
 	password := "ComplexPassword123!@#"
 
